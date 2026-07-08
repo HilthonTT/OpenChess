@@ -1,32 +1,28 @@
 import { useState } from "react";
 import { useKeyboard } from "@opentui/react";
-import { theme } from "../theme";
-
-export interface MenuItem {
-  id: string;
-  icon: string;
-  title: string;
-  description: string;
-}
+import { theme } from "../../theme";
+import type { MenuItem } from "./types";
+import { MENU_ITEMS } from "./menu-items";
 
 interface MenuProps {
-  items: MenuItem[];
   onSelect: (item: MenuItem) => void;
 }
 
-export function Menu({ items, onSelect }: MenuProps) {
+export function Menu({ onSelect }: MenuProps) {
   const [index, setIndex] = useState(0);
 
   useKeyboard((key) => {
     if (key.name === "up" || key.name === "k") {
-      setIndex((i) => (i - 1 + items.length) % items.length);
+      setIndex((i) => (i - 1 + MENU_ITEMS.length) % MENU_ITEMS.length);
     } else if (key.name === "down" || key.name === "j") {
-      setIndex((i) => (i + 1) % items.length);
+      setIndex((i) => (i + 1) % MENU_ITEMS.length);
     } else if (key.name === "return") {
-      const item = items[index];
-      if (item) onSelect(item);
+      const item = MENU_ITEMS[index];
+      if (item) {
+        onSelect(item);
+      }
     } else if (/^[1-9]$/.test(key.name)) {
-      const item = items[Number(key.name) - 1];
+      const item = MENU_ITEMS[Number(key.name) - 1];
       if (item) {
         setIndex(Number(key.name) - 1);
         onSelect(item);
@@ -46,13 +42,14 @@ export function Menu({ items, onSelect }: MenuProps) {
       paddingBottom={1}
       paddingLeft={2}
       paddingRight={2}
-      gap={1}
+      gap={1.2}
       width={48}
     >
-      {items.map((item, i) => {
+      {MENU_ITEMS.map((item, i) => {
         const selected = i === index;
         return (
           <box
+            onMouseDown={() => {}}
             key={item.id}
             flexDirection="row"
             paddingLeft={1}
