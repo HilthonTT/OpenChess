@@ -1,0 +1,13 @@
+{
+  "name": "openchess",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:cli": "bun run --watch packages/cli/src/index.tsx"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}
