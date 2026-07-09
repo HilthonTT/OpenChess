@@ -10,7 +10,7 @@ import {
 import { useKeyboard, useRenderer } from "@opentui/react";
 
 /** Bottom layer that is always present; screens register their responders on it. */
-const BASE_LAYER_ID = "base";
+export const BASE_LAYER_ID = "base";
 /** Pressed together with ctrl, walks the responder chain and exits if unhandled. */
 const EXIT_KEY = "c";
 

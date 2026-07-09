@@ -1,6 +1,8 @@
-import { theme } from "../theme";
+import { useUITheme } from "../providers/theme";
 
 export function Header() {
+  const theme = useUITheme();
+
   return (
     <box flexDirection="column" alignItems="center" gap={1}>
       <box flexDirection="row" alignItems="center" gap={1}>

@@ -2,15 +2,19 @@ import { useCallback } from "react";
 import { useKeyboard, useRenderer } from "@opentui/react";
 import { Header } from "../components/header";
 import { Menu } from "../components/menu";
-import { theme } from "../theme";
 import type { MenuItem } from "../components/menu/types";
 import { useToast } from "../providers/toast";
 import { useDialog } from "../providers/dialog";
+import { useUITheme } from "../providers/theme";
+import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { ThemeDialogContent } from "../components/dialogs/theme-dialog";
 
 export function Home() {
   const renderer = useRenderer();
   const toast = useToast();
   const dialog = useDialog();
+  const theme = useUITheme();
+  const { isTopLayer } = useKeyboardLayer();
 
   const handleSelect = useCallback(
     (menuItem: MenuItem) => {
@@ -26,10 +30,31 @@ export function Home() {
   );
 
   useKeyboard((key) => {
+    // Only the base screen owns these shortcuts; while a dialog is open its
+    // own layer handles input (e.g. typing "q" into the theme search).
+    if (!isTopLayer(BASE_LAYER_ID)) {
+      return;
+    }
+
     if (key.name === "q") {
       renderer.destroy();
       process.exit(0);
     }
+  });
+
+  useKeyboard((key) => {
+    if (!isTopLayer(BASE_LAYER_ID)) {
+      return;
+    }
+
+    if (!key.ctrl || key.name !== ".") {
+      return;
+    }
+
+    dialog.open({
+      title: "Select Theme",
+      children: <ThemeDialogContent />,
+    });
   });
 
   return (
@@ -54,6 +79,8 @@ export function Home() {
         <span fg={theme.faint}> quick pick </span>
         <span fg={theme.cream}>q</span>
         <span fg={theme.faint}> quit</span>
+        <span fg={theme.cream}> ctrl + .</span>
+        <span fg={theme.faint}> theme</span>
       </text>
     </box>
   );

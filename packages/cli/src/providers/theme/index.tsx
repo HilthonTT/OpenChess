@@ -9,8 +9,8 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import type { ThemeColors, Theme } from "../../theme";
-import { DEFAULT_THEME, THEMES } from "../../theme";
+import type { ThemeColors, Theme, UITheme } from "../../theme";
+import { DEFAULT_THEME, THEMES, toUITheme } from "../../theme";
 
 const CONFIG_DIR = join(homedir(), ".openchess");
 const THEME_PREFERENCES_PATH = join(CONFIG_DIR, "preferences.json");
@@ -67,6 +67,12 @@ export function useTheme(): ThemeContextValue {
     throw new Error("useTheme must be used within a ThemeProvider");
   }
   return value;
+}
+
+/** The active theme's chrome palette, shaped like the static `theme` object. */
+export function useUITheme(): UITheme {
+  const { colors } = useTheme();
+  return useMemo(() => toUITheme(colors), [colors]);
 }
 
 type ThemeProviderProps = {

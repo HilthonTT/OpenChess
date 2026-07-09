@@ -12,6 +12,39 @@ export const theme = {
   selectionBg: "#33291C",
 } as const;
 
+/**
+ * The semantic palette the chrome (title, menu, hint bar) is painted with.
+ * Mirrors the shape of the static {@link theme} above so components can swap a
+ * hard-coded `theme.X` for a themed `ui.X` with no other changes.
+ */
+export type UITheme = {
+  cream: string;
+  walnut: string;
+  gold: string;
+  text: string;
+  dim: string;
+  faint: string;
+  selectionBg: string;
+};
+
+/**
+ * Derive the chrome palette from an active theme's colors. The default
+ * "Classic Chess" theme maps `selection → cream`, `planMode → walnut`,
+ * `primary → gold`, `dimSeparator → faint`, so this reproduces the original
+ * static look exactly while letting every other theme repaint the UI.
+ */
+export function toUITheme(colors: ThemeColors): UITheme {
+  return {
+    cream: colors.selection,
+    walnut: colors.planMode,
+    gold: colors.primary,
+    text: theme.text,
+    dim: theme.dim,
+    faint: colors.dimSeparator,
+    selectionBg: colors.surface,
+  };
+}
+
 export type ThemeColors = {
   primary: string;
   planMode: string;
