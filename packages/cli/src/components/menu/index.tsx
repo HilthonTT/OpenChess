@@ -7,13 +7,7 @@ import {
 } from "../../providers/keyboard-layer";
 import type { MenuItem } from "./types";
 import { MENU_ITEMS } from "./menu-items";
-
-/**
- * Variation selector (U+FE0E) appended to a chess glyph to force text (not
- * emoji) presentation, so the terminal honors our `fg` color instead of
- * drawing the piece as a fixed-color emoji.
- */
-const TEXT_PRESENTATION = String.fromCharCode(0xfe0e);
+import { TEXT_PRESENTATION } from "../pieces";
 
 interface MenuProps {
   onSelect: (item: MenuItem) => void;

@@ -9,8 +9,8 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import type { ThemeColors, Theme, UITheme } from "../../theme";
-import { DEFAULT_THEME, THEMES, toUITheme } from "../../theme";
+import type { BoardTheme, ThemeColors, Theme, UITheme } from "../../theme";
+import { DEFAULT_THEME, THEMES, toBoardTheme, toUITheme } from "../../theme";
 
 const CONFIG_DIR = join(homedir(), ".openchess");
 const THEME_PREFERENCES_PATH = join(CONFIG_DIR, "preferences.json");
@@ -69,10 +69,14 @@ export function useTheme(): ThemeContextValue {
   return value;
 }
 
-/** The active theme's chrome palette, shaped like the static `theme` object. */
 export function useUITheme(): UITheme {
   const { colors } = useTheme();
   return useMemo(() => toUITheme(colors), [colors]);
+}
+
+export function useBoardTheme(): BoardTheme {
+  const { colors } = useTheme();
+  return useMemo(() => toBoardTheme(colors), [colors]);
 }
 
 type ThemeProviderProps = {

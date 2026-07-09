@@ -7,7 +7,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: "♟",
     description: "Two players sharing one keyboard",
     action(ctx) {
-      ctx.toast.show({ message: "Starting local 1v1..." });
+      ctx.navigate("/local");
     },
   },
   {
@@ -16,7 +16,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: "♞",
     description: "Challenge a player over the network",
     action(ctx) {
-      ctx.toast.show({ message: "Starting online 1v1..." });
+      ctx.navigate("/online");
     },
   },
   {
@@ -25,7 +25,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: "♛",
     description: "Test your skill against the engine",
     action(ctx) {
-      ctx.toast.show({ message: "Starting ai 1v1..." });
+      ctx.navigate("/ai");
     },
   },
 ];

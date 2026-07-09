@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useKeyboard, useRenderer } from "@opentui/react";
+import { useNavigate } from "react-router";
 import { Header } from "../components/header";
 import { Menu } from "../components/menu";
 import type { MenuItem } from "../components/menu/types";
@@ -11,6 +12,7 @@ import { ThemeDialogContent } from "../components/dialogs/theme-dialog";
 
 export function Home() {
   const renderer = useRenderer();
+  const navigate = useNavigate();
   const toast = useToast();
   const dialog = useDialog();
   const theme = useUITheme();
@@ -21,12 +23,13 @@ export function Home() {
       if (menuItem.action) {
         menuItem.action({
           exit: () => renderer.destroy(),
+          navigate: (path) => void navigate(path),
           toast,
           dialog,
         });
       }
     },
-    [renderer, toast, dialog],
+    [renderer, navigate, toast, dialog],
   );
 
   useKeyboard((key) => {

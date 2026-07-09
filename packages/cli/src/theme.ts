@@ -45,6 +45,51 @@ export function toUITheme(colors: ThemeColors): UITheme {
   };
 }
 
+/**
+ * The palette the chessboard is painted with. Like {@link UITheme} this is
+ * derived from the active theme's colors rather than stored per theme, so every
+ * theme in {@link THEMES} repaints the board for free.
+ */
+export type BoardTheme = {
+  border: string;
+  coordinate: string;
+  whitePiece: string;
+  blackPiece: string;
+  /** The square the player is standing on. */
+  cursorBg: string;
+  cursorFg: string;
+  /** The piece the player picked up. */
+  selectedBg: string;
+  selectedFg: string;
+  /** Both squares of the move just played. */
+  lastMoveBg: string;
+  /** The dot marking an empty square the selected piece may move to. */
+  moveHint: string;
+  /** A piece the selected piece may capture. */
+  captureHint: string;
+  /** The king of a side that is in check. */
+  checkBg: string;
+  checkFg: string;
+};
+
+export function toBoardTheme(colors: ThemeColors): BoardTheme {
+  return {
+    border: colors.dimSeparator,
+    coordinate: colors.dimSeparator,
+    whitePiece: colors.selection,
+    blackPiece: colors.planMode,
+    cursorBg: colors.primary,
+    cursorFg: colors.background,
+    selectedBg: colors.selection,
+    selectedFg: colors.background,
+    lastMoveBg: colors.surface,
+    moveHint: colors.primary,
+    captureHint: colors.error,
+    checkBg: colors.error,
+    checkFg: colors.background,
+  };
+}
+
 export type ThemeColors = {
   primary: string;
   planMode: string;
