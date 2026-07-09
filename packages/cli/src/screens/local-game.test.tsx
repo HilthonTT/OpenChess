@@ -142,6 +142,43 @@ describe("local game screen", () => {
     expect(frame).not.toContain("1.");
   });
 
+  test("a capture shows the taken piece and the material score", async () => {
+    const app = await renderApp("/local");
+
+    // Both capture rows start empty.
+    expect(app.frame()).toContain("White  —");
+    expect(app.frame()).toContain("Black  —");
+
+    // 1. e4 — cursor starts on e2.
+    await app.enter();
+    await app.arrow("up");
+    await app.arrow("up");
+    await app.enter();
+
+    // 1... d5 — walk from e4 up to d7, then push two squares.
+    await app.arrow("left");
+    await app.arrow("up");
+    await app.arrow("up");
+    await app.arrow("up");
+    await app.enter();
+    await app.arrow("down");
+    await app.arrow("down");
+    await app.enter();
+
+    // 2. exd5 — back to e4, then take the pawn on d5.
+    await app.arrow("down");
+    await app.arrow("right");
+    await app.enter();
+    await app.arrow("up");
+    await app.arrow("left");
+    await app.enter();
+
+    const frame = app.frame();
+    expect(frame).toContain("White  ♙");
+    expect(frame).toContain("+1");
+    expect(frame).toContain("Black  —");
+  });
+
   test("flipping the board keeps the arrow keys pointing the way you look", async () => {
     const app = await renderApp("/local");
     await app.type("f");

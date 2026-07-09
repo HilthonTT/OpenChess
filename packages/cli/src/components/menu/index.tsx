@@ -62,7 +62,11 @@ export function Menu({ onSelect }: MenuProps) {
         const selected = i === index;
         return (
           <box
-            onMouseDown={() => {}}
+            onMouseMove={() => setIndex(i)}
+            onMouseDown={() => {
+              setIndex(i);
+              onSelect(item);
+            }}
             key={item.id}
             flexDirection="row"
             paddingLeft={1}

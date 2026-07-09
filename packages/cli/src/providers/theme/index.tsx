@@ -57,6 +57,8 @@ type ThemeContextValue = {
   colors: ThemeColors;
   currentTheme: Theme;
   setTheme: (theme: Theme) => void;
+  /** Apply a theme for this session only, without persisting it to disk. */
+  previewTheme: (theme: Theme) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -91,9 +93,13 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     persistTheme(theme);
   }, []);
 
+  const previewTheme = useCallback((theme: Theme) => {
+    setCurrentTheme(theme);
+  }, []);
+
   const value = useMemo<ThemeContextValue>(
-    () => ({ colors: currentTheme.colors, currentTheme, setTheme }),
-    [currentTheme, setTheme],
+    () => ({ colors: currentTheme.colors, currentTheme, setTheme, previewTheme }),
+    [currentTheme, setTheme, previewTheme],
   );
 
   return (

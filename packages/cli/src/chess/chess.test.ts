@@ -13,7 +13,15 @@ import {
   isInsufficientMaterial,
 } from "./moves";
 import { toSan } from "./san";
-import { createGame, findLegalMove, needsPromotion, play, undo } from "./game";
+import {
+  capturedPieces,
+  createGame,
+  findLegalMove,
+  materialBalance,
+  needsPromotion,
+  play,
+  undo,
+} from "./game";
 import type { Position, PromotionPiece } from "./types";
 
 /** Count leaf nodes of the legal move tree — the standard move-generator check. */
@@ -75,6 +83,15 @@ describe("board", () => {
     for (const fen of fens) {
       expect(toFen(parseFen(fen))).toBe(fen);
     }
+  });
+
+  test("malformed FEN fields are rejected", () => {
+    const board = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+    expect(() => parseFen(`${board} w KQkq e9 0 1`)).toThrow(/en passant/);
+    expect(() => parseFen(`${board} w KQkq - abc 1`)).toThrow(/halfmove/);
+    expect(() => parseFen(`${board} w KQkq - 0 zero`)).toThrow(/fullmove/);
+    expect(() => parseFen(`${board} w KQkq - -1 1`)).toThrow(/halfmove/);
+    expect(() => parseFen(`${board} w KQkq - 0 0`)).toThrow(/fullmove/);
   });
 });
 
@@ -257,6 +274,37 @@ describe("game results", () => {
         isDoublePawnPush: false,
       }),
     ).toThrow(/Illegal move/);
+  });
+});
+
+describe("captures and material", () => {
+  test("captured pieces are tracked per side, most valuable first", () => {
+    // 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qd8 4. Nb5 a6 5. Nxc7+ Qxc7
+    const game = playMoves(STARTING_FEN, [
+      "e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5d8", "c3b5", "a7a6", "b5c7", "d8c7",
+    ]);
+    expect(capturedPieces(game).byWhite).toEqual(["p", "p"]);
+    expect(capturedPieces(game).byBlack).toEqual(["N", "P"]);
+  });
+
+  test("en passant captures count the passed pawn", () => {
+    const game = playMoves(STARTING_FEN, ["e2e4", "a7a6", "e4e5", "d7d5", "e5d6"]);
+    expect(capturedPieces(game).byWhite).toEqual(["p"]);
+  });
+
+  test("undo removes the capture again", () => {
+    const game = playMoves(STARTING_FEN, ["e2e4", "d7d5", "e4d5"]);
+    expect(capturedPieces(undo(game)).byWhite).toEqual([]);
+  });
+
+  test("material balance counts the board, including promotions", () => {
+    expect(materialBalance(parseFen(STARTING_FEN))).toBe(0);
+    expect(materialBalance(parseFen("4k3/8/8/8/8/8/8/Q3K3 w - - 0 1"))).toBe(9);
+    expect(materialBalance(parseFen("4k3/8/8/2n5/8/8/8/4K2R b - - 0 1"))).toBe(2);
+
+    // A pawn promoting swings the balance by queen-minus-pawn.
+    const promoted = playMoves("8/P6k/8/8/8/8/8/K7 w - - 0 1", ["a7a8q"]);
+    expect(materialBalance(promoted.position)).toBe(9);
   });
 });
 

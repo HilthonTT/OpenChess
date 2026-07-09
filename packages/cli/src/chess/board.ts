@@ -158,13 +158,28 @@ export function parseFen(fen: string): Position {
     }
   }
 
+  const enPassantSquare = enPassant === "-" ? null : fromAlgebraic(enPassant);
+  if (enPassant !== "-" && enPassantSquare === null) {
+    throw new Error(`Invalid FEN: bad en passant square "${enPassant}"`);
+  }
+
+  const halfmoveClock = halfmove ? Number(halfmove) : 0;
+  if (!Number.isInteger(halfmoveClock) || halfmoveClock < 0) {
+    throw new Error(`Invalid FEN: bad halfmove clock "${halfmove}"`);
+  }
+
+  const fullmoveNumber = fullmove ? Number(fullmove) : 1;
+  if (!Number.isInteger(fullmoveNumber) || fullmoveNumber < 1) {
+    throw new Error(`Invalid FEN: bad fullmove number "${fullmove}"`);
+  }
+
   return {
     board,
     turn,
     castling: rights,
-    enPassant: enPassant === "-" ? null : fromAlgebraic(enPassant),
-    halfmoveClock: halfmove ? Number(halfmove) : 0,
-    fullmoveNumber: fullmove ? Number(fullmove) : 1,
+    enPassant: enPassantSquare,
+    halfmoveClock,
+    fullmoveNumber,
   };
 }
 

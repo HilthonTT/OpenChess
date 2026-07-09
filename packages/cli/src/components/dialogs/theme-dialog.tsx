@@ -6,7 +6,7 @@ import { DialogSearchList } from "../dialog-search-list";
 
 export const ThemeDialogContent = () => {
   const dialog = useDialog();
-  const { setTheme, currentTheme } = useTheme();
+  const { setTheme, previewTheme, currentTheme } = useTheme();
   const originalThemeRef = useRef<Theme>(currentTheme);
   const confirmedRef = useRef<boolean>(false);
 
@@ -14,10 +14,10 @@ export const ThemeDialogContent = () => {
   useEffect(() => {
     return () => {
       if (!confirmedRef.current) {
-        setTheme(originalThemeRef.current);
+        previewTheme(originalThemeRef.current);
       }
     };
-  }, [setTheme]);
+  }, [previewTheme]);
 
   const handleSelect = useCallback(
     (theme: Theme) => {
@@ -30,9 +30,9 @@ export const ThemeDialogContent = () => {
 
   const handleHighlight = useCallback(
     (theme: Theme) => {
-      setTheme(theme);
+      previewTheme(theme);
     },
-    [setTheme],
+    [previewTheme],
   );
 
   return (

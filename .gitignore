@@ -69,6 +69,8 @@ web_modules/
 .env
 .env.*
 !.env.example
+# Test env holds no secrets and is required for `bun test` to boot the server package.
+!.env.test
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

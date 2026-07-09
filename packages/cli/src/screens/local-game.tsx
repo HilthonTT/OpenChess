@@ -4,12 +4,18 @@ import { Board } from "../components/board";
 import { GameScreen } from "../components/game-screen";
 import { useUITheme } from "../providers/theme";
 import {
+  useKeyboardLayer,
+  BASE_LAYER_ID,
+} from "../providers/keyboard-layer";
+import {
+  capturedPieces,
   createGame,
   fileOf,
   findKing,
   findLegalMove,
   isGameOver,
   isPiece,
+  materialBalance,
   movePairs,
   movesFromSquare,
   needsPromotion,
@@ -21,7 +27,8 @@ import {
   squareAt,
   undo,
 } from "../chess";
-import type { Color, GameStatus, PromotionPiece } from "../chess";
+import type { Color, GameStatus, Piece, PromotionPiece } from "../chess";
+import { renderPiece } from "../components/pieces";
 
 const PROMOTION_CHOICES: Array<[PromotionPiece, string]> = [
   ["q", "Queen"],
@@ -60,8 +67,39 @@ function describeStatus(status: GameStatus, turn: Color): string {
   }
 }
 
+/**
+ * One side's haul: the label, the enemy pieces it has taken, and its material
+ * lead in pawns — shown only on the side that is ahead.
+ */
+function CapturedRow({
+  label,
+  pieces,
+  advantage,
+  pieceFg,
+}: {
+  label: string;
+  pieces: Piece[];
+  advantage: number;
+  pieceFg: string;
+}) {
+  const theme = useUITheme();
+
+  return (
+    <text>
+      <span fg={theme.faint}>{label.padEnd(7)}</span>
+      {pieces.length === 0 ? (
+        <span fg={theme.faint}>—</span>
+      ) : (
+        <span fg={pieceFg}>{pieces.map(renderPiece).join(" ")}</span>
+      )}
+      {advantage > 0 ? <span fg={theme.gold}>{`  +${advantage}`}</span> : null}
+    </text>
+  );
+}
+
 export function LocalGame() {
   const theme = useUITheme();
+  const { isTopLayer } = useKeyboardLayer();
   const [game, setGame] = useState(createGame);
   const [cursor, setCursor] = useState(() => squareAt(4, 1));
   const [selected, setSelected] = useState<number | null>(null);
@@ -188,6 +226,11 @@ export function LocalGame() {
   );
 
   useKeyboard((key) => {
+    // Game keys belong to the screen itself; stay quiet under any open dialog.
+    if (!isTopLayer(BASE_LAYER_ID)) {
+      return;
+    }
+
     if (promotion) {
       const choice = PROMOTION_CHOICES.find(([piece]) => piece === key.name);
       if (choice) {
@@ -235,6 +278,8 @@ export function LocalGame() {
 
   const pairs = movePairs(game);
   const visible = pairs.slice(Math.max(0, pairs.length - VISIBLE_MOVE_PAIRS));
+  const captures = capturedPieces(game);
+  const balance = materialBalance(position);
 
   return (
     <GameScreen
@@ -280,6 +325,21 @@ export function LocalGame() {
             ))
           )}
         </box>
+      </box>
+
+      <box flexDirection="column" width="100%">
+        <CapturedRow
+          label="White"
+          pieces={captures.byWhite}
+          advantage={balance}
+          pieceFg={theme.walnut}
+        />
+        <CapturedRow
+          label="Black"
+          pieces={captures.byBlack}
+          advantage={-balance}
+          pieceFg={theme.cream}
+        />
       </box>
 
       {promotion ? (

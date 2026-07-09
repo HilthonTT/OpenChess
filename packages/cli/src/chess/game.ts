@@ -1,4 +1,11 @@
-import { STARTING_FEN, parseFen, repetitionKey, toFen } from "./board";
+import {
+  STARTING_FEN,
+  isPiece,
+  parseFen,
+  pieceColor,
+  repetitionKey,
+  toFen,
+} from "./board";
 import {
   applyMove,
   findMove,
@@ -7,7 +14,14 @@ import {
   isInsufficientMaterial,
 } from "./moves";
 import { toSan } from "./san";
-import type { GameStatus, Move, Position, PromotionPiece } from "./types";
+import type {
+  GameStatus,
+  Move,
+  Piece,
+  PieceType,
+  Position,
+  PromotionPiece,
+} from "./types";
 
 export type HistoryEntry = {
   move: Move;
@@ -163,6 +177,60 @@ export function undo(game: Game): Game {
   }
 
   return build(last.before, game.history.slice(0, -1), repetitions);
+}
+
+/** Conventional piece values in pawns; the king is priceless, so it counts 0. */
+const PIECE_VALUES: Record<PieceType, number> = {
+  p: 1,
+  n: 3,
+  b: 3,
+  r: 5,
+  q: 9,
+  k: 0,
+};
+
+export function pieceValue(piece: Piece): number {
+  return PIECE_VALUES[piece.toLowerCase() as PieceType];
+}
+
+/**
+ * The pieces each side has captured so far, most valuable first. Derived from
+ * the history, so undo shrinks it automatically.
+ */
+export function capturedPieces(game: Game): {
+  byWhite: Piece[];
+  byBlack: Piece[];
+} {
+  const byWhite: Piece[] = [];
+  const byBlack: Piece[] = [];
+
+  for (const { move } of game.history) {
+    if (move.captured === null) {
+      continue;
+    }
+    (pieceColor(move.piece) === "w" ? byWhite : byBlack).push(move.captured);
+  }
+
+  const byValueDesc = (a: Piece, b: Piece) => pieceValue(b) - pieceValue(a);
+  byWhite.sort(byValueDesc);
+  byBlack.sort(byValueDesc);
+  return { byWhite, byBlack };
+}
+
+/**
+ * Material balance in pawns, positive when white is ahead. Counted from the
+ * board rather than the capture list so promotions score correctly.
+ */
+export function materialBalance(position: Position): number {
+  let balance = 0;
+  for (const square of position.board) {
+    if (!isPiece(square)) {
+      continue;
+    }
+    const value = pieceValue(square);
+    balance += pieceColor(square) === "w" ? value : -value;
+  }
+  return balance;
 }
 
 /** Moves grouped into numbered pairs, ready to print as a move list. */

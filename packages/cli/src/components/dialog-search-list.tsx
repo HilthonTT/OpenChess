@@ -67,7 +67,7 @@ export function DialogSearchList<T>({
       }
     } else if (key.name === "up") {
       setSelectedIndex((i: number) => {
-        const newIndex = Math.min(0, i - 1);
+        const newIndex = Math.max(0, i - 1);
         const sb = scrollRef.current;
         if (sb && newIndex < sb.scrollTop) {
           sb.scrollTo(newIndex);
