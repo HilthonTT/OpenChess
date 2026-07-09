@@ -6,10 +6,12 @@
   ],
   "scripts": {
     "dev:cli": "bun run --watch packages/cli/src/index.tsx",
+    "dev:server": "bun run --hot packages/server/src/index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit -p packages/cli/tsconfig.json"
+    "typecheck": "tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p packages/server/tsconfig.json"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14"
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.9.3"
   }
 }
