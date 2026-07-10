@@ -25,7 +25,7 @@ function App() {
 }
 
 const renderer = await createCliRenderer({
-  targetFps: 60,
+  targetFps: Number(process.env.OPENCHESS_FPS ?? 60),
   exitOnCtrlC: false,
 });
 createRoot(renderer).render(<App />);
