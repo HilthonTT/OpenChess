@@ -115,7 +115,7 @@ export function problemResponse(c: Context, problem: ProblemDetails) {
 }
 
 /** Build a problem from the request context, stamping `instance` and `requestId`. */
-function problemFor(c: Context, input: ProblemInput): ProblemDetails {
+export function problemFor(c: Context, input: ProblemInput): ProblemDetails {
   return createProblemDetails({
     instance: c.req.path,
     requestId: c.get("requestId"),

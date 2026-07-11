@@ -10,6 +10,7 @@
     "dev": "bun run --hot src/index.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.11.4",
     "@hono/node-server": "^2.0.8",
     "@hono/zod-openapi": "^1.4.0",
     "@hono/zod-validator": "^0.8.0",

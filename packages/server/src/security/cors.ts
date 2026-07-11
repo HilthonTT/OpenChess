@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
+import * as HttpStatusCodes from "stoker/http-status-codes";
 
 interface CORSOptions {
   origins: string[] | ((origin: string) => boolean);
@@ -51,7 +52,7 @@ export class CORSManager {
       credentials: true,
       maxAge: 86400, // 24 hours
       preflightContinue: false,
-      optionsSuccessStatus: 204,
+      optionsSuccessStatus: HttpStatusCodes.NO_CONTENT,
       ...options,
     };
 
@@ -75,7 +76,10 @@ export class CORSManager {
 
       // Handle preflight requests
       if (c.req.method === "OPTIONS" && !this.options.preflightContinue) {
-        return c.body(null, this.options.optionsSuccessStatus || 204);
+        return c.body(
+          null,
+          this.options.optionsSuccessStatus || HttpStatusCodes.NO_CONTENT,
+        );
       }
 
       await next();
@@ -117,10 +121,7 @@ export class CORSManager {
     }
 
     if (this.options.methods) {
-      c.header(
-        "Access-Control-Allow-Methods",
-        this.options.methods.join(", "),
-      );
+      c.header("Access-Control-Allow-Methods", this.options.methods.join(", "));
     }
 
     if (this.options.allowedHeaders) {
@@ -204,7 +205,7 @@ export const productionCORS = new CORSManager({
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
   exposedHeaders: ["X-Total-Count", "X-RateLimit-Remaining"],
-  optionsSuccessStatus: 204,
+  optionsSuccessStatus: HttpStatusCodes.NO_CONTENT,
 });
 
 // Development CORS configuration
@@ -215,5 +216,5 @@ export const developmentCORS = new CORSManager({
     allowSubdomains: false,
   }),
   credentials: true,
-  optionsSuccessStatus: 204,
+  optionsSuccessStatus: HttpStatusCodes.NO_CONTENT,
 });
