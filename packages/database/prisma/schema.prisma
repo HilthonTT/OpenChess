@@ -1,0 +1,207 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  clerkUserId String   @unique
+  username    String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Source of truth for progression. `level` is derived from `experience` by
+  // server logic and stored so the leaderboard can sort without recomputing it.
+  experience Int @default(0)
+  level      Int @default(1)
+
+  // Cached balance. The CoinTransaction ledger is authoritative; this is written
+  // in the same transaction as the ledger row.
+  coins Int @default(0)
+
+  equippedTitleId String?
+  equippedTitle   Title?  @relation("EquippedTitle", fields: [equippedTitleId], references: [id], onDelete: SetNull)
+
+  stats        UserStats?
+  achievements UserAchievement[]
+  titles       UserTitle[]
+  transactions CoinTransaction[]
+  gamesAsWhite Game[]            @relation("WhitePlayer")
+  gamesAsBlack Game[]            @relation("BlackPlayer")
+
+  @@index([level(sort: Desc), experience(sort: Desc)])
+}
+
+model UserStats {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  wins   Int @default(0)
+  losses Int @default(0)
+  draws  Int @default(0)
+
+  currentWinStreak Int @default(0)
+  topWinStreak     Int @default(0)
+
+  rating Int @default(1200)
+
+  updatedAt DateTime @updatedAt
+
+  @@index([rating(sort: Desc)])
+  @@index([wins(sort: Desc)])
+}
+
+enum GameMode {
+  AI
+  PVP
+}
+
+enum GameResult {
+  WHITE_WIN
+  BLACK_WIN
+  DRAW
+  ABORTED
+}
+
+model Game {
+  id   String   @id @default(cuid())
+  mode GameMode
+
+  // Null on whichever side the bot is playing in an AI game.
+  whitePlayerId String?
+  blackPlayerId String?
+  whitePlayer   User?   @relation("WhitePlayer", fields: [whitePlayerId], references: [id], onDelete: SetNull)
+  blackPlayer   User?   @relation("BlackPlayer", fields: [blackPlayerId], references: [id], onDelete: SetNull)
+
+  result   GameResult?
+  pgn      String?
+  finalFen String?
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  // Guards against paying a game out twice if the finish request is retried.
+  rewardsGranted Boolean @default(false)
+
+  transactions CoinTransaction[]
+
+  @@index([whitePlayerId, endedAt(sort: Desc)])
+  @@index([blackPlayerId, endedAt(sort: Desc)])
+}
+
+model Achievement {
+  id String @id @default(cuid())
+
+  // Stable key that server logic references ("FIRST_WIN"). Never key off `name`,
+  // which is display copy and will get reworded.
+  code        String  @unique
+  name        String
+  description String
+  iconUrl     String?
+
+  // Paid on unlock, on top of the normal per-game payout.
+  xpReward   Int @default(0)
+  coinReward Int @default(0)
+
+  // Hidden from the achievement list until unlocked.
+  secret Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  unlockedBy UserAchievement[]
+}
+
+model UserAchievement {
+  id            String @id @default(cuid())
+  userId        String
+  achievementId String
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  unlockedAt DateTime @default(now())
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
+enum TitleRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+model Title {
+  id String @id @default(cuid())
+
+  code        String  @unique // "GRANDMASTER"
+  label       String // "Grandmaster"
+  description String?
+
+  price         Int
+  rarity        TitleRarity @default(COMMON)
+  requiredLevel Int         @default(1)
+
+  // False for titles handed out as achievement rewards rather than store stock.
+  isPurchasable Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  ownedBy    UserTitle[]
+  equippedBy User[]      @relation("EquippedTitle")
+}
+
+model UserTitle {
+  id      String @id @default(cuid())
+  userId  String
+  titleId String
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title Title @relation(fields: [titleId], references: [id], onDelete: Cascade)
+
+  purchasedAt DateTime @default(now())
+
+  // Snapshot of what they actually paid; store prices change over time.
+  pricePaid Int
+
+  @@unique([userId, titleId])
+  @@index([userId])
+}
+
+enum CoinReason {
+  GAME_REWARD
+  ACHIEVEMENT
+  PURCHASE
+  ADMIN_GRANT
+}
+
+model CoinTransaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount Int // positive = earned, negative = spent
+  reason CoinReason
+
+  gameId String?
+  game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  balanceAfter Int
+  createdAt    DateTime @default(now())
+
+  // Postgres treats NULLs as distinct, so this only constrains rows that carry a
+  // gameId: one GAME_REWARD per user per game, while purchases stay unbounded.
+  @@unique([userId, gameId, reason])
+  @@index([userId, createdAt(sort: Desc)])
+}
