@@ -27,6 +27,8 @@ const EnvSchema = z
     ]),
     DATABASE_URL: z.url(),
     DATABASE_AUTH_TOKEN: z.string().optional(),
+    // Comma-separated CORS allowlist, read by the production CORS manager.
+    ALLOWED_ORIGINS: z.string().optional(),
   })
   .superRefine((input, ctx) => {
     if (input.NODE_ENV === "production" && !input.DATABASE_AUTH_TOKEN) {
