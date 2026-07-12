@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
-import { FILES, isPiece, pieceAt, pieceColor, squareAt } from "../chess";
-import type { Board as BoardState, Move } from "../chess";
+import {
+  FILES,
+  isPiece,
+  pieceAt,
+  pieceColor,
+  squareAt,
+} from "@openchess/shared";
+import type { Board as BoardState, Move } from "@openchess/shared";
 import { useBoardTheme } from "../providers/theme";
 import { renderPiece } from "./pieces";
 

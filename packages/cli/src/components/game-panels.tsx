@@ -4,8 +4,14 @@ import {
   materialBalance,
   movePairs,
   opposite,
-} from "../chess";
-import type { Color, Game, GameStatus, Piece, PromotionPiece } from "../chess";
+} from "@openchess/shared";
+import type {
+  Color,
+  Game,
+  GameStatus,
+  Piece,
+  PromotionPiece,
+} from "@openchess/shared";
 import { renderPiece } from "./pieces";
 
 export const PROMOTION_CHOICES: Array<[PromotionPiece, string]> = [

@@ -21,6 +21,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "@openchess/shared": "workspace:*",
         "@types/bun": "latest",
         "@types/react": "^19.2.17",
       },
@@ -60,6 +61,12 @@
         "stoker": "^2.0.1",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "@openchess/database": "workspace:*",
+      },
+    },
+    "packages/shared": {
+      "name": "@openchess/shared",
     },
   },
   "packages": {
@@ -112,6 +119,8 @@
     "@openchess/cli": ["@openchess/cli@workspace:packages/cli"],
 
     "@openchess/database": ["@openchess/database@workspace:packages/database"],
+
+    "@openchess/shared": ["@openchess/shared@workspace:packages/shared"],
 
     "@opentui/core": ["@opentui/core@0.4.3", "", { "dependencies": { "bun-ffi-structs": "0.2.4", "diff": "9.0.0", "marked": "17.0.1", "string-width": "7.2.0", "strip-ansi": "7.1.2" }, "optionalDependencies": { "@opentui/core-darwin-arm64": "0.4.3", "@opentui/core-darwin-x64": "0.4.3", "@opentui/core-linux-arm64": "0.4.3", "@opentui/core-linux-arm64-musl": "0.4.3", "@opentui/core-linux-x64": "0.4.3", "@opentui/core-linux-x64-musl": "0.4.3", "@opentui/core-win32-arm64": "0.4.3", "@opentui/core-win32-x64": "0.4.3" }, "peerDependencies": { "web-tree-sitter": "0.25.10" } }, "sha512-rrJfAk13tALDqldYjhc78eWQ+aKq1iknJgffIOg3OwyZoqQo+p6gtuqyhmWvXIfQzlNUbpgpCPcxbXlhMnlaHQ=="],
 

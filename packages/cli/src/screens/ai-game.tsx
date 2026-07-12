@@ -21,8 +21,13 @@ import {
   rankOf,
   squareAt,
   undo,
-} from "../chess";
-import type { Color, Difficulty, GameStatus, PromotionPiece } from "../chess";
+} from "@openchess/shared";
+import type {
+  Color,
+  Difficulty,
+  GameStatus,
+  PromotionPiece,
+} from "@openchess/shared";
 import {
   CapturedSummary,
   MoveList,
@@ -148,9 +153,9 @@ function Setup({
           <text fg={theme.walnut}>Choose a difficulty</text>
           <text>
             <span fg={theme.cream}>1</span>
-            <span fg={theme.faint}> Easy   </span>
+            <span fg={theme.faint}> Easy </span>
             <span fg={theme.cream}>2</span>
-            <span fg={theme.faint}> Medium   </span>
+            <span fg={theme.faint}> Medium </span>
             <span fg={theme.cream}>3</span>
             <span fg={theme.faint}> Hard</span>
           </text>
@@ -164,9 +169,9 @@ function Setup({
           <text fg={theme.walnut}>Choose your side</text>
           <text>
             <span fg={theme.cream}>w</span>
-            <span fg={theme.faint}> White   </span>
+            <span fg={theme.faint}> White </span>
             <span fg={theme.cream}>b</span>
-            <span fg={theme.faint}> Black   </span>
+            <span fg={theme.faint}> Black </span>
             <span fg={theme.cream}>r</span>
             <span fg={theme.faint}> Random</span>
           </text>
@@ -186,11 +191,14 @@ function Match({
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
   const [game, setGame] = useState(createGame);
-  const [cursor, setCursor] = useState(() => squareAt(4, human === "w" ? 1 : 6));
-  const [selected, setSelected] = useState<number | null>(null);
-  const [promotion, setPromotion] = useState<{ from: number; to: number } | null>(
-    null,
+  const [cursor, setCursor] = useState(() =>
+    squareAt(4, human === "w" ? 1 : 6),
   );
+  const [selected, setSelected] = useState<number | null>(null);
+  const [promotion, setPromotion] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
   const [flipped, setFlipped] = useState(human === "b");
   const [message, setMessage] = useState<string | null>(null);
 

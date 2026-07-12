@@ -1,5 +1,5 @@
-import type { Piece, SquareContent } from "../../chess/types";
-import { EMPTY } from "../../chess/types";
+import type { Piece, SquareContent } from "@openchess/shared";
+import { EMPTY } from "@openchess/shared";
 
 /**
  * Variation selector (U+FE0E) appended to a chess glyph to force text (not

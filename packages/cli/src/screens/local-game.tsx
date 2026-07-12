@@ -3,10 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { Board } from "../components/board";
 import { GameScreen } from "../components/game-screen";
 import { useUITheme } from "../providers/theme";
-import {
-  useKeyboardLayer,
-  BASE_LAYER_ID,
-} from "../providers/keyboard-layer";
+import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import {
   createGame,
   fileOf,
@@ -22,8 +19,8 @@ import {
   rankOf,
   squareAt,
   undo,
-} from "../chess";
-import type { PromotionPiece } from "../chess";
+} from "@openchess/shared";
+import type { PromotionPiece } from "@openchess/shared";
 import {
   CapturedSummary,
   MoveList,
@@ -43,9 +40,10 @@ export function LocalGame() {
   const [game, setGame] = useState(createGame);
   const [cursor, setCursor] = useState(() => squareAt(4, 1));
   const [selected, setSelected] = useState<number | null>(null);
-  const [promotion, setPromotion] = useState<{ from: number; to: number } | null>(
-    null,
-  );
+  const [promotion, setPromotion] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
