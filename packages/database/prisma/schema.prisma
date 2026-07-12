@@ -83,8 +83,10 @@ model Game {
   id   String   @id @default(cuid())
   mode GameMode
 
-  // SAN, appended one per ply. Replayed on load so repetition and
-  // fifty-move state are reconstructed exactly.
+  // UCI ("e2e4", "e7e8q"), appended one per ply — the format `fromRecord` in
+  // @openchess/shared replays. Replaying is what reconstructs the repetition map
+  // and the fifty-move clock; a FEN alone cannot carry position history, so
+  // `draw-repetition` would never fire if this were the cache and not the record.
   moves      String[]
 
   // Denormalized cache of the position after the last ply. Lets a

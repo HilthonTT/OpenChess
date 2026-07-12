@@ -1,8 +1,9 @@
 import type { Schema } from "hono";
-import { OpenAPIHono } from "@hono/zod-openapi";
+import { OpenAPIHono, type Hook } from "@hono/zod-openapi";
 import { requestId } from "hono/request-id";
 import { compress } from "hono/compress";
 import { pinoLogger } from "../middlewares/pino-logger";
+import type { PlayerEnv } from "../middlewares/require-user";
 import env from "../env";
 import { developmentCORS } from "../security/cors";
 import { CORSSecurityPatterns } from "../security/cors-patterns";
@@ -14,6 +15,24 @@ export function createRouter() {
   return new OpenAPIHono<AppBindings>({
     strict: false,
     defaultHook,
+  });
+}
+
+/**
+ * A router for routes behind `requireAuth` + `requireUser`, whose handlers can
+ * read the resolved local player off `c.get("user")`.
+ */
+export function createPlayerRouter() {
+  return new OpenAPIHono<PlayerEnv>({
+    strict: false,
+    // `defaultHook` is written against AppBindings, whose Variables are a subset
+    // of PlayerEnv's; Hono's Env generic is invariant, so widening needs a cast.
+    defaultHook: defaultHook as unknown as Hook<
+      unknown,
+      PlayerEnv,
+      string,
+      unknown
+    >,
   });
 }
 

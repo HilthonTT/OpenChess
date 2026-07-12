@@ -1,14 +1,11 @@
-import { createClerkClient } from "@clerk/backend";
-
 import env from "../env";
+import { clerkClient } from "./clerk";
 
-const clerkClient = createClerkClient({
-  secretKey: env.CLERK_SECRET_KEY,
-  // Required, not optional: for `oauth_token` Clerk asserts a *parseable*
-  // publishable key before it will verify anything, and throws without one.
-  publishableKey: env.CLERK_PUBLISHABLE_KEY,
-  telemetry: { disabled: env.NODE_ENV === "test" },
-});
+/**
+ * The Clerk client itself lives in `lib/clerk` rather than here. This module's
+ * exported surface is mocked wholesale in the middleware tests, so anything else
+ * exported from it would vanish under that mock — see the note in `lib/clerk`.
+ */
 
 /** The caller behind a verified OAuth access token. */
 export interface AuthenticatedActor {

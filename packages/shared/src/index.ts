@@ -4,5 +4,6 @@ export * from "./chess/moves";
 export * from "./chess/san";
 export * from "./chess/game";
 export * from "./chess/pgn";
-export * from "./chess/pgn";
+export * from "./chess/pgn-text";
 export * from "./chess/ai";
+export * from "./progression/level";
