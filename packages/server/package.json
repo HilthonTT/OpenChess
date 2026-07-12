@@ -12,10 +12,11 @@
   "dependencies": {
     "@clerk/backend": "^3.11.4",
     "@hono/node-server": "^2.0.8",
-    "@openchess/database": "workspace:*",
-    "@openchess/shared": "workspace:*",
+    "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-openapi": "^1.4.0",
     "@hono/zod-validator": "^0.8.0",
+    "@openchess/database": "workspace:*",
+    "@openchess/shared": "workspace:*",
     "@scalar/hono-api-reference": "^0.11.9",
     "dotenv": "^17.4.2",
     "dotenv-expand": "^13.0.0",
