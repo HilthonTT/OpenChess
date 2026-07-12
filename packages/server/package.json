@@ -17,6 +17,8 @@
     "@openchess/database": "workspace:*",
     "@openchess/shared": "workspace:*",
     "@scalar/hono-api-reference": "^0.11.9",
+    "@sentry/bun": "^10.65.0",
+    "@sentry/hono": "^10.65.0",
     "dotenv": "^17.4.2",
     "dotenv-expand": "^13.0.0",
     "hono": "^4.12.28",

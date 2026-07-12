@@ -48,6 +48,10 @@ const EnvSchema = z
     CLERK_SECRET_KEY: z.string().min(1),
     CLERK_PUBLISHABLE_KEY: z.string().min(1),
     CLERK_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+    // Unset turns Sentry off, which is what we want under `bun test` and for a
+    // contributor who has no account: no DSN, no middleware, no reporting.
+    SENTRY_DSN: z.url().optional(),
+    SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
   })
   .superRefine((input, ctx) => {
     if (input.NODE_ENV !== "production") {

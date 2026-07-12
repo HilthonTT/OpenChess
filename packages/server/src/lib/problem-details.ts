@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/hono/bun";
 import { z } from "@hono/zod-openapi";
 import type { Hook } from "@hono/zod-openapi";
 import type { Context, ErrorHandler, NotFoundHandler } from "hono";
@@ -181,6 +182,34 @@ export function problemFromError(
   return { status, detail: error.message, stack: error.stack };
 }
 
+/**
+ * File a failure with Sentry, for the same errors we log.
+ *
+ * The Sentry middleware can capture `c.error` by itself, and `create-app` tells
+ * it not to, so that reporting happens here instead. Two things come of that.
+ * The event is tagged with the requestId that the caller was handed in the
+ * problem body and that the log line already carries, so a bug report quoting
+ * that id leads straight to the stack trace. And "worth reporting" stays the one
+ * judgement made below — the status we actually served — rather than being
+ * decided a second time, slightly differently, inside the SDK.
+ *
+ * A 4xx never reaches here: it is the caller getting it wrong, and paging
+ * ourselves over every mistyped game id is how an alert channel gets muted.
+ */
+function reportToSentry(c: Context, error: Error) {
+  Sentry.captureException(error, {
+    // An HTTPException is a failure we raised on purpose; anything else escaped
+    // a handler, which is what `handled: false` means to Sentry's grouping.
+    mechanism: {
+      type: "hono.on_error",
+      handled: error instanceof HTTPException,
+    },
+    captureContext: {
+      tags: { request_id: c.get("requestId") },
+    },
+  });
+}
+
 export const onError: ErrorHandler<AppBindings> = (error, c) => {
   // An HTTPException may carry a hand-built response; honor it rather than
   // overwriting a deliberate redirect or custom body.
@@ -193,6 +222,7 @@ export const onError: ErrorHandler<AppBindings> = (error, c) => {
 
   if (input.status >= HttpStatusCodes.INTERNAL_SERVER_ERROR) {
     c.var.logger?.error({ err: error }, "Unhandled error");
+    reportToSentry(c, error);
   }
 
   return problemResponse(c, problemFor(c, input));
