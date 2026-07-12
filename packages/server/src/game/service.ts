@@ -121,7 +121,11 @@ function colorOf(row: GameRow, userId: string): Color | null {
   return null;
 }
 
-function toMoveView(position: Game["position"], move: Move, legal: Move[]): MoveView {
+function toMoveView(
+  position: Game["position"],
+  move: Move,
+  legal: Move[],
+): MoveView {
   return {
     from: toAlgebraic(move.from),
     to: toAlgebraic(move.to),
@@ -490,7 +494,11 @@ export async function playMove(input: {
   ply: number;
 }): Promise<MoveResult> {
   return serializable(async (tx) => {
-    const { row, game: loaded, color } = await loadFor(tx, input.gameId, input.user.id);
+    const {
+      row,
+      game: loaded,
+      color,
+    } = await loadFor(tx, input.gameId, input.user.id);
 
     if (row.endedAt !== null) {
       throwProblem(HttpStatusCodes.CONFLICT, "This game is already over");
@@ -572,7 +580,9 @@ export async function playMove(input: {
         result: result!,
       });
 
-      const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
+      const settled = await tx.game.findUniqueOrThrow({
+        where: { id: row.id },
+      });
       return { yourMove, aiMove, state: view(settled, game, color, rewards) };
     }
 
@@ -676,10 +686,7 @@ export async function listGames(input: {
 }): Promise<{ games: GameSummary[]; nextCursor: string | null }> {
   const rows = await db.game.findMany({
     where: {
-      OR: [
-        { whitePlayerId: input.user.id },
-        { blackPlayerId: input.user.id },
-      ],
+      OR: [{ whitePlayerId: input.user.id }, { blackPlayerId: input.user.id }],
       endedAt: input.cursor ? { not: null, lt: input.cursor } : { not: null },
       ...(input.result ? { result: input.result } : {}),
     },
@@ -689,7 +696,8 @@ export async function listGames(input: {
   });
 
   const page = rows.slice(0, input.limit);
-  const next = rows.length > input.limit ? page[page.length - 1]?.endedAt : null;
+  const next =
+    rows.length > input.limit ? page[page.length - 1]?.endedAt : null;
 
   return {
     games: page.map((row) => summarize(row, input.user.id)),

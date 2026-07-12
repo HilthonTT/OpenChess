@@ -170,10 +170,7 @@ export async function equipTitle(user: User, titleId: string | null) {
     });
 
     if (!owned) {
-      throwProblem(
-        HttpStatusCodes.FORBIDDEN,
-        "You do not own that title",
-      );
+      throwProblem(HttpStatusCodes.FORBIDDEN, "You do not own that title");
     }
   }
 

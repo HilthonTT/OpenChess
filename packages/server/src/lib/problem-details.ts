@@ -5,24 +5,32 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import * as HttpStatusPhrases from "stoker/http-status-phrases";
+import {
+  PROBLEM_JSON_MEDIA_TYPE,
+  ProblemType,
+  type ProblemDetails,
+  type ValidationIssue,
+} from "@openchess/shared";
 
 import env from "../env";
 import type { AppBindings } from "./types";
 
 /**
- * Error responses follow RFC 9457 (Problem Details for HTTP APIs). Every
- * response with an unsuccessful status carries this shape, so clients can parse
- * one thing instead of guessing per endpoint.
+ * Serving RFC 9457 problems.
+ *
+ * The shape itself is the API's contract with its clients, so it lives in
+ * `@openchess/shared` and the CLI reads the very same definition; this module is
+ * the server's half — turning a failure into a problem, rendering it, and
+ * describing it to OpenAPI. Re-exported so server code has one import site.
  *
  * @see https://www.rfc-editor.org/rfc/rfc9457
  */
-export const PROBLEM_JSON_MEDIA_TYPE = "application/problem+json";
-
-/** `type` values we mint ourselves. `about:blank` means "just the status code". */
-export const ProblemType = {
-  BLANK: "about:blank",
-  VALIDATION_ERROR: "/problems/validation-error",
-} as const;
+export {
+  PROBLEM_JSON_MEDIA_TYPE,
+  ProblemType,
+  type ProblemDetails,
+  type ValidationIssue,
+};
 
 /**
  * `stoker` exports status codes and reason phrases as parallel modules keyed by
@@ -70,8 +78,20 @@ export const problemDetailsSchema = z
   })
   .openapi("ProblemDetails");
 
-export type ProblemDetails = z.infer<typeof problemDetailsSchema>;
-export type ValidationIssue = z.infer<typeof validationIssueSchema>;
+/**
+ * The schema describes what we serve; `ProblemDetails` describes what the CLI
+ * parses. Those have to be the same thing, so pin them to each other: a member
+ * added to one and not the other stops compiling rather than quietly shipping an
+ * API the client can't read.
+ *
+ * The schema can't simply be built from the shared type — it carries OpenAPI
+ * metadata, which would drag `@hono/zod-openapi` into every client that only
+ * wanted to read an error.
+ */
+type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+
+true satisfies Exactly<z.infer<typeof problemDetailsSchema>, ProblemDetails>;
+true satisfies Exactly<z.infer<typeof validationIssueSchema>, ValidationIssue>;
 
 /** Describes a problem+json response body in an OpenAPI route definition. */
 export function problemDetailsContent(description: string) {

@@ -7,3 +7,4 @@ export * from "./chess/pgn";
 export * from "./chess/pgn-text";
 export * from "./chess/ai";
 export * from "./progression/level";
+export * from "./problem-details/problem-details";

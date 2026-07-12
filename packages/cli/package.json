@@ -3,24 +3,28 @@
   "module": "src/index.tsx",
   "type": "module",
   "private": true,
+  "bin": {
+    "openchess": "./bin/openchess"
+  },
   "scripts": {
-    "dev": "bun run --watch src/index.tsx"
+    "dev": "bun run --watch src/index.tsx",
+    "build": "bun build src/index.tsx --outdir dist --target bun"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.17",
-    "@openchess/shared": "workspace:*"
+    "@openchess/server": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@openchess/shared": "workspace:*",
     "@opentui/core": "^0.4.3",
     "@opentui/react": "^0.4.3",
     "hono": "^4.12.28",
-    "opentui-spinner": "^0.0.7",
+    "open": "^11.0.0",
     "react": "^19.2.7",
-    "react-router": "^8.1.0",
-    "zod": "^4.4.3"
+    "react-router": "^8.1.0"
   }
 }
