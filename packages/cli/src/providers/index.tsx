@@ -3,6 +3,7 @@ import { ThemeProvider } from "./theme";
 import { KeyboardLayerProvider } from "./keyboard-layer";
 import { DialogProvider } from "./dialog";
 import { ToastProvider } from "./toast";
+import { AuthProvider } from "./auth";
 
 type Props = {
   children: ReactNode;
@@ -13,7 +14,9 @@ export function AppProviders({ children }: Props) {
     <ThemeProvider>
       <KeyboardLayerProvider>
         <DialogProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ToastProvider>
         </DialogProvider>
       </KeyboardLayerProvider>
     </ThemeProvider>

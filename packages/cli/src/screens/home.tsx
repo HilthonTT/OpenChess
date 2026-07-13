@@ -1,35 +1,45 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useKeyboard, useRenderer } from "@opentui/react";
 import { useNavigate } from "react-router";
+import { AuthStatus } from "../components/auth-status";
 import { Header } from "../components/header";
+import { HintBar } from "../components/hint-bar";
 import { Menu } from "../components/menu";
+import { createAuthMenuItem, MENU_ITEMS } from "../components/menu/menu-items";
 import type { MenuItem } from "../components/menu/types";
+import { ThemeDialogContent } from "../components/dialogs/theme-dialog";
+import { useAuth } from "../providers/auth";
 import { useToast } from "../providers/toast";
 import { useDialog } from "../providers/dialog";
-import { useUITheme } from "../providers/theme";
+import { useTheme } from "../providers/theme";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
-import { ThemeDialogContent } from "../components/dialogs/theme-dialog";
 
 export function Home() {
   const renderer = useRenderer();
   const navigate = useNavigate();
   const toast = useToast();
   const dialog = useDialog();
-  const theme = useUITheme();
+  const auth = useAuth();
+  const { currentTheme } = useTheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  const authItem = useMemo(
+    () => createAuthMenuItem(auth.status),
+    [auth.status],
+  );
+  const items = useMemo(() => [...MENU_ITEMS, authItem], [authItem]);
 
   const handleSelect = useCallback(
     (menuItem: MenuItem) => {
-      if (menuItem.action) {
-        menuItem.action({
-          exit: () => renderer.destroy(),
-          navigate: (path) => void navigate(path),
-          toast,
-          dialog,
-        });
-      }
+      void menuItem.action?.({
+        exit: () => renderer.destroy(),
+        navigate: (path) => void navigate(path),
+        toast,
+        dialog,
+        auth,
+      });
     },
-    [renderer, navigate, toast, dialog],
+    [renderer, navigate, toast, dialog, auth],
   );
 
   useKeyboard((key) => {
@@ -43,22 +53,31 @@ export function Home() {
       renderer.destroy();
       process.exit(0);
     }
-  });
 
-  useKeyboard((key) => {
-    if (!isTopLayer(BASE_LAYER_ID)) {
-      return;
+    if (key.ctrl && key.name === ".") {
+      dialog.open({
+        title: "Select Theme",
+        children: <ThemeDialogContent />,
+      });
     }
 
-    if (!key.ctrl || key.name !== ".") {
-      return;
+    // The same action the account row runs, so the shortcut and the row can
+    // never disagree about whether this signs you in or out.
+    if (key.ctrl && key.name === "l" && !authItem.disabled) {
+      handleSelect(authItem);
     }
-
-    dialog.open({
-      title: "Select Theme",
-      children: <ThemeDialogContent />,
-    });
   });
+
+  // Rows are numbered by position and the account row is last, so the highest
+  // number worth advertising is the count of selectable rows.
+  const highestQuickPick = items.filter((item) => !item.disabled).length;
+
+  const accountLabel =
+    auth.status === "signed-in"
+      ? "sign out"
+      : auth.status === "signed-out"
+        ? "sign in"
+        : "account";
 
   return (
     <box
@@ -71,20 +90,29 @@ export function Home() {
       width="100%"
       height="100%"
     >
-      <Header />
-      <Menu onSelect={handleSelect} />
-      <text>
-        <span fg={theme.cream}>↑↓</span>
-        <span fg={theme.faint}> move </span>
-        <span fg={theme.cream}>enter</span>
-        <span fg={theme.faint}> select </span>
-        <span fg={theme.cream}>1-3</span>
-        <span fg={theme.faint}> quick pick </span>
-        <span fg={theme.cream}>q</span>
-        <span fg={theme.faint}> quit</span>
-        <span fg={theme.cream}> ctrl + .</span>
-        <span fg={theme.faint}> theme</span>
-      </text>
+      <box flexDirection="column" alignItems="center" gap={1}>
+        <Header />
+        <AuthStatus />
+      </box>
+
+      <Menu items={items} onSelect={handleSelect} />
+
+      <box flexDirection="column" alignItems="center" rowGap={1}>
+        <HintBar
+          hints={[
+            { key: "↑↓", label: "move" },
+            { key: "enter", label: "select" },
+            { key: `1-${highestQuickPick}`, label: "quick pick" },
+          ]}
+        />
+        <HintBar
+          hints={[
+            { key: "ctrl+.", label: "theme", value: currentTheme.name },
+            { key: "ctrl+l", label: accountLabel },
+            { key: "q", label: "quit" },
+          ]}
+        />
+      </box>
     </box>
   );
 }

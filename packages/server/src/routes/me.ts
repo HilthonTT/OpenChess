@@ -25,9 +25,9 @@ import {
   transactionSchema,
 } from "./schemas";
 
-const router = createPlayerRouter();
+const base = createPlayerRouter();
 
-router.use("*", requireAuth, requireUser);
+base.use("*", requireAuth, requireUser);
 
 const TAGS = ["Me"];
 
@@ -44,10 +44,6 @@ const profile = createRoute({
   },
 });
 
-router.openapi(profile, async (c) => {
-  return c.json(await getProfile(c.get("user")), HttpStatusCodes.OK);
-});
-
 const stats = createRoute({
   tags: TAGS,
   method: "get",
@@ -57,10 +53,6 @@ const stats = createRoute({
     [HttpStatusCodes.OK]: jsonContent(statsSchema, "Your stats"),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
   },
-});
-
-router.openapi(stats, async (c) => {
-  return c.json(await getStats(c.get("user")), HttpStatusCodes.OK);
 });
 
 const achievements = createRoute({
@@ -75,12 +67,6 @@ const achievements = createRoute({
     ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
   },
-});
-
-router.openapi(achievements, async (c) => {
-  const unlocked = await listAchievements(c.get("user"), true);
-
-  return c.json({ achievements: unlocked }, HttpStatusCodes.OK);
 });
 
 const titles = createRoute({
@@ -104,12 +90,6 @@ const titles = createRoute({
   },
 });
 
-router.openapi(titles, async (c) => {
-  const owned = await listOwnedTitles(c.get("user"));
-
-  return c.json({ titles: owned }, HttpStatusCodes.OK);
-});
-
 const equip = createRoute({
   tags: TAGS,
   method: "put",
@@ -126,14 +106,6 @@ const equip = createRoute({
       "You do not own that title",
     ),
   },
-});
-
-router.openapi(equip, async (c) => {
-  const { titleId } = c.req.valid("json");
-
-  const updated = await equipTitle(c.get("user"), titleId);
-
-  return c.json(updated, HttpStatusCodes.OK);
 });
 
 const transactions = createRoute({
@@ -160,17 +132,44 @@ const transactions = createRoute({
   },
 });
 
-router.openapi(transactions, async (c) => {
-  const { cursor, limit, reason } = c.req.valid("query");
+// Chained rather than registered as separate statements: `.openapi()` returns a
+// router carrying the new route in its type, so only the chained value knows the
+// full shape. That type is what `hc<AppType>` builds the typed CLI client from.
+const router = base
+  .openapi(profile, async (c) => {
+    return c.json(await getProfile(c.get("user")), HttpStatusCodes.OK);
+  })
+  .openapi(stats, async (c) => {
+    return c.json(await getStats(c.get("user")), HttpStatusCodes.OK);
+  })
+  .openapi(achievements, async (c) => {
+    const unlocked = await listAchievements(c.get("user"), true);
 
-  const page = await listTransactions({
-    user: c.get("user"),
-    limit,
-    cursor: cursor ? new Date(cursor) : undefined,
-    reason,
+    return c.json({ achievements: unlocked }, HttpStatusCodes.OK);
+  })
+  .openapi(titles, async (c) => {
+    const owned = await listOwnedTitles(c.get("user"));
+
+    return c.json({ titles: owned }, HttpStatusCodes.OK);
+  })
+  .openapi(equip, async (c) => {
+    const { titleId } = c.req.valid("json");
+
+    const updated = await equipTitle(c.get("user"), titleId);
+
+    return c.json(updated, HttpStatusCodes.OK);
+  })
+  .openapi(transactions, async (c) => {
+    const { cursor, limit, reason } = c.req.valid("query");
+
+    const page = await listTransactions({
+      user: c.get("user"),
+      limit,
+      cursor: cursor ? new Date(cursor) : undefined,
+      reason,
+    });
+
+    return c.json(page, HttpStatusCodes.OK);
   });
-
-  return c.json(page, HttpStatusCodes.OK);
-});
 
 export default router;

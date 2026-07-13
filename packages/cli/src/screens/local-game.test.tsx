@@ -72,7 +72,7 @@ function countMoveDots(frame: string): number {
 describe("local game screen", () => {
   test("selecting Local 1v1 from the menu shows the board", async () => {
     const app = await renderApp("/");
-    expect(app.frame()).toContain("Select a game mode");
+    expect(app.frame()).toContain("Main menu");
 
     await app.type("1");
 
@@ -125,7 +125,7 @@ describe("local game screen", () => {
     expect(countMoveDots(app.frame())).toBe(0);
 
     await app.escape();
-    expect(app.frame()).toContain("Select a game mode");
+    expect(app.frame()).toContain("Main menu");
   });
 
   test("undo takes the move back", async () => {
