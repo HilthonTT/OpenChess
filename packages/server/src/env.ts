@@ -45,6 +45,11 @@ const EnvSchema = z
     DATABASE_AUTH_TOKEN: z.string().optional(),
     // Comma-separated CORS allowlist, read by the production CORS manager.
     ALLOWED_ORIGINS: z.string().optional(),
+    // The origin this API is reached on, used to build the URLs we hand to
+    // Polar for post-checkout redirects. Deriving those from the request would
+    // let a forged Host header point a paying customer at an attacker's site.
+    // Falls back to the local dev origin; required in production.
+    PUBLIC_BASE_URL: z.url().optional(),
     CLERK_SECRET_KEY: z.string().min(1),
     CLERK_PUBLISHABLE_KEY: z.string().min(1),
     CLERK_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -52,6 +57,12 @@ const EnvSchema = z
     // contributor who has no account: no DSN, no middleware, no reporting.
     SENTRY_DSN: z.url().optional(),
     SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
+    // Validated here rather than read from `process.env` at the call site, so a
+    // missing one fails the boot instead of a customer's checkout request.
+    POLAR_ACCESS_TOKEN: z.string().min(1),
+    POLAR_PRODUCT_ID: z.string().min(1),
+    POLAR_CREDITS_METER_ID: z.string().min(1),
+    POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
   })
   .superRefine((input, ctx) => {
     if (input.NODE_ENV !== "production") {
@@ -87,6 +98,29 @@ const EnvSchema = z
         path: ["CLERK_OAUTH_CLIENT_ID"],
         message:
           "Must be set when NODE_ENV is 'production' so tokens issued to other OAuth apps are rejected",
+      });
+    }
+
+    // Without this there is no trustworthy origin to send a paying customer
+    // back to, and the localhost fallback would ship to production.
+    if (!input.PUBLIC_BASE_URL) {
+      ctx.addIssue({
+        code: "invalid_type",
+        expected: "string",
+        received: "undefined",
+        path: ["PUBLIC_BASE_URL"],
+        message: "Must be set when NODE_ENV is 'production'",
+      });
+    }
+
+    // The sandbox is a separate Polar environment with play money: pointing a
+    // production deploy at it silently gives every purchase away for free.
+    if (input.POLAR_SERVER !== "production") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["POLAR_SERVER"],
+        message:
+          "Refusing to start: POLAR_SERVER must be 'production' when NODE_ENV is 'production'.",
       });
     }
   });

@@ -24,17 +24,16 @@ import {
   titleSchema,
   transactionSchema,
 } from "./schemas";
+import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
 base.use("*", requireAuth, requireUser);
 
-const TAGS = ["Me"];
-
 const unauthorized = problemDetailsContent("Not authenticated");
 
 const profile = createRoute({
-  tags: TAGS,
+  tags: [TAGS.ME],
   method: "get",
   path: "/",
   summary: "Your profile and wallet",
@@ -45,7 +44,7 @@ const profile = createRoute({
 });
 
 const stats = createRoute({
-  tags: TAGS,
+  tags: [TAGS.ME],
   method: "get",
   path: "/stats",
   summary: "Your record, streaks and rating",
@@ -56,7 +55,7 @@ const stats = createRoute({
 });
 
 const achievements = createRoute({
-  tags: TAGS,
+  tags: [TAGS.ME],
   method: "get",
   path: "/achievements",
   summary: "Achievements you have unlocked",
@@ -70,7 +69,7 @@ const achievements = createRoute({
 });
 
 const titles = createRoute({
-  tags: TAGS,
+  tags: [TAGS.ME],
   method: "get",
   path: "/titles",
   summary: "Titles you own",
@@ -91,7 +90,7 @@ const titles = createRoute({
 });
 
 const equip = createRoute({
-  tags: TAGS,
+  tags: [TAGS.ME],
   method: "put",
   path: "/title",
   summary: "Equip a title",
@@ -109,7 +108,7 @@ const equip = createRoute({
 });
 
 const transactions = createRoute({
-  tags: TAGS,
+  tags: [TAGS.ME],
   method: "get",
   path: "/transactions",
   summary: "Your coin ledger",

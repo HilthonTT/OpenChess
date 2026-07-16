@@ -8,13 +8,14 @@ import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import { getLeaderboard } from "../player/service";
 import { leaderboardEntrySchema } from "./schemas";
+import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
 base.use("*", requireAuth, requireUser);
 
 const board = createRoute({
-  tags: ["Leaderboard"],
+  tags: [TAGS.LEADERBOARD],
   method: "get",
   path: "/",
   summary: "Ranked players",

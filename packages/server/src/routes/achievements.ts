@@ -8,13 +8,14 @@ import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import { listAchievements } from "../player/service";
 import { achievementSchema } from "./schemas";
+import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
 base.use("*", requireAuth, requireUser);
 
 const catalog = createRoute({
-  tags: ["Achievements"],
+  tags: [TAGS.ACHIEVEMENTS],
   method: "get",
   path: "/",
   summary: "The achievement catalog",

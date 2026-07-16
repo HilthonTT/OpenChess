@@ -8,17 +8,16 @@ import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import { listTitles, purchaseTitle } from "../player/service";
 import { idParamsSchema, titleSchema } from "./schemas";
+import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
 base.use("*", requireAuth, requireUser);
 
-const TAGS = ["Store"];
-
 const unauthorized = problemDetailsContent("Not authenticated");
 
 const catalog = createRoute({
-  tags: TAGS,
+  tags: [TAGS.STORE],
   method: "get",
   path: "/",
   summary: "The title catalog",
@@ -34,7 +33,7 @@ const catalog = createRoute({
 });
 
 const purchase = createRoute({
-  tags: TAGS,
+  tags: [TAGS.STORE],
   method: "post",
   path: "/{id}/purchase",
   summary: "Buy a title",

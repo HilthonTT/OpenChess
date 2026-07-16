@@ -135,10 +135,13 @@ export const moveResultSchema = z
 
 /** A cuid in the `{id}` path segment. Shared by every by-id route. */
 export const idParamsSchema = z.object({
-  id: z.string().min(1).openapi({
-    param: { name: "id", in: "path" },
-    example: "clx0h2k9r0000abcd1234efgh",
-  }),
+  id: z
+    .string()
+    .min(1)
+    .openapi({
+      param: { name: "id", in: "path" },
+      example: "clx0h2k9r0000abcd1234efgh",
+    }),
 });
 
 export const titleSchema = z
@@ -174,7 +177,9 @@ export const profileSchema = z
     xpIntoLevel: z.number().int(),
     xpToNextLevel: z.number().int(),
     coins: z.number().int(),
-    equippedTitle: titleSchema.pick({ id: true, code: true, label: true, rarity: true }).nullable(),
+    equippedTitle: titleSchema
+      .pick({ id: true, code: true, label: true, rarity: true })
+      .nullable(),
     createdAt: z.string(),
   })
   .openapi("Profile");

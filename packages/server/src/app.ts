@@ -6,6 +6,7 @@ import game from "./routes/game";
 import leaderboard from "./routes/leaderboard";
 import me from "./routes/me";
 import store from "./routes/store";
+import billing from "./routes/billing";
 
 const app = createApp();
 configureOpenAPI(app);
@@ -16,7 +17,8 @@ const routes = app
   .route("/me", me)
   .route("/titles", store)
   .route("/achievements", achievements)
-  .route("/leaderboard", leaderboard);
+  .route("/leaderboard", leaderboard)
+  .route("/billing", billing);
 
 export type AppType = typeof routes;
 

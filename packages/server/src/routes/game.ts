@@ -27,6 +27,7 @@ import {
   paginationQuerySchema,
   playMoveSchema,
 } from "./schemas";
+import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
@@ -34,16 +35,19 @@ const base = createPlayerRouter();
 // The rate limit sits behind auth so it can key by user — creating a game and
 // playing a move both run the engine, which is too expensive to hand out
 // unmetered. 120/min is far beyond any human pace against a bot.
-base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 120 }));
-
-const TAGS = ["Games"];
+base.use(
+  "*",
+  requireAuth,
+  requireUser,
+  rateLimit({ windowMs: 60_000, max: 120 }),
+);
 
 const unauthorized = problemDetailsContent("Not authenticated");
 const forbidden = problemDetailsContent("You are not a player in this game");
 const notFound = problemDetailsContent("No such game");
 
 const create = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "post",
   path: "/",
   summary: "Start an AI game",
@@ -63,7 +67,7 @@ const create = createRoute({
 
 // Registered ahead of `/{id}` so the literal segment wins the match.
 const active = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "get",
   path: "/active",
   summary: "Games still in progress",
@@ -77,7 +81,7 @@ const active = createRoute({
 });
 
 const list = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "get",
   path: "/",
   summary: "Your finished games",
@@ -99,7 +103,7 @@ const list = createRoute({
 });
 
 const read = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "get",
   path: "/{id}",
   summary: "The current position",
@@ -113,7 +117,7 @@ const read = createRoute({
 });
 
 const move = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/moves",
   summary: "Play a move",
@@ -141,7 +145,7 @@ const move = createRoute({
 });
 
 const resign = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/resign",
   summary: "Resign",
@@ -157,7 +161,7 @@ const resign = createRoute({
 });
 
 const abort = createRoute({
-  tags: TAGS,
+  tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/abort",
   summary: "Abort an unplayed game",
