@@ -431,11 +431,34 @@ async function loadFor(
   return { row, game: replay(row), color };
 }
 
+/**
+ * Unfinished games are rows the resume flow will never reach past the newest
+ * one; without a ceiling a client loop could grow the table without bound.
+ */
+const MAX_ACTIVE_GAMES = 20;
+
 export async function createAiGame(input: {
   user: User;
   difficulty: Difficulty;
   color: "white" | "black" | "random";
 }): Promise<GameView> {
+  // Checked outside a transaction, so two racing creates can land at cap + 1.
+  // The ceiling is a backstop against runaway loops, not an invariant — off by
+  // one is fine, and the next create is refused either way.
+  const active = await db.game.count({
+    where: {
+      OR: [{ whitePlayerId: input.user.id }, { blackPlayerId: input.user.id }],
+      endedAt: null,
+    },
+  });
+
+  if (active >= MAX_ACTIVE_GAMES) {
+    throwProblem(
+      HttpStatusCodes.CONFLICT,
+      `You have ${active} unfinished games. Finish, resign or abort one before starting another.`,
+    );
+  }
+
   const color: Color =
     input.color === "random"
       ? Math.random() < 0.5

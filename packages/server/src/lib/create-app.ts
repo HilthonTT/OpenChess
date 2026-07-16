@@ -7,7 +7,7 @@ import { pinoLogger } from "../middlewares/pino-logger";
 import type { PlayerEnv } from "../middlewares/require-user";
 import env from "../env";
 import { developmentCORS } from "../security/cors";
-import { CORSSecurityPatterns } from "../security/cors-patterns";
+import { createEnvironmentBasedCORS } from "../security/cors-patterns";
 import { securityHeadersMiddleware } from "../security/headers";
 import { defaultHook, notFound, onError } from "./problem-details";
 import type { AppBindings, AppOpenAPI } from "./types";
@@ -41,7 +41,7 @@ export function createPlayerRouter() {
 // any localhost/127.0.0.1 origin.
 function createCORS() {
   return env.NODE_ENV === "production"
-    ? CORSSecurityPatterns.createEnvironmentBasedCORS()
+    ? createEnvironmentBasedCORS()
     : developmentCORS;
 }
 

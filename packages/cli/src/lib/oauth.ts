@@ -24,13 +24,10 @@ function encodeState(state: OAuthState) {
   return toBase64Url(JSON.stringify(state));
 }
 
+// The state contract, shared with the server's `portFromState`: one base64url
+// JSON payload carrying the nonce and callback port, nothing appended.
 function decodeState(state: string) {
-  const [encoded] = state.split(".");
-  if (!encoded) {
-    throw new Error("Invalid state");
-  }
-
-  return JSON.parse(Buffer.from(encoded, "base64url").toString()) as OAuthState;
+  return JSON.parse(Buffer.from(state, "base64url").toString()) as OAuthState;
 }
 
 function getErrorMessage(error: unknown) {
@@ -56,6 +53,10 @@ export async function performLogin() {
   let settled = false;
   return new Promise<{ token: string }>((resolve, reject) => {
     const server = Bun.serve({
+      // Bun binds 0.0.0.0 by default, which would put the server that receives
+      // the authorization code on every network interface. Only the local
+      // browser redirect ever needs to reach it.
+      hostname: "127.0.0.1",
       port: 0,
       async fetch(req) {
         const url = new URL(req.url);

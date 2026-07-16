@@ -14,6 +14,7 @@ import {
 } from "../game/service";
 import { createPlayerRouter } from "../lib/create-app";
 import { problemDetailsContent } from "../lib/problem-details";
+import { rateLimit } from "../middlewares/rate-limit";
 import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import {
@@ -30,7 +31,10 @@ import {
 const base = createPlayerRouter();
 
 // Every game route is a player action; none of them mean anything anonymously.
-base.use("*", requireAuth, requireUser);
+// The rate limit sits behind auth so it can key by user — creating a game and
+// playing a move both run the engine, which is too expensive to hand out
+// unmetered. 120/min is far beyond any human pace against a bot.
+base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 120 }));
 
 const TAGS = ["Games"];
 
@@ -51,6 +55,9 @@ const create = createRoute({
   responses: {
     [HttpStatusCodes.CREATED]: jsonContent(gameSchema, "The new game"),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "You have too many unfinished games; finish or resign one first",
+    ),
   },
 });
 

@@ -69,7 +69,9 @@ export default function configureOpenAPI(app: AppOpenAPI) {
       url: "/doc",
       // Both readers point at the same `/doc`, so they cannot drift apart.
       title: "OpenChess API",
-      persistAuthorization: true,
+      // Off so a pasted bearer token lives only in the page, not in the
+      // browser's localStorage where it outlives the session.
+      persistAuthorization: false,
     }),
   );
 }

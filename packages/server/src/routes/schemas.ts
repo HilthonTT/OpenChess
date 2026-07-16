@@ -239,6 +239,9 @@ export function pageSchema<T extends z.ZodTypeAny>(item: T, key: string) {
 }
 
 export const paginationQuerySchema = z.object({
-  cursor: z.string().optional(),
+  // Cursors are the `nextCursor` we handed out: an ISO timestamp. Anything
+  // else would reach Prisma as an Invalid Date and blow up as a 500, when it
+  // deserves the 400 this schema turns it into.
+  cursor: z.iso.datetime().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

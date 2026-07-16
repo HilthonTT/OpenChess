@@ -33,7 +33,9 @@ export function portFromState(state: string): number | null {
     return null;
   }
 
-  // The CLI's format is `<base64url payload>.<nonce>`; we only need the payload.
+  // The CLI sends a single base64url JSON payload. Taking the first
+  // dot-segment keeps us working if a signed `payload.signature` format ever
+  // replaces it.
   const [encoded] = state.split(".");
   if (!encoded) {
     return null;
@@ -83,7 +85,12 @@ const router = createRouter().get("/callback", (c) => {
 
   const port = portFromState(state);
   if (port === null) {
-    c.var.logger?.warn({ state }, "Rejected malformed OAuth state");
+    // The state is attacker-supplied and can be arbitrarily long; log enough
+    // to recognize it, not enough to let a caller stuff the logs.
+    c.var.logger?.warn(
+      { state: state.slice(0, 128) },
+      "Rejected malformed OAuth state",
+    );
 
     return badRequest("Invalid authentication state");
   }

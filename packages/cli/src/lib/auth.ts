@@ -30,6 +30,9 @@ export function saveAuth(data: AuthData) {
     // Owner-only permissions (rwx------) so other users on the machine can't read tokens
     mkdirSync(AUTH_DIR, { mode: 0o700 });
   }
+  // The token is stored in plaintext. The mode narrows access on Unix, but
+  // Windows ignores POSIX modes entirely — there the file inherits the home
+  // directory's ACL, which for a normal single-user setup is still owner-only.
   writeFileSync(AUTH_FILE, JSON.stringify(data), { mode: 0o600 });
 }
 

@@ -69,8 +69,13 @@ export class CORSManager {
         if (this.isOriginAllowed(origin)) {
           this.setHeaders(c, origin);
         } else {
-          // Log blocked origin for monitoring
-          console.warn(`CORS: Blocked request from origin: ${origin}`);
+          // Through the request logger, not console: the origin header is
+          // attacker-supplied, so it is truncated and kept structured rather
+          // than handed a free line of raw log output per request.
+          c.var.logger?.warn(
+            { origin: origin.slice(0, 256) },
+            "CORS blocked origin",
+          );
         }
       }
 
@@ -193,20 +198,6 @@ export class CORSManager {
     };
   }
 }
-
-// Production CORS configuration
-export const productionCORS = new CORSManager({
-  origins: CORSManager.createDynamicOriginValidator({
-    allowedDomains: ["example.com", "app.example.com"],
-    allowLocalhost: false,
-    allowSubdomains: true,
-  }),
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
-  exposedHeaders: ["X-Total-Count", "X-RateLimit-Remaining"],
-  optionsSuccessStatus: HttpStatusCodes.NO_CONTENT,
-});
 
 // Development CORS configuration
 export const developmentCORS = new CORSManager({
