@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { useKeyboard } from "@opentui/react";
-import { Board } from "../components/board";
-import { GameScreen } from "../components/game-screen";
-import { useUITheme } from "../providers/theme";
-import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import {
   createGame,
   fileOf,
@@ -14,7 +10,6 @@ import {
   isPiece,
   movesFromSquare,
   needsPromotion,
-  opposite,
   pieceAt,
   pieceColor,
   play,
@@ -22,55 +17,28 @@ import {
   squareAt,
   undo,
 } from "@openchess/shared";
-import type {
-  Color,
-  Difficulty,
-  GameStatus,
-  PromotionPiece,
-} from "@openchess/shared";
+import type { Color, Difficulty, PromotionPiece } from "@openchess/shared";
+import { Board } from "../../components/board";
+import { GameScreen } from "../../components/game-screen";
 import {
   CapturedSummary,
   MoveList,
   PROMOTION_CHOICES,
   PromotionPrompt,
   colorName,
-  describeStatus,
-} from "../components/game-panels";
-
-const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  easy: "Easy",
-  medium: "Medium",
-  hard: "Hard",
-};
+} from "../../components/game-panels";
+import { useUITheme } from "../../providers/theme";
+import {
+  useKeyboardLayer,
+  BASE_LAYER_ID,
+} from "../../providers/keyboard-layer";
+import { DIFFICULTY_LABELS, Setup, clamp, describeAiStatus } from "./setup";
 
 /** A short pause before the engine replies, so its moves are easy to follow. */
 const AI_MOVE_DELAY_MS = 400;
 
-function clamp(value: number): number {
-  return Math.max(0, Math.min(7, value));
-}
-
-/** The status line reworded for a human-versus-engine game. */
-function describeAiStatus(
-  status: GameStatus,
-  turn: Color,
-  human: Color,
-): string {
-  switch (status) {
-    case "checkmate":
-      return opposite(turn) === human
-        ? "Checkmate — you win!"
-        : "Checkmate — the engine wins";
-    case "check":
-      return turn === human ? "Your move — check!" : "Check!";
-    case "playing":
-      return turn === human ? "Your move" : "Engine to move";
-    default:
-      return describeStatus(status, turn);
-  }
-}
-
-export function AIGame() {
+/** The engine runs in-process: nothing is saved and nothing is earned. */
+export function LocalAIGame({ subtitle }: { subtitle?: string }) {
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [human, setHuman] = useState<Color | null>(null);
 
@@ -80,105 +48,12 @@ export function AIGame() {
         difficulty={difficulty}
         onDifficulty={setDifficulty}
         onColor={setHuman}
+        subtitle={subtitle}
       />
     );
   }
 
   return <Match difficulty={difficulty} human={human} />;
-}
-
-/** Two quick questions — difficulty, then color — before the board appears. */
-function Setup({
-  difficulty,
-  onDifficulty,
-  onColor,
-}: {
-  difficulty: Difficulty | null;
-  onDifficulty: (difficulty: Difficulty | null) => void;
-  onColor: (color: Color) => void;
-}) {
-  const theme = useUITheme();
-  const { isTopLayer } = useKeyboardLayer();
-
-  useKeyboard((key) => {
-    if (!isTopLayer(BASE_LAYER_ID)) {
-      return;
-    }
-
-    if (difficulty === null) {
-      switch (key.name) {
-        case "1":
-          onDifficulty("easy");
-          break;
-        case "2":
-          onDifficulty("medium");
-          break;
-        case "3":
-          onDifficulty("hard");
-          break;
-      }
-      return;
-    }
-
-    switch (key.name) {
-      case "w":
-        onColor("w");
-        break;
-      case "b":
-        onColor("b");
-        break;
-      case "r":
-        onColor(Math.random() < 0.5 ? "w" : "b");
-        break;
-    }
-  });
-
-  /** Escape steps back to the difficulty question before leaving the screen. */
-  const handleEscape = useCallback(() => {
-    if (difficulty !== null) {
-      onDifficulty(null);
-      return true;
-    }
-    return false;
-  }, [difficulty, onDifficulty]);
-
-  return (
-    <GameScreen
-      title="Play vs AI"
-      subtitle="Test your skill against the engine"
-      onEscape={handleEscape}
-    >
-      {difficulty === null ? (
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.walnut}>Choose a difficulty</text>
-          <text>
-            <span fg={theme.cream}>1</span>
-            <span fg={theme.faint}> Easy </span>
-            <span fg={theme.cream}>2</span>
-            <span fg={theme.faint}> Medium </span>
-            <span fg={theme.cream}>3</span>
-            <span fg={theme.faint}> Hard</span>
-          </text>
-        </box>
-      ) : (
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text>
-            <span fg={theme.faint}>Difficulty: </span>
-            <span fg={theme.gold}>{DIFFICULTY_LABELS[difficulty]}</span>
-          </text>
-          <text fg={theme.walnut}>Choose your side</text>
-          <text>
-            <span fg={theme.cream}>w</span>
-            <span fg={theme.faint}> White </span>
-            <span fg={theme.cream}>b</span>
-            <span fg={theme.faint}> Black </span>
-            <span fg={theme.cream}>r</span>
-            <span fg={theme.faint}> Random</span>
-          </text>
-        </box>
-      )}
-    </GameScreen>
-  );
 }
 
 function Match({

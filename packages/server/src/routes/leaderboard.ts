@@ -9,9 +9,9 @@ import { requireUser } from "../middlewares/require-user";
 import { getLeaderboard } from "../player/service";
 import { leaderboardEntrySchema } from "./schemas";
 
-const router = createPlayerRouter();
+const base = createPlayerRouter();
 
-router.use("*", requireAuth, requireUser);
+base.use("*", requireAuth, requireUser);
 
 const board = createRoute({
   tags: ["Leaderboard"],
@@ -40,7 +40,9 @@ const board = createRoute({
   },
 });
 
-router.openapi(board, async (c) => {
+// Chained so the exported type carries the route — `hc<AppType>` builds the
+// typed CLI client from it, and a statement registration would leave it blind.
+const router = base.openapi(board, async (c) => {
   const { sort, page, limit } = c.req.valid("query");
 
   const result = await getLeaderboard({

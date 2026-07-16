@@ -27,10 +27,10 @@ import {
   playMoveSchema,
 } from "./schemas";
 
-const router = createPlayerRouter();
+const base = createPlayerRouter();
 
 // Every game route is a player action; none of them mean anything anonymously.
-router.use("*", requireAuth, requireUser);
+base.use("*", requireAuth, requireUser);
 
 const TAGS = ["Games"];
 
@@ -54,14 +54,6 @@ const create = createRoute({
   },
 });
 
-router.openapi(create, async (c) => {
-  const { difficulty, color } = c.req.valid("json");
-
-  const game = await createAiGame({ user: c.get("user"), difficulty, color });
-
-  return c.json(game, HttpStatusCodes.CREATED);
-});
-
 // Registered ahead of `/{id}` so the literal segment wins the match.
 const active = createRoute({
   tags: TAGS,
@@ -75,12 +67,6 @@ const active = createRoute({
     ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
   },
-});
-
-router.openapi(active, async (c) => {
-  const games = await listActiveGames(c.get("user"));
-
-  return c.json({ games }, HttpStatusCodes.OK);
 });
 
 const list = createRoute({
@@ -105,19 +91,6 @@ const list = createRoute({
   },
 });
 
-router.openapi(list, async (c) => {
-  const { cursor, limit, result } = c.req.valid("query");
-
-  const page = await listGames({
-    user: c.get("user"),
-    limit,
-    cursor: cursor ? new Date(cursor) : undefined,
-    result,
-  });
-
-  return c.json(page, HttpStatusCodes.OK);
-});
-
 const read = createRoute({
   tags: TAGS,
   method: "get",
@@ -130,14 +103,6 @@ const read = createRoute({
     [HttpStatusCodes.FORBIDDEN]: forbidden,
     [HttpStatusCodes.NOT_FOUND]: notFound,
   },
-});
-
-router.openapi(read, async (c) => {
-  const { id } = c.req.valid("param");
-
-  const game = await getGame(id, c.get("user"));
-
-  return c.json(game, HttpStatusCodes.OK);
 });
 
 const move = createRoute({
@@ -168,22 +133,6 @@ const move = createRoute({
   },
 });
 
-router.openapi(move, async (c) => {
-  const { id } = c.req.valid("param");
-  const { from, to, promotion, ply } = c.req.valid("json");
-
-  const result = await playMove({
-    gameId: id,
-    user: c.get("user"),
-    from,
-    to,
-    promotion,
-    ply,
-  });
-
-  return c.json(result, HttpStatusCodes.OK);
-});
-
 const resign = createRoute({
   tags: TAGS,
   method: "post",
@@ -198,14 +147,6 @@ const resign = createRoute({
     [HttpStatusCodes.FORBIDDEN]: forbidden,
     [HttpStatusCodes.NOT_FOUND]: notFound,
   },
-});
-
-router.openapi(resign, async (c) => {
-  const { id } = c.req.valid("param");
-
-  const game = await resignGame(id, c.get("user"));
-
-  return c.json(game, HttpStatusCodes.OK);
 });
 
 const abort = createRoute({
@@ -227,12 +168,69 @@ const abort = createRoute({
   },
 });
 
-router.openapi(abort, async (c) => {
-  const { id } = c.req.valid("param");
+// Chained rather than registered as separate statements: `.openapi()` returns a
+// router carrying the new route in its type, so only the chained value knows the
+// full shape. That type is what `hc<AppType>` builds the typed CLI client from.
+const router = base
+  .openapi(create, async (c) => {
+    const { difficulty, color } = c.req.valid("json");
 
-  const game = await abortGame(id, c.get("user"));
+    const game = await createAiGame({ user: c.get("user"), difficulty, color });
 
-  return c.json(game, HttpStatusCodes.OK);
-});
+    return c.json(game, HttpStatusCodes.CREATED);
+  })
+  .openapi(active, async (c) => {
+    const games = await listActiveGames(c.get("user"));
+
+    return c.json({ games }, HttpStatusCodes.OK);
+  })
+  .openapi(list, async (c) => {
+    const { cursor, limit, result } = c.req.valid("query");
+
+    const page = await listGames({
+      user: c.get("user"),
+      limit,
+      cursor: cursor ? new Date(cursor) : undefined,
+      result,
+    });
+
+    return c.json(page, HttpStatusCodes.OK);
+  })
+  .openapi(read, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await getGame(id, c.get("user"));
+
+    return c.json(game, HttpStatusCodes.OK);
+  })
+  .openapi(move, async (c) => {
+    const { id } = c.req.valid("param");
+    const { from, to, promotion, ply } = c.req.valid("json");
+
+    const result = await playMove({
+      gameId: id,
+      user: c.get("user"),
+      from,
+      to,
+      promotion,
+      ply,
+    });
+
+    return c.json(result, HttpStatusCodes.OK);
+  })
+  .openapi(resign, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await resignGame(id, c.get("user"));
+
+    return c.json(game, HttpStatusCodes.OK);
+  })
+  .openapi(abort, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await abortGame(id, c.get("user"));
+
+    return c.json(game, HttpStatusCodes.OK);
+  });
 
 export default router;

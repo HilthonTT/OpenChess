@@ -32,6 +32,8 @@ export type AuthContextValue = {
   /** Resolves with the profile once the browser flow completes; rejects if it fails. */
   signIn: () => Promise<AuthProfile | null>;
   signOut: () => void;
+  /** Re-fetch the profile, e.g. after a game pays out XP and coins. */
+  refresh: () => Promise<void>;
 };
 
 /** The token was rejected; `apiClient` has already wiped it from disk. */
@@ -135,9 +137,30 @@ export function AuthProvider({ children }: Props) {
     setStatus("signed-out");
   }, []);
 
+  const refresh = useCallback(async () => {
+    if (!getAuth()) {
+      return;
+    }
+
+    const result = await fetchProfile();
+
+    if (result === UNAUTHORIZED) {
+      clearAuth();
+      setProfile(null);
+      setStatus("signed-out");
+      return;
+    }
+
+    // An unreachable server keeps the profile we already have; stale numbers
+    // beat a header that suddenly forgets who you are.
+    if (result !== UNREACHABLE) {
+      setProfile(result);
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, profile, signIn, signOut }),
-    [status, profile, signIn, signOut],
+    () => ({ status, profile, signIn, signOut, refresh }),
+    [status, profile, signIn, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

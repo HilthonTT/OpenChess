@@ -9,9 +9,9 @@ import { requireUser } from "../middlewares/require-user";
 import { listTitles, purchaseTitle } from "../player/service";
 import { idParamsSchema, titleSchema } from "./schemas";
 
-const router = createPlayerRouter();
+const base = createPlayerRouter();
 
-router.use("*", requireAuth, requireUser);
+base.use("*", requireAuth, requireUser);
 
 const TAGS = ["Store"];
 
@@ -31,12 +31,6 @@ const catalog = createRoute({
     ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
   },
-});
-
-router.openapi(catalog, async (c) => {
-  const titles = await listTitles(c.get("user"));
-
-  return c.json({ titles }, HttpStatusCodes.OK);
 });
 
 const purchase = createRoute({
@@ -61,12 +55,20 @@ const purchase = createRoute({
   },
 });
 
-router.openapi(purchase, async (c) => {
-  const { id } = c.req.valid("param");
+// Chained so the exported type carries the routes — `hc<AppType>` builds the
+// typed CLI client from it, and statement registrations would leave it blind.
+const router = base
+  .openapi(catalog, async (c) => {
+    const titles = await listTitles(c.get("user"));
 
-  const bought = await purchaseTitle(c.get("user"), id);
+    return c.json({ titles }, HttpStatusCodes.OK);
+  })
+  .openapi(purchase, async (c) => {
+    const { id } = c.req.valid("param");
 
-  return c.json(bought, HttpStatusCodes.OK);
-});
+    const bought = await purchaseTitle(c.get("user"), id);
+
+    return c.json(bought, HttpStatusCodes.OK);
+  });
 
 export default router;

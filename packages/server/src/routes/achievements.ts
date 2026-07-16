@@ -9,9 +9,9 @@ import { requireUser } from "../middlewares/require-user";
 import { listAchievements } from "../player/service";
 import { achievementSchema } from "./schemas";
 
-const router = createPlayerRouter();
+const base = createPlayerRouter();
 
-router.use("*", requireAuth, requireUser);
+base.use("*", requireAuth, requireUser);
 
 const catalog = createRoute({
   tags: ["Achievements"],
@@ -29,7 +29,9 @@ const catalog = createRoute({
   },
 });
 
-router.openapi(catalog, async (c) => {
+// Chained so the exported type carries the route — `hc<AppType>` builds the
+// typed CLI client from it, and a statement registration would leave it blind.
+const router = base.openapi(catalog, async (c) => {
   const achievements = await listAchievements(c.get("user"));
 
   return c.json({ achievements }, HttpStatusCodes.OK);
