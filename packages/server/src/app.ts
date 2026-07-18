@@ -24,7 +24,7 @@ const api = createRouter()
   .route("/leaderboard", leaderboard)
   .route("/billing", billing);
 
-const routes = app.route("/api", api);
+app.route("/api", api);
 
 app.on(
   ["GET", "PUT", "POST"],
@@ -35,6 +35,9 @@ app.on(
   }),
 );
 
-export type AppType = typeof routes;
+// The CLI's `hc` client already points its base URL at `/api`, so the client
+// type must be the un-prefixed router — using the wrapper app here would force
+// every call site through an extra `.api` and double the prefix at runtime.
+export type AppType = typeof api;
 
 export default app;

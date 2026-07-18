@@ -15,7 +15,7 @@ function encodeState(payload: unknown, nonce = "nonce") {
 function callback(query: Record<string, string>) {
   const params = new URLSearchParams(query);
 
-  return app.request(`/auth/callback?${params}`);
+  return app.request(`/api/auth/callback?${params}`);
 }
 
 describe("portFromState", () => {
@@ -126,7 +126,7 @@ describe("GET /auth/callback", () => {
     expect(response.headers.get("content-type")).toBe(PROBLEM_JSON_MEDIA_TYPE);
     expect(await response.json()).toMatchObject({
       status: HttpStatusCodes.BAD_REQUEST,
-      instance: "/auth/callback",
+      instance: "/api/auth/callback",
     });
   });
 

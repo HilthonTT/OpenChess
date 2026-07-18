@@ -14,13 +14,13 @@ describe("GET /billing/success", () => {
   // browser has no bearer token. When this route sat behind `requireAuth` it
   // 401'd every completed purchase.
   test("is reachable without a token", async () => {
-    const response = await app.request("/billing/success");
+    const response = await app.request("/api/billing/success");
 
     expect(response.status).toBe(HttpStatusCodes.OK);
   });
 
   test("renders a page for the human reading it, not JSON", async () => {
-    const response = await app.request("/billing/success");
+    const response = await app.request("/api/billing/success");
 
     expect(response.headers.get("content-type")).toStartWith("text/html");
     await expect(response.text()).resolves.toContain("Payment complete");
