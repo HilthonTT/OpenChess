@@ -6,6 +6,7 @@ import { Home } from "./screens/home";
 import { LocalGame } from "./screens/local-game";
 import { OnlineGame } from "./screens/online-game";
 import { AIGame } from "./screens/ai-game";
+import { Leaderboard } from "./screens/leaderboard";
 
 const router = createMemoryRouter([
   {
@@ -16,6 +17,7 @@ const router = createMemoryRouter([
       { path: "/local", element: <LocalGame /> },
       { path: "/online", element: <OnlineGame /> },
       { path: "/ai", element: <AIGame /> },
+      { path: "/leaderboard", element: <Leaderboard /> },
     ],
   },
 ]);

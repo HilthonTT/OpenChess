@@ -29,6 +29,15 @@ export const MENU_ITEMS: MenuItem[] = [
       ctx.navigate("/ai");
     },
   },
+  {
+    id: "leaderboard",
+    title: "Leaderboard",
+    icon: "♔",
+    description: "See where you rank",
+    action(ctx) {
+      ctx.navigate("/leaderboard");
+    },
+  },
 ];
 
 function errorMessage(error: unknown): string {
