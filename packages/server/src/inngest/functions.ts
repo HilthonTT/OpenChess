@@ -30,10 +30,17 @@ export const sendWeeklyDigest = inngest.createFunction(
     id: "send-weekly-digest-email",
     triggers: { event: "app/send.weekly.digest" },
   },
-  async ({ event }) => {
-    const { email, user_id } = event.data;
+  async ({ event, step, logger }) => {
+    // Demo placeholder. The producer sends { user_id, clerk_id, username };
+    // there is no email transport wired up yet, so record the intent instead
+    // of calling one. (The previous version destructured a non-existent
+    // `email` field and threw on every invocation.)
+    const { user_id, username } = event.data;
 
-    await email.send("weekly_digest", email, user_id);
+    await step.run("record-digest", () => {
+      logger.info({ user_id, username }, "weekly digest queued");
+      return { user_id };
+    });
   },
 );
 

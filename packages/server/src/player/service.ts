@@ -15,11 +15,19 @@ import { throwProblem } from "../lib/problem-details";
  */
 
 const UNIQUE_VIOLATION = "P2002";
+const SERIALIZATION_FAILURE = "P2034";
 
 function isUniqueViolation(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === UNIQUE_VIOLATION
+  );
+}
+
+function isSerializationFailure(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === SERIALIZATION_FAILURE
   );
 }
 
@@ -185,92 +193,111 @@ export async function equipTitle(user: User, titleId: string | null) {
 /**
  * Buy a title.
  *
+ * Serializable, like the game reward path, because this reads the coin balance
+ * and then writes an absolute new value. `@@unique([userId, titleId])` only
+ * guards against buying the *same* title twice; it does nothing for two
+ * *different* titles racing on one balance. Without serialization both reads
+ * see the old balance and the second write silently loses the first deduction,
+ * so a player with 100 coins could buy two 100-coin titles and pay for one.
+ * Under Serializable the two writes to the same user row collide and the loser
+ * gets a serialization failure, which we surface as a 409 the client retries.
+ *
  * One transaction: check, then write the ownership row, the ledger entry, and
- * the cached balance together. `@@unique([userId, titleId])` is what actually
- * makes a double-click safe — two concurrent purchases race, one loses on the
- * constraint, and the loser is told they already own it rather than being
- * charged twice.
+ * the cached balance together.
  */
 export async function purchaseTitle(user: User, titleId: string) {
   try {
-    return await db.$transaction(async (tx) => {
-      const title = await tx.title.findUnique({ where: { id: titleId } });
+    return await db.$transaction(
+      async (tx) => {
+        const title = await tx.title.findUnique({ where: { id: titleId } });
 
-      if (!title) {
-        throwProblem(HttpStatusCodes.NOT_FOUND, "No such title");
-      }
+        if (!title) {
+          throwProblem(HttpStatusCodes.NOT_FOUND, "No such title");
+        }
 
-      if (!title.isPurchasable) {
-        throwProblem(
-          HttpStatusCodes.FORBIDDEN,
-          "That title is not for sale — it is earned, not bought",
-        );
-      }
+        if (!title.isPurchasable) {
+          throwProblem(
+            HttpStatusCodes.FORBIDDEN,
+            "That title is not for sale — it is earned, not bought",
+          );
+        }
 
-      // Read the balance inside the transaction: the cached one on `user` was
-      // read before the request and a concurrent game may have paid out since.
-      const fresh = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
+        // Read the balance inside the transaction: the cached one on `user` was
+        // read before the request and a concurrent game may have paid out since.
+        const fresh = await tx.user.findUniqueOrThrow({
+          where: { id: user.id },
+        });
 
-      if (fresh.level < title.requiredLevel) {
-        throwProblem(
-          HttpStatusCodes.FORBIDDEN,
-          `That title unlocks at level ${title.requiredLevel}; you are level ${fresh.level}`,
-        );
-      }
+        if (fresh.level < title.requiredLevel) {
+          throwProblem(
+            HttpStatusCodes.FORBIDDEN,
+            `That title unlocks at level ${title.requiredLevel}; you are level ${fresh.level}`,
+          );
+        }
 
-      if (fresh.coins < title.price) {
-        throwProblem(
-          HttpStatusCodes.CONFLICT,
-          `That title costs ${title.price} coins; you have ${fresh.coins}`,
-        );
-      }
+        if (fresh.coins < title.price) {
+          throwProblem(
+            HttpStatusCodes.CONFLICT,
+            `That title costs ${title.price} coins; you have ${fresh.coins}`,
+          );
+        }
 
-      const balanceAfter = fresh.coins - title.price;
+        const balanceAfter = fresh.coins - title.price;
 
-      await tx.userTitle.create({
-        data: {
-          userId: user.id,
-          titleId: title.id,
-          // Store prices change; the receipt records what was actually paid.
-          pricePaid: title.price,
-        },
-      });
+        await tx.userTitle.create({
+          data: {
+            userId: user.id,
+            titleId: title.id,
+            // Store prices change; the receipt records what was actually paid.
+            pricePaid: title.price,
+          },
+        });
 
-      await tx.coinTransaction.create({
-        data: {
-          userId: user.id,
-          // Negative: spent, not earned.
-          amount: -title.price,
-          reason: "PURCHASE",
-          balanceAfter,
-        },
-      });
+        await tx.coinTransaction.create({
+          data: {
+            userId: user.id,
+            // Negative: spent, not earned.
+            amount: -title.price,
+            reason: "PURCHASE",
+            balanceAfter,
+          },
+        });
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: { coins: balanceAfter },
-      });
+        await tx.user.update({
+          where: { id: user.id },
+          data: { coins: balanceAfter },
+        });
 
-      return {
-        title: {
-          id: title.id,
-          code: title.code,
-          label: title.label,
-          description: title.description,
-          price: title.price,
-          rarity: title.rarity,
-          requiredLevel: title.requiredLevel,
-          isPurchasable: title.isPurchasable,
-          owned: true,
-          affordable: true,
-          equipped: fresh.equippedTitleId === title.id,
-        },
-        coins: balanceAfter,
-      };
-    });
+        return {
+          title: {
+            id: title.id,
+            code: title.code,
+            label: title.label,
+            description: title.description,
+            price: title.price,
+            rarity: title.rarity,
+            requiredLevel: title.requiredLevel,
+            isPurchasable: title.isPurchasable,
+            owned: true,
+            affordable: true,
+            equipped: fresh.equippedTitleId === title.id,
+          },
+          coins: balanceAfter,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   } catch (error) {
     if (isUniqueViolation(error)) {
       throwProblem(HttpStatusCodes.CONFLICT, "You already own that title");
+    }
+    // A concurrent spend touched the same balance; the client refetches its
+    // coins and tries again rather than silently losing a deduction.
+    if (isSerializationFailure(error)) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "Another request changed your balance at the same time. Try again.",
+      );
     }
     throw error;
   }
@@ -326,12 +353,16 @@ export async function getLeaderboard(input: {
   page: number;
   limit: number;
 }) {
+  // Every sort ends on `id` so tied players fall in a fixed order. Without a
+  // unique terminal key Postgres may order ties differently between the page-N
+  // and page-N+1 queries, so a tied player could show up on both pages or on
+  // neither, and `rank` (skip + index) would disagree run to run.
   const orderBy: Prisma.UserOrderByWithRelationInput[] =
     input.sort === "level"
-      ? [{ level: "desc" }, { experience: "desc" }]
+      ? [{ level: "desc" }, { experience: "desc" }, { id: "asc" }]
       : input.sort === "wins"
-        ? [{ stats: { wins: "desc" } }]
-        : [{ stats: { rating: "desc" } }];
+        ? [{ stats: { wins: "desc" } }, { id: "asc" }]
+        : [{ stats: { rating: "desc" } }, { id: "asc" }];
 
   const skip = (input.page - 1) * input.limit;
 

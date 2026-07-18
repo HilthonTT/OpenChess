@@ -65,6 +65,15 @@ export async function performLogin() {
           return new Response("Not found", { status: 404 });
         }
 
+        // The flow only settles once. A browser retry or a duplicate redirect
+        // arriving in the brief window before the server stops must not run a
+        // second code exchange and overwrite the token we already saved.
+        if (settled) {
+          return new Response("Already handled. You can close this tab.", {
+            status: 409,
+          });
+        }
+
         const error = url.searchParams.get("error");
 
         if (error) {

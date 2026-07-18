@@ -4,6 +4,7 @@ import jsonContent from "stoker/openapi/helpers/json-content";
 
 import { createPlayerRouter } from "../lib/create-app";
 import { problemDetailsContent } from "../lib/problem-details";
+import { rateLimit } from "../middlewares/rate-limit";
 import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import { listTitles, purchaseTitle } from "../player/service";
@@ -12,7 +13,11 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-base.use("*", requireAuth, requireUser);
+// Metered behind auth so it keys by user, like the game routes. Purchasing
+// spends currency and races on the coin balance, so a burst of concurrent
+// buys is exactly what must not be free — the balance is protected by
+// Serializable isolation in `purchaseTitle`, and this keeps the burst small.
+base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 60 }));
 
 const unauthorized = problemDetailsContent("Not authenticated");
 
