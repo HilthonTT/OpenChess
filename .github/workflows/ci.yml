@@ -18,6 +18,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: bun run db:generate
+        working-directory: packages/database
+        env:
+          # prisma.config.ts requires DATABASE_URL to be set; generate never connects to it.
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+
       - name: Typecheck
         run: bun run typecheck
 
