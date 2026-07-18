@@ -85,19 +85,24 @@ export function Home() {
       justifyContent="center"
       flexDirection="column"
       flexGrow={1}
-      gap={2}
+      gap={1}
       position="relative"
       width="100%"
       height="100%"
     >
-      <box flexDirection="column" alignItems="center" gap={1}>
+      <box
+        flexDirection="column"
+        alignItems="center"
+        rowGap={0.5}
+        marginBottom={0.5}
+      >
         <Header />
         <AuthStatus />
       </box>
 
       <Menu items={items} onSelect={handleSelect} />
 
-      <box flexDirection="column" alignItems="center" rowGap={1}>
+      <box flexDirection="column" alignItems="center">
         <HintBar
           hints={[
             { key: "↑↓", label: "move" },

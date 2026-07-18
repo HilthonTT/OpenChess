@@ -62,11 +62,8 @@ export function Menu({ items, onSelect }: MenuProps) {
       borderColor={theme.faint}
       title=" Main menu "
       titleAlignment="center"
-      paddingTop={1}
-      paddingBottom={1}
       paddingLeft={2}
       paddingRight={2}
-      gap={1.2}
       width={48}
     >
       {items.map((item, i) => {
@@ -90,9 +87,7 @@ export function Menu({ items, onSelect }: MenuProps) {
               flexDirection="row"
               paddingLeft={1}
               paddingRight={1}
-              backgroundColor={
-                selected && !dim ? theme.selectionBg : undefined
-              }
+              backgroundColor={selected && !dim ? theme.selectionBg : undefined}
             >
               <text>
                 <span fg={selected && !dim ? theme.gold : theme.faint}>
@@ -103,17 +98,11 @@ export function Menu({ items, onSelect }: MenuProps) {
                 >
                   {`${item.icon}${TEXT_PRESENTATION}  `}
                 </span>
-              </text>
-              <box flexDirection="column" flexGrow={1}>
-                <text
-                  fg={dim ? theme.dim : selected ? theme.cream : theme.dim}
-                >
+                <span fg={dim ? theme.dim : selected ? theme.cream : theme.dim}>
                   {selected && !dim ? <b>{item.title}</b> : item.title}
-                </text>
-                <text fg={selected && !dim ? theme.dim : theme.faint}>
-                  {item.description}
-                </text>
-              </box>
+                </span>
+              </text>
+              <box flexGrow={1} />
               {/* A disabled row has nothing to quick-pick, so it shows no number. */}
               <text fg={selected && !dim ? theme.walnut : theme.faint}>
                 {dim ? " " : String(i + 1)}
@@ -122,6 +111,10 @@ export function Menu({ items, onSelect }: MenuProps) {
           </Fragment>
         );
       })}
+
+      <box paddingLeft={1}>
+        <text fg={theme.faint}>{items[index]?.description ?? ""}</text>
+      </box>
     </box>
   );
 }

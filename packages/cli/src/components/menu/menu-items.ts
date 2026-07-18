@@ -38,6 +38,33 @@ export const MENU_ITEMS: MenuItem[] = [
       ctx.navigate("/leaderboard");
     },
   },
+  {
+    id: "achievements",
+    title: "Achievements",
+    icon: "★",
+    description: "Trophies you have earned",
+    action(ctx) {
+      ctx.navigate("/achievements");
+    },
+  },
+  {
+    id: "stats",
+    title: "Stats",
+    icon: "♖",
+    description: "Your record, rating and streaks",
+    action(ctx) {
+      ctx.navigate("/stats");
+    },
+  },
+  {
+    id: "store",
+    title: "Store",
+    icon: "¤",
+    description: "Spend coins on titles",
+    action(ctx) {
+      ctx.navigate("/store");
+    },
+  },
 ];
 
 function errorMessage(error: unknown): string {
