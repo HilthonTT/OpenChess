@@ -7,6 +7,7 @@ import leaderboard from "./routes/leaderboard";
 import me from "./routes/me";
 import store from "./routes/store";
 import billing from "./routes/billing";
+import { createRouter } from "./lib/create-app";
 import { serve } from "inngest/hono";
 import { inngest } from "./inngest";
 import { functions } from "./inngest/functions";
@@ -14,7 +15,7 @@ import { functions } from "./inngest/functions";
 const app = createApp();
 configureOpenAPI(app);
 
-const routes = app
+const api = createRouter()
   .route("/auth", auth)
   .route("/games", game)
   .route("/me", me)
@@ -22,6 +23,8 @@ const routes = app
   .route("/achievements", achievements)
   .route("/leaderboard", leaderboard)
   .route("/billing", billing);
+
+const routes = app.route("/api", api);
 
 app.on(
   ["GET", "PUT", "POST"],

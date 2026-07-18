@@ -1,8 +1,15 @@
-import { z } from "@hono/zod-openapi";
+import { createRoute, z } from "@hono/zod-openapi";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import { createRouter } from "../lib/create-app";
-import { problemFor, problemResponse } from "../lib/problem-details";
+import {
+  problemDetailsContent,
+  problemFor,
+  problemResponse,
+} from "../lib/problem-details";
+import { TAGS } from "./tags";
+
+const base = createRouter();
 
 const MAX_STATE_LENGTH = 512;
 
@@ -10,6 +17,25 @@ const LOOPBACK_HOST = "127.0.0.1";
 
 const stateSchema = z.object({
   port: z.number().int().min(1024).max(65535),
+});
+
+const callbackQuerySchema = z.object({
+  code: z.string().optional().openapi({
+    description: "Authorization code from the provider.",
+    example: "ac_9f2b…",
+  }),
+  state: z.string().optional().openapi({
+    description:
+      "Opaque state, encodes the loopback port the CLI is listening on.",
+  }),
+  error: z.string().optional().openapi({
+    description: "Set instead of `code` when the provider rejects the request.",
+    example: "access_denied",
+  }),
+  error_description: z.string().optional().openapi({
+    description:
+      "Human-readable detail from the provider. Logged, never echoed.",
+  }),
 });
 
 const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
@@ -55,7 +81,30 @@ export function portFromState(state: string): number | null {
   return parsed.success ? parsed.data.port : null;
 }
 
-const router = createRouter().get("/callback", (c) => {
+const callback = createRoute({
+  tags: [TAGS.AUTH],
+  method: "get",
+  path: "/callback",
+  summary: "OAuth redirect target",
+  description:
+    "The URI registered with the provider. Validates the state, then bounces the code back to the loopback listener the CLI opened. Never renders anything itself.",
+  request: { query: callbackQuerySchema },
+  responses: {
+    [HttpStatusCodes.MOVED_TEMPORARILY]: {
+      description: "Code and state forwarded to the local listener",
+      headers: z.object({
+        Location: z.string().url().openapi({
+          example: "http://127.0.0.1:51337/callback?code=ac_9f2b&state=…",
+        }),
+      }),
+    },
+    [HttpStatusCodes.BAD_REQUEST]: problemDetailsContent(
+      "Provider error, missing code or state, or unparseable state",
+    ),
+  },
+});
+
+const router = base.openapi(callback, async (c) => {
   const code = c.req.query("code");
   const state = c.req.query("state");
   const error = c.req.query("error");

@@ -2,6 +2,7 @@ import type { Schema } from "hono";
 import { OpenAPIHono, type Hook } from "@hono/zod-openapi";
 import { requestId } from "hono/request-id";
 import { compress } from "hono/compress";
+import { timeout } from "hono/timeout";
 import { sentry } from "@sentry/hono/bun";
 import { pinoLogger } from "../middlewares/pino-logger";
 import type { PlayerEnv } from "../middlewares/require-user";
@@ -74,7 +75,8 @@ export default function createApp() {
     .use(pinoLogger())
     .use(securityHeadersMiddleware())
     .use(createCORS().middleware())
-    .use(compress({ contentTypeFilter: /^application\/json/ }));
+    .use(compress({ contentTypeFilter: /^application\/json/ }))
+    .use(timeout(5_000)); // 5 second timeout
 
   app.notFound(notFound);
   app.onError(onError);
