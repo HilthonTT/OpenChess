@@ -3,6 +3,7 @@ import { db } from "@openchess/database/client";
 import { levelProgress } from "@openchess/shared";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
+import { cached, invalidateCache } from "../lib/cache";
 import { throwProblem } from "../lib/problem-details";
 
 /**
@@ -82,19 +83,38 @@ export async function getStats(user: User) {
  * away.
  */
 export async function listAchievements(user: User, unlockedOnly = false) {
-  const rows = await db.achievement.findMany({
-    include: {
-      unlockedBy: {
-        where: { userId: user.id },
-        select: { unlockedAt: true },
-      },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  // The catalog is the same for everyone and changes only when the seed runs;
+  // the caller's unlock rows are the only per-user part, so only those are
+  // read fresh. Cached as a projection: rows round-trip through JSON.
+  const [catalog, unlocks] = await Promise.all([
+    cached("achievements", "catalog", 300, () =>
+      db.achievement.findMany({
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          description: true,
+          iconUrl: true,
+          xpReward: true,
+          coinReward: true,
+          secret: true,
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+    ),
+    db.userAchievement.findMany({
+      where: { userId: user.id },
+      select: { achievementId: true, unlockedAt: true },
+    }),
+  ]);
 
-  return rows
+  const unlockedAtById = new Map(
+    unlocks.map((row) => [row.achievementId, row.unlockedAt]),
+  );
+
+  return catalog
     .map((row) => {
-      const unlockedAt = row.unlockedBy[0]?.unlockedAt ?? null;
+      const unlockedAt = unlockedAtById.get(row.id) ?? null;
 
       return {
         id: row.id,
@@ -117,8 +137,24 @@ export async function listAchievements(user: User, unlockedOnly = false) {
 }
 
 export async function listTitles(user: User) {
+  // Same split as the achievement catalog: the titles themselves are global
+  // and cacheable, ownership and affordability are computed per caller.
   const [titles, owned] = await Promise.all([
-    db.title.findMany({ orderBy: [{ price: "asc" }, { code: "asc" }] }),
+    cached("titles", "catalog", 300, () =>
+      db.title.findMany({
+        select: {
+          id: true,
+          code: true,
+          label: true,
+          description: true,
+          price: true,
+          rarity: true,
+          requiredLevel: true,
+          isPurchasable: true,
+        },
+        orderBy: [{ price: "asc" }, { code: "asc" }],
+      }),
+    ),
     db.userTitle.findMany({
       where: { userId: user.id },
       select: { titleId: true },
@@ -186,6 +222,9 @@ export async function equipTitle(user: User, titleId: string | null) {
     where: { id: user.id },
     data: { equippedTitleId: titleId },
   });
+
+  // The equipped title's label is displayed on leaderboard rows.
+  await invalidateCache("leaderboard");
 
   return getProfile(user);
 }
@@ -353,40 +392,60 @@ export async function getLeaderboard(input: {
   page: number;
   limit: number;
 }) {
-  // Every sort ends on `id` so tied players fall in a fixed order. Without a
-  // unique terminal key Postgres may order ties differently between the page-N
-  // and page-N+1 queries, so a tied player could show up on both pages or on
-  // neither, and `rank` (skip + index) would disagree run to run.
-  const orderBy: Prisma.UserOrderByWithRelationInput[] =
-    input.sort === "level"
-      ? [{ level: "desc" }, { experience: "desc" }, { id: "asc" }]
-      : input.sort === "wins"
-        ? [{ stats: { wins: "desc" } }, { id: "asc" }]
-        : [{ stats: { rating: "desc" } }, { id: "asc" }];
+  // The board is identical for every viewer except the `you` flag, so the
+  // cached value is the viewer-independent page and `you` is stamped on per
+  // request. Invalidated wherever a leaderboard-visible fact changes (game
+  // settlement, equipping a title, a new user); the 60s TTL is the staleness
+  // ceiling if a bump is ever lost.
+  const { entries, total } = await cached(
+    "leaderboard",
+    `${input.sort}:${input.page}:${input.limit}`,
+    60,
+    async () => {
+      // Every sort ends on `id` so tied players fall in a fixed order. Without
+      // a unique terminal key Postgres may order ties differently between the
+      // page-N and page-N+1 queries, so a tied player could show up on both
+      // pages or on neither, and `rank` (skip + index) would disagree run to
+      // run.
+      const orderBy: Prisma.UserOrderByWithRelationInput[] =
+        input.sort === "level"
+          ? [{ level: "desc" }, { experience: "desc" }, { id: "asc" }]
+          : input.sort === "wins"
+            ? [{ stats: { wins: "desc" } }, { id: "asc" }]
+            : [{ stats: { rating: "desc" } }, { id: "asc" }];
 
-  const skip = (input.page - 1) * input.limit;
+      const skip = (input.page - 1) * input.limit;
 
-  const [rows, total] = await Promise.all([
-    db.user.findMany({
-      include: { stats: true, equippedTitle: true },
-      orderBy,
-      skip,
-      take: input.limit,
-    }),
-    db.user.count(),
-  ]);
+      const [rows, total] = await Promise.all([
+        db.user.findMany({
+          include: { stats: true, equippedTitle: true },
+          orderBy,
+          skip,
+          take: input.limit,
+        }),
+        db.user.count(),
+      ]);
+
+      return {
+        entries: rows.map((row, index) => ({
+          rank: skip + index + 1,
+          userId: row.id,
+          username: row.username,
+          level: row.level,
+          experience: row.experience,
+          rating: row.stats?.rating ?? 0,
+          wins: row.stats?.wins ?? 0,
+          title: row.equippedTitle?.label ?? null,
+        })),
+        total,
+      };
+    },
+  );
 
   return {
-    entries: rows.map((row, index) => ({
-      rank: skip + index + 1,
-      userId: row.id,
-      username: row.username,
-      level: row.level,
-      experience: row.experience,
-      rating: row.stats?.rating ?? 0,
-      wins: row.stats?.wins ?? 0,
-      title: row.equippedTitle?.label ?? null,
-      you: row.id === input.user.id,
+    entries: entries.map((entry) => ({
+      ...entry,
+      you: entry.userId === input.user.id,
     })),
     total,
     page: input.page,

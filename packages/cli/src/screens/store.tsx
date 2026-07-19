@@ -9,14 +9,11 @@ import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 import type { UITheme } from "../theme";
+import { errorMessage } from "../lib/utils";
 
 const WIDTH = 66;
 /** Rows in the viewport. Sized so the list plus its chrome fits 80x24. */
 const VISIBLE = 9;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 const RARITY_LABELS: Record<Title["rarity"], string> = {
   COMMON: "Common",

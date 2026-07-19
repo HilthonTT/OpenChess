@@ -47,6 +47,35 @@ export async function createCustomerPortalUrl(customerExternalId: string) {
   return result.customerPortalUrl;
 }
 
+/**
+ * Whether this customer counts as premium.
+ *
+ * Premium currently means "holds any active Polar subscription": the premium
+ * product does not exist in Polar yet, so there is no product id to pin this
+ * to. Once it is created, narrow the check to
+ * `sub.productId === env.POLAR_PREMIUM_PRODUCT_ID`.
+ *
+ * The external id is our own `User.id` — the same id `createCheckoutUrl` is
+ * called with, which is what links a checkout back to a player.
+ */
+export async function hasActiveSubscription(customerExternalId: string) {
+  try {
+    const customerState = await polar.customers.getStateExternal({
+      externalId: customerExternalId,
+    });
+
+    return customerState.activeSubscriptions.length > 0;
+  } catch (error) {
+    // No Polar customer exists until the first checkout; that is simply "not
+    // premium", not an error.
+    if (hasStatusCode(error) && error.statusCode === 404) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 export async function getAvailableCreditsBalance(customerExternalId: string) {
   try {
     const customerState = await polar.customers.getStateExternal({

@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
+import { errorMessage } from "../lib/utils";
 
 /** Rows per page. Sized so the table plus its chrome fits an 80x24 terminal. */
 const PAGE_SIZE = 15;
@@ -22,10 +23,6 @@ const SORT_LABELS: Record<LeaderboardSort, string> = {
   level: "Level",
   wins: "Wins",
 };
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 type Data = { entries: LeaderboardEntry[]; total: number };
 
@@ -259,20 +256,16 @@ function fit(value: string, width: number): string {
     : value.padEnd(width);
 }
 
-function Row({
-  entry,
-  dimmed,
-}: {
-  entry: LeaderboardEntry;
-  dimmed: boolean;
-}) {
+function Row({ entry, dimmed }: { entry: LeaderboardEntry; dimmed: boolean }) {
   const theme = useUITheme();
 
   // Your own row is highlighted so it stays findable while paging — it is the
   // one row anyone is actually looking for.
   const fg = dimmed ? theme.faint : entry.you ? theme.cream : theme.text;
   const numbers = dimmed ? theme.faint : theme.dim;
-  const name = entry.title ? `${entry.title} ${entry.username}` : entry.username;
+  const name = entry.title
+    ? `${entry.title} ${entry.username}`
+    : entry.username;
 
   return (
     <text bg={entry.you ? theme.selectionBg : undefined}>

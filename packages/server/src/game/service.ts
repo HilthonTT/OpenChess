@@ -32,6 +32,7 @@ import {
 } from "@openchess/shared";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
+import { invalidateCache } from "../lib/cache";
 import { throwProblem } from "../lib/problem-details";
 import { satisfiedCodes } from "./achievements";
 import {
@@ -516,7 +517,7 @@ export async function playMove(input: {
   promotion?: PromotionPiece;
   ply: number;
 }): Promise<MoveResult> {
-  return serializable(async (tx) => {
+  const result = await serializable(async (tx) => {
     const {
       row,
       game: loaded,
@@ -616,13 +617,23 @@ export async function playMove(input: {
 
     return { yourMove, aiMove, state: view(updated, game, color, null) };
   });
+
+  // After the commit, never inside it: a bump inside the transaction could be
+  // followed by another request re-filling the cache from a pre-commit read.
+  // Null rewards means either the game is still going or a concurrent settle
+  // won the race — and the winner does its own invalidating.
+  if (result.state.rewards !== null) {
+    await invalidateCache("leaderboard");
+  }
+
+  return result;
 }
 
 export async function resignGame(
   gameId: string,
   user: User,
 ): Promise<GameView> {
-  return serializable(async (tx) => {
+  const result = await serializable(async (tx) => {
     const { row, game, color } = await loadFor(tx, gameId, user.id);
 
     // Resigning a game that is already over is a no-op, not an error: a client
@@ -642,8 +653,17 @@ export async function resignGame(
     const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
     return view(settled, game, color, rewards);
   });
+
+  // A resignation is a loss: rating and record moved, so the board is stale.
+  if (result.rewards !== null) {
+    await invalidateCache("leaderboard");
+  }
+
+  return result;
 }
 
+// No leaderboard invalidation here: an abort settles the row but pays nothing
+// and touches no stat the leaderboard shows.
 export async function abortGame(gameId: string, user: User): Promise<GameView> {
   return serializable(async (tx) => {
     const { row, game, color } = await loadFor(tx, gameId, user.id);

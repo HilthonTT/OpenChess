@@ -63,8 +63,27 @@ const EnvSchema = z
     POLAR_PRODUCT_ID: z.string().min(1),
     POLAR_CREDITS_METER_ID: z.string().min(1),
     POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
+    // Optional pair backing the read cache. Absent, the server simply runs
+    // uncached — a slower server, not a broken one.
+    UPSTASH_REDIS_REST_URL: z.url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
   })
   .superRefine((input, ctx) => {
+    // Half an Upstash pair is a misconfiguration, not a disabled cache: fail
+    // the boot rather than surface it as a failed request later.
+    if (!!input.UPSTASH_REDIS_REST_URL !== !!input.UPSTASH_REDIS_REST_TOKEN) {
+      ctx.addIssue({
+        code: "custom",
+        path: [
+          input.UPSTASH_REDIS_REST_URL
+            ? "UPSTASH_REDIS_REST_TOKEN"
+            : "UPSTASH_REDIS_REST_URL",
+        ],
+        message:
+          "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together",
+      });
+    }
+
     if (input.NODE_ENV !== "production") {
       return;
     }

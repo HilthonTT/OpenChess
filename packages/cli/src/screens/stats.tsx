@@ -11,16 +11,13 @@ import {
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
+import { errorMessage } from "../lib/utils";
 
 const WIDTH = 52;
 /** Label column width; values line up in a second column. */
 const LABEL_W = 14;
 /** Cells in the XP progress bar. */
 const BAR_W = 20;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 type Data = { profile: Profile; stats: PlayerStats };
 

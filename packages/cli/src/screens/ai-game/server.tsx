@@ -16,7 +16,12 @@ import {
   squareAt,
   toAlgebraic,
 } from "@openchess/shared";
-import type { Color, Difficulty, Game, PromotionPiece } from "@openchess/shared";
+import type {
+  Color,
+  Difficulty,
+  Game,
+  PromotionPiece,
+} from "@openchess/shared";
 import { Board } from "../../components/board";
 import { GameScreen } from "../../components/game-screen";
 import {
@@ -47,10 +52,7 @@ import { useUITheme } from "../../providers/theme";
 import { useToast } from "../../providers/toast";
 import { DIFFICULTY_LABELS, Setup, clamp, describeAiStatus } from "./setup";
 import { LocalAIGame } from "./local";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { errorMessage } from "../../lib/utils";
 
 /** The board as the server tells it, rebuilt move by move from its SAN history. */
 function replayHistory(history: string[]): Game {
@@ -164,7 +166,10 @@ function Waiting({ text }: { text: string }) {
   const theme = useUITheme();
 
   return (
-    <GameScreen title="Play vs AI" subtitle="Test your skill against the engine">
+    <GameScreen
+      title="Play vs AI"
+      subtitle="Test your skill against the engine"
+    >
       <text fg={theme.dim}>{text}</text>
     </GameScreen>
   );
@@ -196,13 +201,16 @@ function ErrorScreen({
   });
 
   return (
-    <GameScreen title="Play vs AI" subtitle="Test your skill against the engine">
+    <GameScreen
+      title="Play vs AI"
+      subtitle="Test your skill against the engine"
+    >
       <box flexDirection="column" alignItems="center" gap={1}>
         <text fg={theme.gold}>Couldn't reach the server</text>
         <text fg={theme.dim}>{message}</text>
         <text>
           <span fg={theme.cream}>r</span>
-          <span fg={theme.faint}> retry  </span>
+          <span fg={theme.faint}> retry </span>
           <span fg={theme.cream}>o</span>
           <span fg={theme.faint}> play offline</span>
         </text>
@@ -384,7 +392,17 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
 
     // Not a legal destination: treat it as picking a different piece instead.
     select(cursor);
-  }, [commit, cursor, game, human, over, pending, position.turn, select, selected]);
+  }, [
+    commit,
+    cursor,
+    game,
+    human,
+    over,
+    pending,
+    position.turn,
+    select,
+    selected,
+  ]);
 
   const moveCursor = useCallback(
     (dx: number, dy: number) => {

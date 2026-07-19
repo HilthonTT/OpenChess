@@ -1,5 +1,6 @@
 import open from "open";
 import { saveAuth } from "./auth";
+import { errorMessage } from "./utils";
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -28,10 +29,6 @@ function encodeState(state: OAuthState) {
 // JSON payload carrying the nonce and callback port, nothing appended.
 function decodeState(state: string) {
   return JSON.parse(Buffer.from(state, "base64url").toString()) as OAuthState;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export async function performLogin() {
@@ -137,7 +134,7 @@ export async function performLogin() {
         } catch (err) {
           settled = true;
           reject(err);
-          const message = getErrorMessage(err);
+          const message = errorMessage(err);
           setTimeout(() => server.stop(), 500);
           return new Response(`Authentication failed: ${message}`, {
             status: 400,

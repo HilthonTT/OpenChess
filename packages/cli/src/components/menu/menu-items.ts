@@ -1,3 +1,4 @@
+import { errorMessage } from "../../lib/utils";
 import type { AuthStatus } from "../../providers/auth";
 import type { MenuItem } from "./types";
 
@@ -66,10 +67,6 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
 ];
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * The account row that closes the menu. It tracks the session, so what ENTER

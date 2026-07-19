@@ -1,6 +1,7 @@
 import { Prisma, type User } from "@openchess/database";
 import { db } from "@openchess/database/client";
 
+import { invalidateCache } from "./cache";
 import { fetchClerkProfile } from "./clerk";
 
 /**
@@ -70,7 +71,7 @@ export async function getOrCreateUser(clerkUserId: string): Promise<User> {
     const username = attempt === 0 ? base : `${base}_${suffix()}`;
 
     try {
-      return await db.user.create({
+      const created = await db.user.create({
         data: {
           clerkUserId,
           username,
@@ -79,6 +80,11 @@ export async function getOrCreateUser(clerkUserId: string): Promise<User> {
           stats: { create: {} },
         },
       });
+
+      // A new row changes the leaderboard's total and its tail pages.
+      await invalidateCache("leaderboard");
+
+      return created;
     } catch (error) {
       // Two concurrent first requests from the same user race here. The loser
       // reads back the winner's row rather than failing the request.

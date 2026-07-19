@@ -1,6 +1,8 @@
 import { db } from "@openchess/database/client";
 import type { Prisma } from "@openchess/database";
 
+import { invalidateCache } from "../lib/cache";
+
 /**
  * Seed the achievement and title catalogs. Run with `bun run db:seed`.
  *
@@ -192,5 +194,11 @@ for (const title of TITLES) {
   });
 }
 console.log(`Seeded ${TITLES.length} titles.`);
+
+// Both catalogs just changed under any running server; drop its cached copies.
+await Promise.all([
+  invalidateCache("achievements"),
+  invalidateCache("titles"),
+]);
 
 await db.$disconnect();
