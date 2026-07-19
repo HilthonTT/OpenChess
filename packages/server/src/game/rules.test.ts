@@ -201,6 +201,19 @@ describe("rewardForPvp", () => {
     expect(reward.coins).toBe(0);
   });
 
+  // A coin-paying draw is a collusion faucet: equal ratings draw for exactly
+  // zero Elo movement, so two accounts could farm repetitions forever.
+  test("a draw pays XP but never coins", () => {
+    const reward = rewardForPvp({
+      result: "DRAW",
+      color: "w",
+      plies: LONG_ENOUGH,
+    });
+
+    expect(reward.xp).toBeGreaterThan(0);
+    expect(reward.coins).toBe(0);
+  });
+
   test("the anti-farm floor applies to PvP too", () => {
     expect(
       rewardForPvp({

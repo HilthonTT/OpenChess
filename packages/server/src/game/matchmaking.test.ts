@@ -77,6 +77,16 @@ describe("pairing lock", () => {
     expect(takePartner("carol", 0)).toBeNull();
   });
 
+  test("a mid-pairing player cannot take a second partner either", () => {
+    heartbeat("bob", 0);
+    heartbeat("carol", 0);
+    takePartner("alice", 0);
+
+    // Alice's game with Bob is still being written when a duplicate poll of
+    // hers comes around again. Carol is free, but Alice is not.
+    expect(takePartner("alice", 0)).toBeNull();
+  });
+
   test("completePairing releases both sides", () => {
     heartbeat("bob", 0);
     takePartner("alice", 0);

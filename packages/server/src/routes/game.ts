@@ -105,7 +105,7 @@ const queueLeave = createRoute({
   path: "/pvp/queue",
   summary: "Stop searching for a match",
   description:
-    "Leaves the matchmaking queue. Safe to call when not in it; an existing game is unaffected.",
+    "Leaves the matchmaking queue. Safe to call when not in it; an existing game is unaffected. `left` is false when a match was already being made at that instant — the game will exist, and can be aborted before its first move.",
   responses: {
     [HttpStatusCodes.OK]: jsonContent(
       z.object({ left: z.boolean() }),
@@ -236,9 +236,9 @@ const router = base
     return c.json(result, HttpStatusCodes.OK);
   })
   .openapi(queueLeave, async (c) => {
-    leavePvpQueue(c.get("user"));
+    const left = leavePvpQueue(c.get("user"));
 
-    return c.json({ left: true }, HttpStatusCodes.OK);
+    return c.json({ left }, HttpStatusCodes.OK);
   })
   .openapi(list, async (c) => {
     const { cursor, limit, result } = c.req.valid("query");

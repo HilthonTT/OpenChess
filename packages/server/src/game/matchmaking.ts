@@ -61,6 +61,14 @@ export function takePartner(
   userId: string,
   now: number = Date.now(),
 ): string | null {
+  // A caller already mid-pairing must not open a second one. The service
+  // checks `isPairing` too, but that check goes stale across an await; this
+  // one is atomic with the take, so two overlapping polls from the same
+  // player (a second device, a retried request) cannot both pair.
+  if (pairing.has(userId)) {
+    return null;
+  }
+
   for (const entry of queue.values()) {
     if (now - entry.lastSeenAt > QUEUE_STALE_MS) {
       queue.delete(entry.userId);

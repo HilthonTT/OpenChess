@@ -186,13 +186,17 @@ export function rewardFor(input: {
  * PvP pays a flat rate a notch above a hard bot: a human opponent is the
  * hardest difficulty there is, and there is no slider to scale by.
  *
- * The same anti-farm floor applies, though the economics differ: two colluding
- * accounts can trade wins, so the real guard is that a win here also moves Elo,
- * and Elo traded back and forth converges to nothing.
+ * Coins are for wins only. A draw that paid coins would be a faucet: two
+ * colluding accounts shuffling knights to a repetition past the ply floor
+ * would bank coins on *both* sides forever, with their ratings pinned equal —
+ * a draw between equals moves Elo by exactly zero. Win-trading past the floor
+ * still pays one side per game; that residual risk is accepted (it stamps a
+ * loss on someone's record every game and needs no more counterweight than
+ * the AI table's), not pretended away.
  */
 const PVP_REWARD: Record<Outcome, Reward> = {
   win: { xp: 70, coins: 45 },
-  draw: { xp: 25, coins: 15 },
+  draw: { xp: 25, coins: 0 },
   // XP only, no coins — the same resign-farm logic as the AI table.
   loss: { xp: 10, coins: 0 },
 };

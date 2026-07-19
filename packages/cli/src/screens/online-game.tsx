@@ -158,7 +158,11 @@ function Searching({ onMatched }: { onMatched: (game: ServerGame) => void }) {
         }
       }
 
-      timer = setTimeout(() => void poll(), QUEUE_POLL_MS);
+      // Guarded so a poll that was in flight at unmount cannot reschedule the
+      // loop — an undead loop would quietly re-enqueue us from the home screen.
+      if (!cancelled) {
+        timer = setTimeout(() => void poll(), QUEUE_POLL_MS);
+      }
     };
 
     void poll();
@@ -277,9 +281,18 @@ function OnlineMatch({
       return;
     }
 
+    // Clearing the interval does not cancel a fetch already in flight, and a
+    // stale response landing after our own move resolves would overwrite the
+    // settled state — GET never carries the rewards breakdown — so every
+    // response is checked against this run's flag before it may apply.
+    let cancelled = false;
+
     const timer = setInterval(() => {
       fetchGame(server.id)
         .then((state) => {
+          if (cancelled) {
+            return;
+          }
           if (state.ply !== server.ply || state.result !== server.result) {
             apply(state);
           }
@@ -289,7 +302,10 @@ function OnlineMatch({
         });
     }, GAME_POLL_MS);
 
-    return () => clearInterval(timer);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [apply, over, pending, server.id, server.ply, server.result]);
 
   /** Refetch and accept whatever the server says; our picture was stale. */

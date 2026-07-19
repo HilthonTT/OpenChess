@@ -447,6 +447,12 @@ async function settle(
     return null;
   }
 
+  // Re-read the player inside the transaction, the way the purchase path does:
+  // the `user` on the request was loaded by middleware before it, and a
+  // concurrent purchase or payout may have moved coins or XP since. Writing
+  // absolute values computed from that stale read would silently undo them.
+  const fresh = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
+
   const stats = await tx.userStats.findUniqueOrThrow({
     where: { userId: user.id },
   });
@@ -455,12 +461,12 @@ async function settle(
 
   // An abort is settled but never paid: no stats, no XP, no coins.
   if (outcome === null) {
-    return nothingEarned(user, stats.rating);
+    return nothingEarned(fresh, stats.rating);
   }
 
   return payoutPlayer(tx, {
     gameId: row.id,
-    user,
+    user: fresh,
     stats,
     outcome,
     newRating: ratingAfter(stats.rating, outcome, difficulty),
@@ -508,10 +514,9 @@ async function settlePvp(
       continue;
     }
 
-    const user =
-      side.userId === mover.id
-        ? mover
-        : await tx.user.findUnique({ where: { id: side.userId } });
+    // Both players re-read inside the transaction — including the mover, whose
+    // request-scoped row predates it. See the same re-read in `settle`.
+    const user = await tx.user.findUnique({ where: { id: side.userId } });
 
     if (!user) {
       continue;
@@ -779,15 +784,59 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
 
     const userIsWhite = Math.random() < 0.5;
 
-    const row = await db.game.create({
-      data: {
-        mode: "PVP",
-        whitePlayerId: userIsWhite ? user.id : partner.id,
-        blackPlayerId: userIsWhite ? partner.id : user.id,
-        moves: [],
-        currentFen: toFen(createGame().position),
-      },
-    });
+    // The no-live-game check at the top of this poll is stale by now — a
+    // delayed duplicate poll may have paired one of us meanwhile. Re-check and
+    // create atomically, serializably, so two racing creates collide instead
+    // of both landing; the loser reports "waiting" and its next poll resumes
+    // whatever game exists.
+    let row: GameRow | null = null;
+    try {
+      row = await db.$transaction(
+        async (tx) => {
+          const clash = await tx.game.findFirst({
+            where: {
+              mode: "PVP",
+              endedAt: null,
+              OR: [
+                { whitePlayerId: { in: [user.id, partner.id] } },
+                { blackPlayerId: { in: [user.id, partner.id] } },
+              ],
+            },
+          });
+
+          if (clash) {
+            return null;
+          }
+
+          return tx.game.create({
+            data: {
+              mode: "PVP",
+              whitePlayerId: userIsWhite ? user.id : partner.id,
+              blackPlayerId: userIsWhite ? partner.id : user.id,
+              moves: [],
+              currentFen: toFen(createGame().position),
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === SERIALIZATION_FAILURE
+      ) {
+        row = null;
+      } else {
+        throw error;
+      }
+    }
+
+    if (row === null) {
+      // One of us already has a live game. Whoever it is resumes it on their
+      // next poll; if it isn't us, the heartbeat puts us back in line.
+      matchmaking.heartbeat(user.id);
+      return { status: "waiting", game: null };
+    }
 
     return {
       status: "matched",
@@ -802,9 +851,16 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
   }
 }
 
-/** Stop searching. Idempotent, so a retry or a double-escape costs nothing. */
-export function leavePvpQueue(user: User): void {
+/**
+ * Stop searching. Idempotent, so a retry or a double-escape costs nothing.
+ *
+ * Returns false when a pairing for this player is already in flight: the queue
+ * entry is gone either way, but a game is about to exist, and claiming "left"
+ * would be a lie. The unwanted game can be aborted before its first move.
+ */
+export function leavePvpQueue(user: User): boolean {
   matchmaking.leave(user.id);
+  return !matchmaking.isPairing(user.id);
 }
 
 export async function getGame(gameId: string, user: User): Promise<GameView> {
