@@ -73,6 +73,35 @@ export async function createAiGame(input: {
   return response.json();
 }
 
+export type QueueResult = InferResponseType<
+  typeof apiClient.games.pvp.queue.$post,
+  200
+>;
+
+/**
+ * One poll of the matchmaking queue. Each call doubles as the heartbeat that
+ * keeps us eligible for pairing, so the caller is expected to keep calling
+ * until it answers `matched`.
+ */
+export async function joinPvpQueue(): Promise<QueueResult> {
+  const response = await apiClient.games.pvp.queue.$post();
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+/** Best-effort: if this never lands, the queue forgets us by timeout anyway. */
+export async function leavePvpQueue(): Promise<void> {
+  try {
+    await apiClient.games.pvp.queue.$delete();
+  } catch {
+    // Nothing to do — see above.
+  }
+}
+
 export async function fetchGame(id: string): Promise<ServerGame> {
   const response = await byId.$get({ param: { id } });
 

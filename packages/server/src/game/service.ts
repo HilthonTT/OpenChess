@@ -4,6 +4,7 @@ import {
   type Game as GameRow,
   type GameResult,
   type User,
+  type UserStats,
 } from "@openchess/database";
 import { db } from "@openchess/database/client";
 import {
@@ -35,14 +36,20 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import { invalidateCache } from "../lib/cache";
 import { throwProblem } from "../lib/problem-details";
 import { satisfiedCodes } from "./achievements";
+import * as matchmaking from "./matchmaking";
 import {
   levelFor,
   outcomeFor,
+  ratingAfter,
+  ratingAgainst,
   resultFor,
   resultForResignation,
   rewardFor,
+  rewardForPvp,
   statsAfter,
   toEngineDifficulty,
+  type Outcome,
+  type Reward,
 } from "./rules";
 
 /**
@@ -85,6 +92,8 @@ export type GameView = {
   id: string;
   mode: GameRow["mode"];
   difficulty: Difficulty | null;
+  /** The other human in a PvP game; null in an AI game. */
+  opponent: { username: string } | null;
   yourColor: Color;
   fen: string;
   turn: Color;
@@ -151,6 +160,7 @@ function view(
   game: Game,
   color: Color,
   rewards: RewardView | null,
+  opponent: { username: string } | null = null,
 ): GameView {
   const live = !isGameOver(game.status) && row.endedAt === null;
   const captured = capturedPieces(game);
@@ -159,6 +169,7 @@ function view(
     id: row.id,
     mode: row.mode,
     difficulty: row.difficulty,
+    opponent,
     yourColor: color,
     fen: toFen(game.position),
     turn: game.position.turn,
@@ -223,80 +234,101 @@ function pgnFor(
   });
 }
 
-/**
- * Finish a game and pay it out, in one transaction.
- *
- * The first write is a compare-and-set on `rewardsGranted`: if it updates no
- * rows, someone else already settled this game — a retried request, a resign
- * racing a checkmate — and we return null rather than paying twice. Everything
- * after it is safe precisely because that write claimed the game.
- */
-async function settle(
-  tx: Prisma.TransactionClient,
-  input: {
-    row: GameRow;
-    game: Game;
-    user: User;
-    color: Color;
-    result: GameResult;
-  },
-): Promise<RewardView | null> {
-  const { row, game, user, color, result } = input;
+function pvpPgnFor(
+  game: Game,
+  row: GameRow,
+  result: GameResult,
+  white: string,
+  black: string,
+): string {
+  const date = row.startedAt.toISOString().slice(0, 10).replace(/-/g, ".");
 
-  const difficulty = row.difficulty ?? "MEDIUM";
-  const plies = game.history.length;
-  const finalFen = toFen(game.position);
+  return toPgn(game, {
+    result: PGN_RESULT[result],
+    tags: {
+      event: "OpenChess online game",
+      site: "OpenChess",
+      date,
+      round: "-",
+      white,
+      black,
+    },
+  });
+}
+
+/** A settled game that paid this player nothing: an abort, from either side. */
+function nothingEarned(user: User, rating: number): RewardView {
+  return {
+    xp: 0,
+    coins: 0,
+    levelBefore: user.level,
+    levelAfter: user.level,
+    ratingBefore: rating,
+    ratingAfter: rating,
+    unlocked: [],
+  };
+}
+
+/**
+ * The compare-and-set that ends a game: if it updates no rows, someone else
+ * already settled this one — a retried request, a resign racing a checkmate —
+ * and the caller must not pay anyone. Everything downstream of a `true` is safe
+ * precisely because this write claimed the game.
+ */
+async function claimGame(
+  tx: Prisma.TransactionClient,
+  input: { row: GameRow; game: Game; result: GameResult; pgn: string },
+): Promise<boolean> {
+  const finalFen = toFen(input.game.position);
 
   const claimed = await tx.game.updateMany({
-    where: { id: row.id, rewardsGranted: false },
+    where: { id: input.row.id, rewardsGranted: false },
     data: {
       rewardsGranted: true,
-      result,
-      pgn: pgnFor(game, row, result, user.username, color),
+      result: input.result,
+      pgn: input.pgn,
       finalFen,
       currentFen: finalFen,
-      moves: gameMoves(game),
+      moves: gameMoves(input.game),
       endedAt: new Date(),
     },
   });
 
-  // Lost the race. The winner has already paid this game out.
-  if (claimed.count === 0) {
-    return null;
-  }
+  return claimed.count > 0;
+}
 
-  const stats = await tx.userStats.findUniqueOrThrow({
-    where: { userId: user.id },
-  });
+/**
+ * Pay one player for one settled game: stats, achievements, XP, coins, ledger.
+ * Runs only after `claimGame` succeeded, so exactly once per game per player.
+ */
+async function payoutPlayer(
+  tx: Prisma.TransactionClient,
+  input: {
+    gameId: string;
+    user: User;
+    /** The player's stats row as it stood *before* this game. */
+    stats: UserStats;
+    outcome: Outcome;
+    newRating: number;
+    base: Reward;
+    difficulty: Difficulty | null;
+    plies: number;
+    byCheckmate: boolean;
+  },
+): Promise<RewardView> {
+  const { user, stats, outcome, base } = input;
 
-  const outcome = outcomeFor(result, color);
-
-  // An abort is settled but never paid: no stats, no XP, no coins.
-  if (outcome === null) {
-    return {
-      xp: 0,
-      coins: 0,
-      levelBefore: user.level,
-      levelAfter: user.level,
-      ratingBefore: stats.rating,
-      ratingAfter: stats.rating,
-      unlocked: [],
-    };
-  }
-
-  const after = statsAfter(stats, outcome, difficulty);
+  const after = statsAfter(stats, outcome, input.newRating);
   await tx.userStats.update({ where: { userId: user.id }, data: after });
-
-  const base = rewardFor({ result, color, difficulty, plies });
 
   // Unlock only achievements that both have a rule and exist in the table, and
   // that this player does not already hold.
   const codes = satisfiedCodes({
     stats: after,
     outcome,
-    difficulty,
-    plies,
-    byCheckmate: game.status === "checkmate",
+    difficulty: input.difficulty,
+    plies: input.plies,
+    byCheckmate: input.byCheckmate,
   });
 
   const candidates = await tx.achievement.findMany({
@@ -345,7 +377,7 @@ async function settle(
       userId: user.id,
       amount: base.coins,
       reason: "GAME_REWARD",
-      gameId: row.id,
+      gameId: input.gameId,
       balanceAfter: balance,
     });
   }
@@ -356,7 +388,7 @@ async function settle(
       userId: user.id,
       amount: bonusCoins,
       reason: "ACHIEVEMENT",
-      gameId: row.id,
+      gameId: input.gameId,
       balanceAfter: balance,
     });
   }
@@ -387,6 +419,166 @@ async function settle(
   };
 }
 
+/** Finish an AI game and pay its one human, in one transaction. */
+async function settle(
+  tx: Prisma.TransactionClient,
+  input: {
+    row: GameRow;
+    game: Game;
+    user: User;
+    color: Color;
+    result: GameResult;
+  },
+): Promise<RewardView | null> {
+  const { row, game, user, color, result } = input;
+
+  const difficulty = row.difficulty ?? "MEDIUM";
+  const plies = game.history.length;
+
+  const claimed = await claimGame(tx, {
+    row,
+    game,
+    result,
+    pgn: pgnFor(game, row, result, user.username, color),
+  });
+
+  // Lost the race. The winner has already paid this game out.
+  if (!claimed) {
+    return null;
+  }
+
+  const stats = await tx.userStats.findUniqueOrThrow({
+    where: { userId: user.id },
+  });
+
+  const outcome = outcomeFor(result, color);
+
+  // An abort is settled but never paid: no stats, no XP, no coins.
+  if (outcome === null) {
+    return nothingEarned(user, stats.rating);
+  }
+
+  return payoutPlayer(tx, {
+    gameId: row.id,
+    user,
+    stats,
+    outcome,
+    newRating: ratingAfter(stats.rating, outcome, difficulty),
+    base: rewardFor({ result, color, difficulty, plies }),
+    difficulty,
+    plies,
+    byCheckmate: game.status === "checkmate",
+  });
+}
+
+/**
+ * Finish a PvP game and pay both sides, in one transaction.
+ *
+ * Both ratings are read before either is written, so each side's Elo moves
+ * against the rating their opponent actually brought into the game. The return
+ * value is the *mover's* reward view — the opponent's payout happens here too,
+ * but they learn the game is over from their next poll, which reports the
+ * result without a payout breakdown.
+ */
+async function settlePvp(
+  tx: Prisma.TransactionClient,
+  input: {
+    row: GameRow;
+    game: Game;
+    mover: User;
+    result: GameResult;
+  },
+): Promise<RewardView | null> {
+  const { row, game, mover, result } = input;
+
+  const plies = game.history.length;
+  const byCheckmate = game.status === "checkmate";
+
+  // A PVP row is created with both players, but `onDelete: SetNull` means a
+  // deleted account leaves an empty side. A missing side just goes unpaid.
+  const sides: Array<{ color: Color; userId: string | null }> = [
+    { color: "w", userId: row.whitePlayerId },
+    { color: "b", userId: row.blackPlayerId },
+  ];
+
+  const players: Array<{ color: Color; user: User; stats: UserStats }> = [];
+
+  for (const side of sides) {
+    if (side.userId === null) {
+      continue;
+    }
+
+    const user =
+      side.userId === mover.id
+        ? mover
+        : await tx.user.findUnique({ where: { id: side.userId } });
+
+    if (!user) {
+      continue;
+    }
+
+    const stats = await tx.userStats.findUniqueOrThrow({
+      where: { userId: user.id },
+    });
+
+    players.push({ color: side.color, user, stats });
+  }
+
+  const white = players.find((player) => player.color === "w");
+  const black = players.find((player) => player.color === "b");
+
+  const claimed = await claimGame(tx, {
+    row,
+    game,
+    result,
+    pgn: pvpPgnFor(
+      game,
+      row,
+      result,
+      white?.user.username ?? "Anonymous",
+      black?.user.username ?? "Anonymous",
+    ),
+  });
+
+  if (!claimed) {
+    return null;
+  }
+
+  let moverView: RewardView | null = null;
+
+  for (const player of players) {
+    const outcome = outcomeFor(result, player.color);
+    const opponent = player.color === "w" ? black : white;
+
+    const rewards =
+      outcome === null
+        ? nothingEarned(player.user, player.stats.rating)
+        : await payoutPlayer(tx, {
+            gameId: row.id,
+            user: player.user,
+            stats: player.stats,
+            outcome,
+            // Against the opponent's pre-game rating — or the default when the
+            // opponent deleted their account mid-game.
+            newRating: ratingAgainst(
+              player.stats.rating,
+              opponent?.stats.rating ?? 1200,
+              outcome,
+            ),
+            base: rewardForPvp({ result, color: player.color, plies }),
+            difficulty: null,
+            plies,
+            byCheckmate,
+          });
+
+    if (player.user.id === mover.id) {
+      moverView = rewards;
+    }
+  }
+
+  return moverView;
+}
+
 /** Run `work` serializably, mapping Postgres' serialization failure onto a 409. */
 async function serializable<T>(
   work: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -409,12 +601,38 @@ async function serializable<T>(
   }
 }
 
+/** The other human's public face, for the PvP header. */
+async function opponentFor(
+  tx: Prisma.TransactionClient,
+  row: GameRow,
+  userId: string,
+): Promise<{ username: string } | null> {
+  const opponentId =
+    row.whitePlayerId === userId ? row.blackPlayerId : row.whitePlayerId;
+
+  if (!opponentId) {
+    return null;
+  }
+
+  const opponent = await tx.user.findUnique({
+    where: { id: opponentId },
+    select: { username: true },
+  });
+
+  return opponent ? { username: opponent.username } : null;
+}
+
 /** Load a game the caller is actually a player in. */
 async function loadFor(
   tx: Prisma.TransactionClient,
   gameId: string,
   userId: string,
-): Promise<{ row: GameRow; game: Game; color: Color }> {
+): Promise<{
+  row: GameRow;
+  game: Game;
+  color: Color;
+  opponent: { username: string } | null;
+}> {
   const row = await tx.game.findUnique({ where: { id: gameId } });
 
   if (!row) {
@@ -429,7 +647,10 @@ async function loadFor(
     );
   }
 
-  return { row, game: replay(row), color };
+  const opponent =
+    row.mode === "PVP" ? await opponentFor(tx, row, userId) : null;
+
+  return { row, game: replay(row), color, opponent };
 }
 
 /**
@@ -497,9 +718,98 @@ export async function createAiGame(input: {
   return view(row, game, color, null);
 }
 
+export type QueueResult =
+  | { status: "waiting"; game: null }
+  | { status: "matched"; game: GameView };
+
+/**
+ * One poll of the matchmaking queue. The client calls this every couple of
+ * seconds while searching; each call doubles as the heartbeat that keeps the
+ * player eligible for pairing.
+ *
+ * An unfinished PvP game *is* the match — whether our last poll created it,
+ * our partner's did, or it has been waiting since yesterday. One live PvP game
+ * per player, resumed rather than multiplied.
+ */
+export async function joinPvpQueue(user: User): Promise<QueueResult> {
+  const existing = await db.game.findFirst({
+    where: {
+      mode: "PVP",
+      endedAt: null,
+      OR: [{ whitePlayerId: user.id }, { blackPlayerId: user.id }],
+    },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (existing) {
+    matchmaking.leave(user.id);
+
+    // `colorOf` cannot miss: the query matched this user on one side or the
+    // other. The fallback is for the type, not for a case that happens.
+    const color = colorOf(existing, user.id) ?? "w";
+    const opponent = await opponentFor(db, existing, user.id);
+
+    return {
+      status: "matched",
+      game: view(existing, replay(existing), color, null, opponent),
+    };
+  }
+
+  // Our partner's poll is creating the game row right now; our next poll will
+  // find it above. Re-enqueueing here would risk a second pairing.
+  if (matchmaking.isPairing(user.id)) {
+    return { status: "waiting", game: null };
+  }
+
+  const partnerId = matchmaking.takePartner(user.id);
+
+  if (partnerId === null) {
+    matchmaking.heartbeat(user.id);
+    return { status: "waiting", game: null };
+  }
+
+  try {
+    const partner = await db.user.findUnique({ where: { id: partnerId } });
+
+    // Deleted between queueing and pairing. Back to waiting.
+    if (!partner) {
+      matchmaking.heartbeat(user.id);
+      return { status: "waiting", game: null };
+    }
+
+    const userIsWhite = Math.random() < 0.5;
+
+    const row = await db.game.create({
+      data: {
+        mode: "PVP",
+        whitePlayerId: userIsWhite ? user.id : partner.id,
+        blackPlayerId: userIsWhite ? partner.id : user.id,
+        moves: [],
+        currentFen: toFen(createGame().position),
+      },
+    });
+
+    return {
+      status: "matched",
+      game: view(row, replay(row), userIsWhite ? "w" : "b", null, {
+        username: partner.username,
+      }),
+    };
+  } finally {
+    // Whatever the create's fate, release both players from the pairing
+    // marker — on a failure they re-enqueue on their next poll.
+    matchmaking.completePairing(user.id, partnerId);
+  }
+}
+
+/** Stop searching. Idempotent, so a retry or a double-escape costs nothing. */
+export function leavePvpQueue(user: User): void {
+  matchmaking.leave(user.id);
+}
+
 export async function getGame(gameId: string, user: User): Promise<GameView> {
-  const { row, game, color } = await loadFor(db, gameId, user.id);
-  return view(row, game, color, null);
+  const { row, game, color, opponent } = await loadFor(db, gameId, user.id);
+  return view(row, game, color, null, opponent);
 }
 
 export type MoveResult = {
@@ -522,17 +832,11 @@ export async function playMove(input: {
       row,
       game: loaded,
       color,
+      opponent,
     } = await loadFor(tx, input.gameId, input.user.id);
 
     if (row.endedAt !== null) {
       throwProblem(HttpStatusCodes.CONFLICT, "This game is already over");
-    }
-
-    if (row.mode !== "AI" || row.difficulty === null) {
-      throwProblem(
-        HttpStatusCodes.CONFLICT,
-        "Only AI games can be played through this endpoint",
-      );
     }
 
     // The retry guard. Without it, a client that retries a request whose response
@@ -578,12 +882,14 @@ export async function playMove(input: {
     let game = play(loaded, move);
     const yourMove = fromHistory(game.history[game.history.length - 1]!);
 
+    // In a PvP game there is no reply to make here: the opponent's move
+    // arrives on their own request, and our client learns of it by polling.
     let aiMove: MoveView | null = null;
 
-    if (!isGameOver(game.status)) {
+    if (row.mode === "AI" && !isGameOver(game.status)) {
       const reply = findBestMove(
         game.position,
-        toEngineDifficulty(row.difficulty),
+        toEngineDifficulty(row.difficulty ?? "MEDIUM"),
       );
 
       if (reply) {
@@ -596,18 +902,30 @@ export async function playMove(input: {
       const result = resultFor(game.status, game.position.turn);
 
       // `isGameOver` is true and the status is terminal, so a result exists.
-      const rewards = await settle(tx, {
-        row,
-        game,
-        user: input.user,
-        color,
-        result: result!,
-      });
+      const rewards =
+        row.mode === "AI"
+          ? await settle(tx, {
+              row,
+              game,
+              user: input.user,
+              color,
+              result: result!,
+            })
+          : await settlePvp(tx, {
+              row,
+              game,
+              mover: input.user,
+              result: result!,
+            });
 
       const settled = await tx.game.findUniqueOrThrow({
         where: { id: row.id },
       });
-      return { yourMove, aiMove, state: view(settled, game, color, rewards) };
+      return {
+        yourMove,
+        aiMove,
+        state: view(settled, game, color, rewards, opponent),
+      };
     }
 
     const updated = await tx.game.update({
@@ -615,7 +933,11 @@ export async function playMove(input: {
       data: { moves: gameMoves(game), currentFen: toFen(game.position) },
     });
 
-    return { yourMove, aiMove, state: view(updated, game, color, null) };
+    return {
+      yourMove,
+      aiMove,
+      state: view(updated, game, color, null, opponent),
+    };
   });
 
   // After the commit, never inside it: a bump inside the transaction could be
@@ -634,24 +956,22 @@ export async function resignGame(
   user: User,
 ): Promise<GameView> {
   const result = await serializable(async (tx) => {
-    const { row, game, color } = await loadFor(tx, gameId, user.id);
+    const { row, game, color, opponent } = await loadFor(tx, gameId, user.id);
 
     // Resigning a game that is already over is a no-op, not an error: a client
     // retrying a resign it never saw the answer to deserves the same reply.
     if (row.endedAt !== null) {
-      return view(row, game, color, null);
+      return view(row, game, color, null, opponent);
     }
 
-    const rewards = await settle(tx, {
-      row,
-      game,
-      user,
-      color,
-      result: resultForResignation(color),
-    });
+    const resigned = resultForResignation(color);
+    const rewards =
+      row.mode === "AI"
+        ? await settle(tx, { row, game, user, color, result: resigned })
+        : await settlePvp(tx, { row, game, mover: user, result: resigned });
 
     const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
-    return view(settled, game, color, rewards);
+    return view(settled, game, color, rewards, opponent);
   });
 
   // A resignation is a loss: rating and record moved, so the board is stale.
@@ -666,14 +986,16 @@ export async function resignGame(
 // and touches no stat the leaderboard shows.
 export async function abortGame(gameId: string, user: User): Promise<GameView> {
   return serializable(async (tx) => {
-    const { row, game, color } = await loadFor(tx, gameId, user.id);
+    const { row, game, color, opponent } = await loadFor(tx, gameId, user.id);
 
     if (row.endedAt !== null) {
-      return view(row, game, color, null);
+      return view(row, game, color, null, opponent);
     }
 
     // The escape hatch for a misclicked game. Keeping it distinct from a resign
     // is the whole point: an abort must never become a loss on the record.
+    // In a PvP game the same rule doubles as the way out of a match whose
+    // opponent never showed: no move played, no loss recorded, for either side.
     if (row.moves.length > 0) {
       throwProblem(
         HttpStatusCodes.CONFLICT,
@@ -681,16 +1003,13 @@ export async function abortGame(gameId: string, user: User): Promise<GameView> {
       );
     }
 
-    const rewards = await settle(tx, {
-      row,
-      game,
-      user,
-      color,
-      result: "ABORTED",
-    });
+    const rewards =
+      row.mode === "AI"
+        ? await settle(tx, { row, game, user, color, result: "ABORTED" })
+        : await settlePvp(tx, { row, game, mover: user, result: "ABORTED" });
 
     const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
-    return view(settled, game, color, rewards);
+    return view(settled, game, color, rewards, opponent);
   });
 }
 

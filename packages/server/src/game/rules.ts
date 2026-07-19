@@ -46,13 +46,11 @@ export const BOT_RATING: Record<Difficulty, number> = {
 /**
  * Whether beating the bot moves `UserStats.rating`.
  *
- * A judgement call, and the one most worth revisiting. Rating a human against a
- * bot of fixed strength is unusual — most systems keep rating strictly PvP. But
- * PvP does not exist yet, and the schema indexes `rating` for a leaderboard, so
- * leaving it switched off would ship a leaderboard on which nobody ever moves.
- * Set this to `false` the day PvP lands and rating becomes meaningful on its own.
+ * Switched off the day online 1v1 landed, exactly as the original note here
+ * promised: rating is now strictly PvP, the way most systems keep it. The bot
+ * ratings above survive only as the notional strength labels they always were.
  */
-export const AI_GAMES_AFFECT_RATING = true;
+export const AI_GAMES_AFFECT_RATING = false;
 
 /** Standard Elo development coefficient. 24 is a middling, unremarkable choice. */
 const K_FACTOR = 24;
@@ -129,6 +127,22 @@ export function expectedScore(rating: number, opponent: number): number {
 
 const SCORE: Record<Outcome, number> = { win: 1, draw: 0.5, loss: 0 };
 
+/** The player's new rating after `outcome` against an opponent rated `opponent`. */
+export function ratingAgainst(
+  rating: number,
+  opponent: number,
+  outcome: Outcome,
+): number {
+  const expected = expectedScore(rating, opponent);
+  const delta = K_FACTOR * (SCORE[outcome] - expected);
+
+  // Round away from zero so a near-certain win still nudges the rating up by a
+  // point rather than truncating to no change at all.
+  const rounded = delta >= 0 ? Math.ceil(delta) : Math.floor(delta);
+
+  return Math.max(100, rating + rounded);
+}
+
 /**
  * The player's new rating after `outcome` against a bot of `difficulty`.
  * Returns `rating` untouched when AI games are not rated.
@@ -142,14 +156,7 @@ export function ratingAfter(
     return rating;
   }
 
-  const expected = expectedScore(rating, BOT_RATING[difficulty]);
-  const delta = K_FACTOR * (SCORE[outcome] - expected);
-
-  // Round away from zero so a near-certain win still nudges the rating up by a
-  // point rather than truncating to no change at all.
-  const rounded = delta >= 0 ? Math.ceil(delta) : Math.floor(delta);
-
-  return Math.max(100, rating + rounded);
+  return ratingAgainst(rating, BOT_RATING[difficulty], outcome);
 }
 
 /** What a finished game pays its player. */
@@ -175,6 +182,36 @@ export function rewardFor(input: {
   };
 }
 
+/**
+ * PvP pays a flat rate a notch above a hard bot: a human opponent is the
+ * hardest difficulty there is, and there is no slider to scale by.
+ *
+ * The same anti-farm floor applies, though the economics differ: two colluding
+ * accounts can trade wins, so the real guard is that a win here also moves Elo,
+ * and Elo traded back and forth converges to nothing.
+ */
+const PVP_REWARD: Record<Outcome, Reward> = {
+  win: { xp: 70, coins: 45 },
+  draw: { xp: 25, coins: 15 },
+  // XP only, no coins — the same resign-farm logic as the AI table.
+  loss: { xp: 10, coins: 0 },
+};
+
+/** What a finished online 1v1 game pays the player of `color`. */
+export function rewardForPvp(input: {
+  result: GameResult;
+  color: Color;
+  plies: number;
+}): Reward {
+  const outcome = outcomeFor(input.result, input.color);
+
+  if (outcome === null || input.plies < MIN_REWARDED_PLIES) {
+    return NOTHING;
+  }
+
+  return PVP_REWARD[outcome];
+}
+
 export type StatsDelta = {
   wins: number;
   losses: number;
@@ -184,7 +221,13 @@ export type StatsDelta = {
   rating: number;
 };
 
-/** The player's stats row after a game, given the row before it. */
+/**
+ * The player's stats row after a game, given the row before it.
+ *
+ * `rating` is the already-decided new rating — `ratingAfter` for an AI game,
+ * `ratingAgainst` the opponent for a PvP one — because which opponent a rating
+ * moved against is the caller's business, not the record-keeping's.
+ */
 export function statsAfter(
   before: {
     wins: number;
@@ -195,7 +238,7 @@ export function statsAfter(
     rating: number;
   },
   outcome: Outcome,
-  difficulty: Difficulty,
+  rating: number,
 ): StatsDelta {
   // A win extends the streak and a loss breaks it, but a draw does neither:
   // losing a ten-win streak to a threefold repetition would read as a bug to
@@ -213,7 +256,7 @@ export function statsAfter(
     draws: before.draws + (outcome === "draw" ? 1 : 0),
     currentWinStreak,
     topWinStreak: Math.max(before.topWinStreak, currentWinStreak),
-    rating: ratingAfter(before.rating, outcome, difficulty),
+    rating,
   };
 }
 

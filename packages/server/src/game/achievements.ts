@@ -16,7 +16,8 @@ export type UnlockContext = {
   /** The player's stats *after* this game has been counted. */
   stats: StatsDelta;
   outcome: Outcome;
-  difficulty: Difficulty;
+  /** Null for a PvP game — the difficulty achievements are AI-only by nature. */
+  difficulty: Difficulty | null;
   plies: number;
   /** True when the player won by delivering checkmate, rather than on a resign. */
   byCheckmate: boolean;

@@ -70,6 +70,11 @@ export const gameSchema = z
     id: z.string(),
     mode: z.enum(["AI", "PVP"]),
     difficulty: difficultySchema.nullable(),
+    /** The other human in a PvP game; null in an AI game. */
+    opponent: z
+      .object({ username: z.string() })
+      .nullable()
+      .openapi({ example: null }),
     yourColor: colorSchema,
     fen: z.string(),
     turn: colorSchema,
@@ -128,10 +133,23 @@ export const playMoveSchema = z
 export const moveResultSchema = z
   .object({
     yourMove: moveSchema,
+    /** The bot's reply. Always null in a PvP game, or when your move ended it. */
     aiMove: moveSchema.nullable(),
     state: gameSchema,
   })
   .openapi("MoveResult");
+
+/**
+ * One poll of the matchmaking queue. `game` is present exactly when `status`
+ * is `matched`; a discriminated pair kept as one shape so the client's typed
+ * RPC call has a single 200 body to narrow on.
+ */
+export const queueResultSchema = z
+  .object({
+    status: z.enum(["waiting", "matched"]),
+    game: gameSchema.nullable(),
+  })
+  .openapi("QueueResult");
 
 /** A cuid in the `{id}` path segment. Shared by every by-id route. */
 export const idParamsSchema = z.object({

@@ -7,6 +7,8 @@ import {
   abortGame,
   createAiGame,
   getGame,
+  joinPvpQueue,
+  leavePvpQueue,
   listActiveGames,
   listGames,
   playMove,
@@ -26,6 +28,7 @@ import {
   moveResultSchema,
   paginationQuerySchema,
   playMoveSchema,
+  queueResultSchema,
 } from "./schemas";
 import { TAGS } from "./tags";
 
@@ -80,6 +83,38 @@ const active = createRoute({
   },
 });
 
+const queueJoin = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/pvp/queue",
+  summary: "Find an online match",
+  description:
+    "Joins the matchmaking queue, or reports on a search already under way. Poll this every couple of seconds: each call is also the heartbeat that keeps you eligible for pairing, and a player who stops polling drops out of the queue on their own. Returns `matched` with the game as soon as an opponent is found — or immediately, if you already have an unfinished online game to resume.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      queueResultSchema,
+      "Waiting, or matched with a game",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const queueLeave = createRoute({
+  tags: [TAGS.GAMES],
+  method: "delete",
+  path: "/pvp/queue",
+  summary: "Stop searching for a match",
+  description:
+    "Leaves the matchmaking queue. Safe to call when not in it; an existing game is unaffected.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ left: z.boolean() }),
+      "No longer in the queue",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
 const list = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
@@ -122,7 +157,7 @@ const move = createRoute({
   path: "/{id}/moves",
   summary: "Play a move",
   description:
-    "Validates and applies your move, then plays the bot's reply in the same request. `ply` is the ply you last saw: if the board has moved on, the request is rejected as a conflict rather than played a second time.",
+    "Validates and applies your move. In an AI game the bot's reply is played in the same request; in a PvP game `aiMove` is always null and your opponent's move arrives on their own request — poll the game to see it. `ply` is the ply you last saw: if the board has moved on, the request is rejected as a conflict rather than played a second time.",
   request: {
     params: idParamsSchema,
     body: jsonContentRequired(playMoveSchema, "The move to play"),
@@ -150,7 +185,7 @@ const resign = createRoute({
   path: "/{id}/resign",
   summary: "Resign",
   description:
-    "Awards the win to the bot and settles the game. Resigning an already-finished game returns it unchanged rather than failing, so a retry is safe.",
+    "Awards the win to your opponent — bot or human — and settles the game. Resigning an already-finished game returns it unchanged rather than failing, so a retry is safe.",
   request: { params: idParamsSchema },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(gameSchema, "The settled game"),
@@ -194,6 +229,16 @@ const router = base
     const games = await listActiveGames(c.get("user"));
 
     return c.json({ games }, HttpStatusCodes.OK);
+  })
+  .openapi(queueJoin, async (c) => {
+    const result = await joinPvpQueue(c.get("user"));
+
+    return c.json(result, HttpStatusCodes.OK);
+  })
+  .openapi(queueLeave, async (c) => {
+    leavePvpQueue(c.get("user"));
+
+    return c.json({ left: true }, HttpStatusCodes.OK);
   })
   .openapi(list, async (c) => {
     const { cursor, limit, result } = c.req.valid("query");

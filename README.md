@@ -22,7 +22,9 @@ leaderboard, and spend your winnings on titles — all without leaving the
 terminal.
 
 - **Local 1v1** — two players sharing one keyboard, no account needed
-- **Play vs AI** — three difficulties; server games pay out XP, coins and rating
+- **Play vs AI** — three difficulties; server games pay out XP and coins
+- **Online 1v1** — matched against the next player in the queue; the only
+  games that move your Elo rating, and they pay the biggest rewards
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
 - **Stats** — your record, streaks, rating and level progress

@@ -5,9 +5,11 @@ import {
   expectedScore,
   outcomeFor,
   ratingAfter,
+  ratingAgainst,
   resultFor,
   resultForResignation,
   rewardFor,
+  rewardForPvp,
   statsAfter,
 } from "./rules";
 
@@ -131,26 +133,88 @@ describe("expectedScore", () => {
   });
 });
 
-describe("ratingAfter", () => {
-  test("beating a stronger bot gains more than beating a weaker one", () => {
-    const overHard = ratingAfter(1200, "win", "HARD") - 1200;
-    const overEasy = ratingAfter(1200, "win", "EASY") - 1200;
+describe("ratingAgainst", () => {
+  test("beating a stronger opponent gains more than beating a weaker one", () => {
+    const overStronger = ratingAgainst(1200, 1600, "win") - 1200;
+    const overWeaker = ratingAgainst(1200, 800, "win") - 1200;
 
-    expect(overHard).toBeGreaterThan(overEasy);
+    expect(overStronger).toBeGreaterThan(overWeaker);
   });
 
   test("a win never loses rating and a loss never gains it", () => {
-    expect(ratingAfter(1200, "win", "EASY")).toBeGreaterThan(1200);
-    expect(ratingAfter(1200, "loss", "HARD")).toBeLessThan(1200);
+    expect(ratingAgainst(1200, 800, "win")).toBeGreaterThan(1200);
+    expect(ratingAgainst(1200, 1600, "loss")).toBeLessThan(1200);
   });
 
   test("rating has a floor, so a losing streak cannot go negative", () => {
     let rating = 150;
     for (let i = 0; i < 50; i++) {
-      rating = ratingAfter(rating, "loss", "HARD");
+      rating = ratingAgainst(rating, 1600, "loss");
     }
 
     expect(rating).toBeGreaterThanOrEqual(100);
+  });
+
+  test("Elo is zero-sum between evenly matched players, give or take rounding", () => {
+    const winnerGain = ratingAgainst(1200, 1200, "win") - 1200;
+    const loserDrop = 1200 - ratingAgainst(1200, 1200, "loss");
+
+    expect(winnerGain).toBe(loserDrop);
+  });
+});
+
+describe("ratingAfter", () => {
+  // The flag flipped when online 1v1 landed: rating is strictly PvP now.
+  test("an AI game no longer moves rating at all", () => {
+    expect(ratingAfter(1200, "win", "HARD")).toBe(1200);
+    expect(ratingAfter(1200, "loss", "EASY")).toBe(1200);
+    expect(ratingAfter(1200, "draw", "MEDIUM")).toBe(1200);
+  });
+});
+
+describe("rewardForPvp", () => {
+  test("a win pays more than a hard bot does", () => {
+    const bot = rewardFor({
+      result: "WHITE_WIN",
+      color: "w",
+      difficulty: "HARD",
+      plies: LONG_ENOUGH,
+    });
+    const human = rewardForPvp({
+      result: "WHITE_WIN",
+      color: "w",
+      plies: LONG_ENOUGH,
+    });
+
+    expect(human.xp).toBeGreaterThan(bot.xp);
+    expect(human.coins).toBeGreaterThan(bot.coins);
+  });
+
+  test("a loss pays consolation XP but never coins", () => {
+    const reward = rewardForPvp({
+      result: "BLACK_WIN",
+      color: "w",
+      plies: LONG_ENOUGH,
+    });
+
+    expect(reward.xp).toBeGreaterThan(0);
+    expect(reward.coins).toBe(0);
+  });
+
+  test("the anti-farm floor applies to PvP too", () => {
+    expect(
+      rewardForPvp({
+        result: "WHITE_WIN",
+        color: "w",
+        plies: MIN_REWARDED_PLIES - 1,
+      }),
+    ).toEqual({ xp: 0, coins: 0 });
+  });
+
+  test("an abort pays nothing", () => {
+    expect(
+      rewardForPvp({ result: "ABORTED", color: "w", plies: LONG_ENOUGH }),
+    ).toEqual({ xp: 0, coins: 0 });
   });
 });
 
@@ -165,7 +229,7 @@ describe("statsAfter", () => {
   };
 
   test("a win extends the streak and the record", () => {
-    const after = statsAfter(before, "win", "MEDIUM");
+    const after = statsAfter(before, "win", 1212);
 
     expect(after.wins).toBe(5);
     expect(after.currentWinStreak).toBe(5);
@@ -173,7 +237,7 @@ describe("statsAfter", () => {
   });
 
   test("a loss breaks the streak but leaves the best one standing", () => {
-    const after = statsAfter(before, "loss", "MEDIUM");
+    const after = statsAfter(before, "loss", 1188);
 
     expect(after.losses).toBe(2);
     expect(after.currentWinStreak).toBe(0);
@@ -183,10 +247,14 @@ describe("statsAfter", () => {
   // Ported from the streak rule in the original draft: a repetition should not
   // cost a player a streak they never lost.
   test("a draw neither extends nor breaks the streak", () => {
-    const after = statsAfter(before, "draw", "MEDIUM");
+    const after = statsAfter(before, "draw", 1200);
 
     expect(after.draws).toBe(1);
     expect(after.currentWinStreak).toBe(4);
     expect(after.topWinStreak).toBe(4);
+  });
+
+  test("the rating handed in is the rating recorded", () => {
+    expect(statsAfter(before, "win", 1234).rating).toBe(1234);
   });
 });
