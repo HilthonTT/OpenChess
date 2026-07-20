@@ -61,7 +61,6 @@ const EnvSchema = z
     // missing one fails the boot instead of a customer's checkout request.
     POLAR_ACCESS_TOKEN: z.string().min(1),
     POLAR_PRODUCT_ID: z.string().min(1),
-    POLAR_CREDITS_METER_ID: z.string().min(1),
     POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
     // Optional pair backing the read cache. Absent, the server simply runs
     // uncached — a slower server, not a broken one.

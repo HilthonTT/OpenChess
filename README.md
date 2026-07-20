@@ -74,7 +74,6 @@ variables at boot and refuses to start if one is missing or malformed:
 | `SENTRY_TRACES_SAMPLE_RATE` | no       | `1`           | Fraction of requests traced, 0–1                         |
 | `POLAR_ACCESS_TOKEN`        | yes      | —             | From the Polar dashboard for `POLAR_SERVER`'s environment |
 | `POLAR_PRODUCT_ID`          | yes      | —             |                                                          |
-| `POLAR_CREDITS_METER_ID`    | yes      | —             |                                                          |
 | `POLAR_SERVER`              | no       | `sandbox`     | Must be `production` when `NODE_ENV=production`          |
 
 The CLI additionally reads `API_URL` (defaults to `http://localhost:3000`) and

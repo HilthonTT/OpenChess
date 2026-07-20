@@ -12,12 +12,17 @@ import { RuleBorderChars } from "../border";
 interface MenuProps {
   items: MenuItem[];
   onSelect: (item: MenuItem) => void;
+  /** Row to start the cursor on, e.g. the one that sent the user away. */
+  initialSelectedId?: string;
 }
 
-export function Menu({ items, onSelect }: MenuProps) {
+export function Menu({ items, onSelect, initialSelectedId }: MenuProps) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => {
+    const initial = items.findIndex((item) => item.id === initialSelectedId);
+    return initial === -1 ? 0 : initial;
+  });
 
   // The account row can come and go as the session resolves; never leave the
   // cursor pointing past the end of the list.

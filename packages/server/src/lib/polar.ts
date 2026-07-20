@@ -14,7 +14,7 @@ const polar = new Polar({
  * bounce a paying customer to `https://evil.com/billing/success`.
  */
 const SUCCESS_URL = new URL(
-  "/billing/success",
+  "/api/billing/success",
   env.PUBLIC_BASE_URL ?? `http://localhost:${env.PORT}`,
 ).toString();
 
@@ -76,27 +76,3 @@ export async function hasActiveSubscription(customerExternalId: string) {
   }
 }
 
-export async function getAvailableCreditsBalance(customerExternalId: string) {
-  try {
-    const customerState = await polar.customers.getStateExternal({
-      externalId: customerExternalId,
-    });
-
-    const matchingMeters = customerState.activeMeters.filter(
-      (meter) => meter.meterId === env.POLAR_CREDITS_METER_ID,
-    );
-
-    if (matchingMeters.length > 1) {
-      throw new Error("Expected exactly one matching Polar credits meter");
-    }
-
-    const creditsMeter = matchingMeters[0];
-    return creditsMeter?.balance ?? 0;
-  } catch (error) {
-    if (hasStatusCode(error) && error.statusCode === 404) {
-      return 0;
-    }
-
-    throw error;
-  }
-}

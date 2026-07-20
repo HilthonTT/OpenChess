@@ -1,3 +1,4 @@
+import { openUpgradeCheckout } from "../../lib/upgrade";
 import { errorMessage } from "../../lib/utils";
 import type { AuthStatus } from "../../providers/auth";
 import type { MenuItem } from "./types";
@@ -64,6 +65,36 @@ export const MENU_ITEMS: MenuItem[] = [
     description: "Spend coins on titles",
     action(ctx) {
       ctx.navigate("/store");
+    },
+  },
+  {
+    id: "upgrade",
+    title: "Go Premium",
+    icon: "♕",
+    description: "Opens your browser to subscribe",
+    async action(ctx) {
+      // Checkout is tied to the account, so there is nothing to buy for
+      // a visitor the server doesn't know yet.
+      if (ctx.auth.status !== "signed-in") {
+        ctx.toast.show({
+          message: "Sign in first to go premium.",
+          variant: "info",
+        });
+        return;
+      }
+
+      try {
+        await openUpgradeCheckout();
+        ctx.toast.show({
+          message: "Checkout opened in your browser.",
+          variant: "success",
+        });
+      } catch (error) {
+        ctx.toast.show({
+          message: `Couldn't start checkout: ${errorMessage(error)}`,
+          variant: "error",
+        });
+      }
     },
   },
 ];

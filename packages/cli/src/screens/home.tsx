@@ -14,6 +14,11 @@ import { useDialog } from "../providers/dialog";
 import { useTheme } from "../providers/theme";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 
+// Which row last sent the user away. Module state, not React state: the
+// router unmounts Home while a screen is open, so this is what lets the
+// cursor come back to the same row instead of the top.
+let lastSelectedId: string | undefined;
+
 export function Home() {
   const renderer = useRenderer();
   const navigate = useNavigate();
@@ -31,6 +36,7 @@ export function Home() {
 
   const handleSelect = useCallback(
     (menuItem: MenuItem) => {
+      lastSelectedId = menuItem.id;
       void menuItem.action?.({
         exit: () => renderer.destroy(),
         navigate: (path) => void navigate(path),
@@ -100,7 +106,11 @@ export function Home() {
         <AuthStatus />
       </box>
 
-      <Menu items={items} onSelect={handleSelect} />
+      <Menu
+        items={items}
+        onSelect={handleSelect}
+        initialSelectedId={lastSelectedId}
+      />
 
       <box flexDirection="column" alignItems="center">
         <HintBar
