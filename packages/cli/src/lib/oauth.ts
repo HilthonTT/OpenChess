@@ -1,5 +1,5 @@
 import open from "open";
-import { saveAuth } from "./auth";
+import { getAuth, saveAuth } from "./auth";
 import { errorMessage } from "./utils";
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -23,6 +23,29 @@ async function createPkceChallenge(verifier: string) {
 
 function encodeState(state: OAuthState) {
   return toBase64Url(JSON.stringify(state));
+}
+
+/**
+ * What Clerk's token endpoint answers with, for both the code exchange and a
+ * refresh. Persist everything needed to renew the session without a browser:
+ * the rotated refresh token (falling back to the one just spent, for providers
+ * that only rotate sometimes) and an absolute expiry for proactive renewal.
+ */
+function saveTokenResponse(
+  data: { access_token: string; refresh_token?: unknown; expires_in?: unknown },
+  previousRefreshToken?: string,
+) {
+  saveAuth({
+    token: data.access_token,
+    refreshToken:
+      typeof data.refresh_token === "string" && data.refresh_token.length > 0
+        ? data.refresh_token
+        : previousRefreshToken,
+    expiresAt:
+      typeof data.expires_in === "number"
+        ? Date.now() + data.expires_in * 1000
+        : undefined,
+  });
 }
 
 // The state contract, shared with the server's `portFromState`: one base64url
@@ -134,6 +157,8 @@ export async function performLogin() {
 
           const tokenData = (await tokenRes.json()) as {
             access_token?: unknown;
+            refresh_token?: unknown;
+            expires_in?: unknown;
           };
           const token = tokenData.access_token;
 
@@ -142,7 +167,7 @@ export async function performLogin() {
             throw new Error("Clerk returned no access token");
           }
 
-          saveAuth({ token });
+          saveTokenResponse({ ...tokenData, access_token: token });
           resolve({ token });
           setTimeout(() => server.stop(), 500);
           return new Response("Authenticated! You can close this tab.");
@@ -172,7 +197,9 @@ export async function performLogin() {
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("client_id", clientId);
     authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-    authorizeUrl.searchParams.set("scope", "openid email profile");
+    // `offline_access` is what makes Clerk hand back a refresh token, so the
+    // session outlives the ~1-hour access token without another browser trip.
+    authorizeUrl.searchParams.set("scope", "openid email profile offline_access");
     authorizeUrl.searchParams.set("state", state);
     authorizeUrl.searchParams.set("prompt", "login");
     authorizeUrl.searchParams.set("code_challenge", codeChallenge);
@@ -201,4 +228,76 @@ export async function performLogin() {
       }
     }, LOGIN_TIMEOUT_MS);
   });
+}
+
+export type RefreshOutcome =
+  /** A fresh access token is saved and returned. */
+  | { status: "refreshed"; token: string }
+  /** Clerk refused (revoked/expired grant) or there is nothing to refresh with — sign out. */
+  | { status: "rejected" }
+  /** Clerk was unreachable; the stored auth may still be good, keep it. */
+  | { status: "unavailable" };
+
+// Concurrent 401s (a poll burst when the token expires) must share one
+// exchange: Clerk rotates the refresh token on use, so a second concurrent
+// exchange would present the already-spent one and get the session revoked.
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
+
+/** Trade the stored refresh token for a fresh access token. Never throws. */
+export function refreshAccessToken(): Promise<RefreshOutcome> {
+  refreshInFlight ??= doRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<RefreshOutcome> {
+  const clerkFrontendApi = process.env.CLERK_FRONTEND_API;
+  const clientId = process.env.CLERK_OAUTH_CLIENT_ID;
+  const refreshToken = getAuth()?.refreshToken;
+
+  // No grant (a pre-refresh-support session) or no way to use one: the old
+  // 401 behavior — treat it as signed out — is the only honest answer.
+  if (!clerkFrontendApi || !clientId || !refreshToken) {
+    return { status: "rejected" };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${clerkFrontendApi}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: clientId,
+      }),
+    });
+  } catch {
+    return { status: "unavailable" };
+  }
+
+  // 5xx is Clerk's problem, not proof our grant is dead.
+  if (response.status >= 500) {
+    return { status: "unavailable" };
+  }
+
+  if (!response.ok) {
+    return { status: "rejected" };
+  }
+
+  let data: { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown };
+  try {
+    data = (await response.json()) as typeof data;
+  } catch {
+    return { status: "unavailable" };
+  }
+
+  const token = data.access_token;
+  if (typeof token !== "string" || token.length === 0) {
+    return { status: "rejected" };
+  }
+
+  saveTokenResponse({ ...data, access_token: token }, refreshToken);
+  return { status: "refreshed", token };
 }

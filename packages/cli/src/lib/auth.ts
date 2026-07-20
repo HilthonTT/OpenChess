@@ -10,6 +10,10 @@ import { join } from "node:path";
 
 type AuthData = {
   token: string;
+  /** Absent for sessions created before refresh support, or if Clerk omits it. */
+  refreshToken?: string;
+  /** Epoch ms when the access token expires; absent if Clerk gave no expires_in. */
+  expiresAt?: number;
 };
 
 const AUTH_DIR = join(homedir(), ".openchess");
@@ -39,7 +43,20 @@ export function getAuth(): AuthData | null {
   try {
     const data = readFileSync(AUTH_FILE, "utf-8");
     const parsed = JSON.parse(data) as Partial<AuthData>;
-    cached = typeof parsed.token === "string" ? { token: parsed.token } : null;
+    cached =
+      typeof parsed.token === "string"
+        ? {
+            token: parsed.token,
+            refreshToken:
+              typeof parsed.refreshToken === "string"
+                ? parsed.refreshToken
+                : undefined,
+            expiresAt:
+              typeof parsed.expiresAt === "number"
+                ? parsed.expiresAt
+                : undefined,
+          }
+        : null;
   } catch {
     cached = null;
   }
@@ -55,7 +72,7 @@ export function saveAuth(data: AuthData) {
   // Windows ignores POSIX modes entirely — there the file inherits the home
   // directory's ACL, which for a normal single-user setup is still owner-only.
   writeFileSync(AUTH_FILE, JSON.stringify(data), { mode: 0o600 });
-  cached = { token: data.token };
+  cached = { ...data };
 }
 
 export function clearAuth() {
