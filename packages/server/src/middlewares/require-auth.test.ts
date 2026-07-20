@@ -1,25 +1,25 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import type { AuthResult } from "../lib/auth";
 import { onError } from "../lib/problem-details";
-// Type-only: it does not evaluate the module, so it is safe alongside mock.module.
 import type { AuthenticatedEnv } from "./require-auth";
+import { createRequireAuth, requireScopes } from "./require-auth";
 
 /**
  * Stand in for Clerk. The middleware's whole job is mapping an `AuthResult` onto
  * a status and a challenge header, so the verifier is exactly the right seam to
  * fake: it keeps the test off the network, and it reaches failure modes (Clerk
  * down, bad secret key) that a real client could not produce on demand.
+ *
+ * Injected through `createRequireAuth` rather than `mock.module`: that mock is
+ * process-wide and outlives this file, and it used to leave every later test's
+ * unauthenticated requests answered by whatever it was last holding.
  */
 let nextResult: AuthResult;
 
-mock.module("../lib/auth", () => ({
-  authenticateOAuthRequest: async () => nextResult,
-}));
-
-const { requireAuth, requireScopes } = await import("./require-auth");
+const requireAuth = createRequireAuth(async () => nextResult);
 
 function request(path: string) {
   const app = new Hono<AuthenticatedEnv>();

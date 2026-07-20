@@ -17,6 +17,7 @@ import {
 } from "../player/service";
 import {
   achievementSchema,
+  decodeCursor,
   equipTitleSchema,
   paginationQuerySchema,
   profileSchema,
@@ -164,7 +165,7 @@ const router = base
     const page = await listTransactions({
       user: c.get("user"),
       limit,
-      cursor: cursor ? new Date(cursor) : undefined,
+      cursor: cursor ? decodeCursor(cursor) : undefined,
       reason,
     });
 

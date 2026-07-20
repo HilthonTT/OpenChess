@@ -34,7 +34,10 @@ function decodeState(state: string) {
 export async function performLogin() {
   const clerkFrontendApi = process.env.CLERK_FRONTEND_API;
   const clientId = process.env.CLERK_OAUTH_CLIENT_ID;
-  const apiUrl = process.env.API_URL ?? "http://localhost:3000";
+  // Must match api-client.ts: the same env var, the same default, and the
+  // server mounts everything under /api — so the callback route is
+  // `${apiUrl}/auth/callback`, i.e. /api/auth/callback by default.
+  const apiUrl = process.env.API_URL ?? "http://localhost:3000/api";
 
   if (!clerkFrontendApi) {
     throw new Error("CLERK_FRONTEND_API not set");
@@ -103,6 +106,11 @@ export async function performLogin() {
           return new Response("Invalid state", { status: 400 });
         }
 
+        // Claim the flow before the first await: a duplicate redirect landing
+        // mid-exchange must hit the `settled` guard above instead of running a
+        // second exchange, and the timeout must not fire once we've started.
+        settled = true;
+
         try {
           // Exchange authorization code for Clerk tokens
           const redirectUri = `${apiUrl}/auth/callback`;
@@ -124,15 +132,21 @@ export async function performLogin() {
             throw new Error(details || "Failed to exchange authorization code");
           }
 
-          const tokenData = (await tokenRes.json()) as { access_token: string };
+          const tokenData = (await tokenRes.json()) as {
+            access_token?: unknown;
+          };
+          const token = tokenData.access_token;
 
-          settled = true;
-          saveAuth({ token: tokenData.access_token });
-          resolve({ token: tokenData.access_token });
+          // Saving `{}` here would only fail later with a misleading 401.
+          if (typeof token !== "string" || token.length === 0) {
+            throw new Error("Clerk returned no access token");
+          }
+
+          saveAuth({ token });
+          resolve({ token });
           setTimeout(() => server.stop(), 500);
           return new Response("Authenticated! You can close this tab.");
         } catch (err) {
-          settled = true;
           reject(err);
           const message = errorMessage(err);
           setTimeout(() => server.stop(), 500);
@@ -164,7 +178,20 @@ export async function performLogin() {
     authorizeUrl.searchParams.set("code_challenge", codeChallenge);
     authorizeUrl.searchParams.set("code_challenge_method", "S256");
 
-    void open(authorizeUrl.toString());
+    // On a headless box a swallowed rejection would leave the user waiting
+    // out the full timeout for a browser that never opened.
+    open(authorizeUrl.toString()).catch(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      server.stop();
+      reject(
+        new Error(
+          "Couldn't open a browser. Set the BROWSER env var and try again.",
+        ),
+      );
+    });
 
     setTimeout(() => {
       if (!settled) {

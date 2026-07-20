@@ -88,12 +88,18 @@ export type RewardView = {
   unlocked: UnlockView[];
 };
 
+export type OpponentView = {
+  username: string;
+  /** The label of their equipped title, if any. */
+  title: string | null;
+};
+
 export type GameView = {
   id: string;
   mode: GameRow["mode"];
   difficulty: Difficulty | null;
   /** The other human in a PvP game; null in an AI game. */
-  opponent: { username: string } | null;
+  opponent: OpponentView | null;
   yourColor: Color;
   fen: string;
   turn: Color;
@@ -160,7 +166,7 @@ function view(
   game: Game,
   color: Color,
   rewards: RewardView | null,
-  opponent: { username: string } | null = null,
+  opponent: OpponentView | null = null,
 ): GameView {
   const live = !isGameOver(game.status) && row.endedAt === null;
   const captured = capturedPieces(game);
@@ -298,6 +304,16 @@ async function claimGame(
 }
 
 /**
+ * Titles awarded by an achievement rather than sold: unlocking the key grants
+ * the title in the same transaction. Both sides are the seeded stable codes
+ * (`scripts/seed.ts`), never display copy.
+ */
+const TITLE_BY_ACHIEVEMENT: Record<string, string> = {
+  HUNDRED_WINS: "CENTURION",
+  IRON_WALL: "THE_WALL",
+};
+
+/**
  * Pay one player for one settled game: stats, achievements, XP, coins, ledger.
  * Runs only after `claimGame` succeeded, so exactly once per game per player.
  */
@@ -356,6 +372,30 @@ async function payoutPlayer(
       })),
       skipDuplicates: true,
     });
+
+    const titleCodes = unlocked.flatMap((achievement) => {
+      const code = TITLE_BY_ACHIEVEMENT[achievement.code];
+      return code === undefined ? [] : [code];
+    });
+
+    if (titleCodes.length > 0) {
+      const titles = await tx.title.findMany({
+        where: { code: { in: titleCodes } },
+      });
+
+      // `skipDuplicates` rides the same `@@unique([userId, titleId])` the
+      // store leans on: a title somehow already owned is left alone, not an
+      // error that would roll back the whole payout.
+      await tx.userTitle.createMany({
+        data: titles.map((title) => ({
+          userId: user.id,
+          titleId: title.id,
+          // Granted, not bought.
+          pricePaid: 0,
+        })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   const bonusXp = unlocked.reduce((sum, a) => sum + a.xpReward, 0);
@@ -611,7 +651,7 @@ async function opponentFor(
   tx: Prisma.TransactionClient,
   row: GameRow,
   userId: string,
-): Promise<{ username: string } | null> {
+): Promise<OpponentView | null> {
   const opponentId =
     row.whitePlayerId === userId ? row.blackPlayerId : row.whitePlayerId;
 
@@ -621,10 +661,15 @@ async function opponentFor(
 
   const opponent = await tx.user.findUnique({
     where: { id: opponentId },
-    select: { username: true },
+    select: { username: true, equippedTitle: { select: { label: true } } },
   });
 
-  return opponent ? { username: opponent.username } : null;
+  return opponent
+    ? {
+        username: opponent.username,
+        title: opponent.equippedTitle?.label ?? null,
+      }
+    : null;
 }
 
 /** Load a game the caller is actually a player in. */
@@ -636,7 +681,7 @@ async function loadFor(
   row: GameRow;
   game: Game;
   color: Color;
-  opponent: { username: string } | null;
+  opponent: OpponentView | null;
 }> {
   const row = await tx.game.findUnique({ where: { id: gameId } });
 
@@ -774,7 +819,10 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
   }
 
   try {
-    const partner = await db.user.findUnique({ where: { id: partnerId } });
+    const partner = await db.user.findUnique({
+      where: { id: partnerId },
+      include: { equippedTitle: { select: { label: true } } },
+    });
 
     // Deleted between queueing and pairing. Back to waiting.
     if (!partner) {
@@ -842,6 +890,7 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
       status: "matched",
       game: view(row, replay(row), userIsWhite ? "w" : "b", null, {
         username: partner.username,
+        title: partner.equippedTitle?.label ?? null,
       }),
     };
   } finally {
@@ -883,75 +932,99 @@ export async function playMove(input: {
   promotion?: PromotionPiece;
   ply: number;
 }): Promise<MoveResult> {
-  const result = await serializable(async (tx) => {
-    const {
-      row,
-      game: loaded,
-      color,
-      opponent,
-    } = await loadFor(tx, input.gameId, input.user.id);
+  // Everything up to and including the engine's reply runs before the
+  // transaction opens: `findBestMove` is a synchronous minimax that can chew
+  // real time, and running it inside a serializable transaction would spend
+  // the transaction timeout on CPU and widen the conflict window for every
+  // concurrent request. Nothing decided out here is trusted at commit time —
+  // the guards are re-run on the live row inside the transaction.
+  const {
+    row,
+    game: loaded,
+    color,
+    opponent,
+  } = await loadFor(db, input.gameId, input.user.id);
 
-    if (row.endedAt !== null) {
+  if (row.endedAt !== null) {
+    throwProblem(HttpStatusCodes.CONFLICT, "This game is already over");
+  }
+
+  // The retry guard. Without it, a client that retries a request whose response
+  // it never saw would play its move a second time.
+  if (input.ply !== row.moves.length) {
+    throwProblem(
+      HttpStatusCodes.CONFLICT,
+      `The board has moved on: you played from ply ${input.ply}, the game is at ply ${row.moves.length}. Refetch the game.`,
+    );
+  }
+
+  if (loaded.position.turn !== color) {
+    throwProblem(HttpStatusCodes.CONFLICT, "It is not your turn");
+  }
+
+  const from = fromAlgebraic(input.from);
+  const to = fromAlgebraic(input.to);
+
+  if (from === null || to === null) {
+    throwProblem(
+      HttpStatusCodes.UNPROCESSABLE_ENTITY,
+      `Not a square: ${input.from}${input.to}`,
+    );
+  }
+
+  // Catch this before `findLegalMove`, which would otherwise quietly pick the
+  // first matching promotion — always a queen — on the player's behalf.
+  if (needsPromotion(loaded, from, to) && input.promotion === undefined) {
+    throwProblem(
+      HttpStatusCodes.UNPROCESSABLE_ENTITY,
+      "That move promotes a pawn. Say which piece to promote to.",
+    );
+  }
+
+  const move = findLegalMove(loaded, from, to, input.promotion);
+  if (!move) {
+    throwProblem(
+      HttpStatusCodes.UNPROCESSABLE_ENTITY,
+      `Illegal move: ${input.from}${input.to}`,
+    );
+  }
+
+  let game = play(loaded, move);
+  const yourMove = fromHistory(game.history[game.history.length - 1]!);
+
+  // In a PvP game there is no reply to make here: the opponent's move
+  // arrives on their own request, and our client learns of it by polling.
+  let aiMove: MoveView | null = null;
+
+  if (row.mode === "AI" && !isGameOver(game.status)) {
+    const reply = findBestMove(
+      game.position,
+      toEngineDifficulty(row.difficulty ?? "MEDIUM"),
+    );
+
+    if (reply) {
+      game = play(game, reply);
+      aiMove = fromHistory(game.history[game.history.length - 1]!);
+    }
+  }
+
+  const result = await serializable(async (tx) => {
+    // The pre-transaction read is stale by definition. Re-run the
+    // compare-and-set against the live row: a request that landed meanwhile
+    // moved the ply (or ended the game), and this one must conflict rather
+    // than overwrite it. Moves are append-only, so an equal length inside a
+    // serializable transaction means the same prefix this move was computed on.
+    const fresh = await tx.game.findUnique({ where: { id: row.id } });
+
+    if (!fresh || fresh.endedAt !== null) {
       throwProblem(HttpStatusCodes.CONFLICT, "This game is already over");
     }
 
-    // The retry guard. Without it, a client that retries a request whose response
-    // it never saw would play its move a second time.
-    if (input.ply !== row.moves.length) {
+    if (input.ply !== fresh.moves.length) {
       throwProblem(
         HttpStatusCodes.CONFLICT,
-        `The board has moved on: you played from ply ${input.ply}, the game is at ply ${row.moves.length}. Refetch the game.`,
+        `The board has moved on: you played from ply ${input.ply}, the game is at ply ${fresh.moves.length}. Refetch the game.`,
       );
-    }
-
-    if (loaded.position.turn !== color) {
-      throwProblem(HttpStatusCodes.CONFLICT, "It is not your turn");
-    }
-
-    const from = fromAlgebraic(input.from);
-    const to = fromAlgebraic(input.to);
-
-    if (from === null || to === null) {
-      throwProblem(
-        HttpStatusCodes.UNPROCESSABLE_ENTITY,
-        `Not a square: ${input.from}${input.to}`,
-      );
-    }
-
-    // Catch this before `findLegalMove`, which would otherwise quietly pick the
-    // first matching promotion — always a queen — on the player's behalf.
-    if (needsPromotion(loaded, from, to) && input.promotion === undefined) {
-      throwProblem(
-        HttpStatusCodes.UNPROCESSABLE_ENTITY,
-        "That move promotes a pawn. Say which piece to promote to.",
-      );
-    }
-
-    const move = findLegalMove(loaded, from, to, input.promotion);
-    if (!move) {
-      throwProblem(
-        HttpStatusCodes.UNPROCESSABLE_ENTITY,
-        `Illegal move: ${input.from}${input.to}`,
-      );
-    }
-
-    let game = play(loaded, move);
-    const yourMove = fromHistory(game.history[game.history.length - 1]!);
-
-    // In a PvP game there is no reply to make here: the opponent's move
-    // arrives on their own request, and our client learns of it by polling.
-    let aiMove: MoveView | null = null;
-
-    if (row.mode === "AI" && !isGameOver(game.status)) {
-      const reply = findBestMove(
-        game.position,
-        toEngineDifficulty(row.difficulty ?? "MEDIUM"),
-      );
-
-      if (reply) {
-        game = play(game, reply);
-        aiMove = fromHistory(game.history[game.history.length - 1]!);
-      }
     }
 
     if (isGameOver(game.status)) {
@@ -959,16 +1032,16 @@ export async function playMove(input: {
 
       // `isGameOver` is true and the status is terminal, so a result exists.
       const rewards =
-        row.mode === "AI"
+        fresh.mode === "AI"
           ? await settle(tx, {
-              row,
+              row: fresh,
               game,
               user: input.user,
               color,
               result: result!,
             })
           : await settlePvp(tx, {
-              row,
+              row: fresh,
               game,
               mover: input.user,
               result: result!,
@@ -995,6 +1068,16 @@ export async function playMove(input: {
       state: view(updated, game, color, null, opponent),
     };
   });
+
+  // The abandonment clock measures from the last committed move; see
+  // `lastMoveAt`. A settled game no longer needs one.
+  if (row.mode === "PVP") {
+    if (result.state.endedAt === null) {
+      lastMoveAt.set(row.id, Date.now());
+    } else {
+      lastMoveAt.delete(row.id);
+    }
+  }
 
   // After the commit, never inside it: a bump inside the transaction could be
   // followed by another request re-filling the cache from a pre-commit read.
@@ -1030,6 +1113,8 @@ export async function resignGame(
     return view(settled, game, color, rewards, opponent);
   });
 
+  lastMoveAt.delete(gameId);
+
   // A resignation is a loss: rating and record moved, so the board is stale.
   if (result.rewards !== null) {
     await invalidateCache("leaderboard");
@@ -1041,7 +1126,7 @@ export async function resignGame(
 // No leaderboard invalidation here: an abort settles the row but pays nothing
 // and touches no stat the leaderboard shows.
 export async function abortGame(gameId: string, user: User): Promise<GameView> {
-  return serializable(async (tx) => {
+  const result = await serializable(async (tx) => {
     const { row, game, color, opponent } = await loadFor(tx, gameId, user.id);
 
     if (row.endedAt !== null) {
@@ -1052,7 +1137,15 @@ export async function abortGame(gameId: string, user: User): Promise<GameView> {
     // is the whole point: an abort must never become a loss on the record.
     // In a PvP game the same rule doubles as the way out of a match whose
     // opponent never showed: no move played, no loss recorded, for either side.
-    if (row.moves.length > 0) {
+    // What must not have happened is a move by *this* player: when the bot drew
+    // white, its opening move is on the row from birth, and counting it would
+    // make an AI game as black impossible to ever abort.
+    const playerHasMoved =
+      row.mode === "AI" && color === "b"
+        ? row.moves.length > 1
+        : row.moves.length > 0;
+
+    if (playerHasMoved) {
       throwProblem(
         HttpStatusCodes.CONFLICT,
         "This game is under way. Resign it instead of aborting it.",
@@ -1067,6 +1160,109 @@ export async function abortGame(gameId: string, user: User): Promise<GameView> {
     const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
     return view(settled, game, color, rewards, opponent);
   });
+
+  lastMoveAt.delete(gameId);
+
+  return result;
+}
+
+/** How long a PvP opponent may sit on their turn before the win can be claimed. */
+const CLAIM_VICTORY_AFTER_MS = 5 * 60_000;
+
+/**
+ * When each live PvP game last advanced, keyed by game id. The `Game` row
+ * carries no updated-at column, so the abandonment clock runs here — in
+ * memory, single-process by construction like the matchmaking queue. Entries
+ * are written on every committed PvP move, dropped when a game settles, and
+ * lost on a restart, which `lastActivityAt` answers by restarting the clock:
+ * a restart can delay a claim, never award one against an opponent who moved
+ * just before it.
+ */
+const lastMoveAt = new Map<string, number>();
+
+/** The last time `row` demonstrably advanced. */
+function lastActivityAt(row: GameRow): number {
+  const tracked = lastMoveAt.get(row.id);
+  if (tracked !== undefined) {
+    return tracked;
+  }
+
+  // A board with no moves has not advanced since its creation, which the row
+  // does record durably.
+  if (row.moves.length === 0) {
+    return row.startedAt.getTime();
+  }
+
+  const now = Date.now();
+  lastMoveAt.set(row.id, now);
+  return now;
+}
+
+/**
+ * Claim the win in a PvP game whose opponent has walked away.
+ *
+ * The eligibility bar is deliberately high — the opponent must be on the move
+ * and must have let the abandonment clock run out — because a claim settles a
+ * rated loss on someone who never agreed to one. Settlement itself is exactly
+ * a resignation by the absent side, so ratings, payouts and the ledger come
+ * out identical to the opponent having resigned.
+ */
+export async function claimVictory(
+  gameId: string,
+  user: User,
+): Promise<GameView> {
+  const result = await serializable(async (tx) => {
+    const { row, game, color, opponent } = await loadFor(tx, gameId, user.id);
+
+    // Like a resign: claiming a game that is already over returns it as it
+    // stands, so a client retrying a claim it never saw the answer to is safe.
+    if (row.endedAt !== null) {
+      return view(row, game, color, null, opponent);
+    }
+
+    if (row.mode !== "PVP") {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "Only an online game can be claimed. The bot never abandons; resign instead.",
+      );
+    }
+
+    if (game.position.turn === color) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "It is your turn: play a move, or resign.",
+      );
+    }
+
+    const idleMs = Date.now() - lastActivityAt(row);
+    if (idleMs < CLAIM_VICTORY_AFTER_MS) {
+      const wait = Math.ceil((CLAIM_VICTORY_AFTER_MS - idleMs) / 1000);
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        `Your opponent still has ${wait}s to move before the win can be claimed.`,
+      );
+    }
+
+    const absent: Color = color === "w" ? "b" : "w";
+    const rewards = await settlePvp(tx, {
+      row,
+      game,
+      mover: user,
+      result: resultForResignation(absent),
+    });
+
+    const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
+    return view(settled, game, color, rewards, opponent);
+  });
+
+  lastMoveAt.delete(gameId);
+
+  // A claim is a rated win, so the board is stale — same as a resignation.
+  if (result.rewards !== null) {
+    await invalidateCache("leaderboard");
+  }
+
+  return result;
 }
 
 export type GameSummary = {
@@ -1095,31 +1291,49 @@ function summarize(row: GameRow, userId: string): GameSummary {
   };
 }
 
-/** The caller's finished games, newest first, cursor-paginated on `endedAt`. */
+/** The caller's finished games, newest first, cursor-paginated on `(endedAt, id)`. */
 export async function listGames(input: {
   user: User;
   limit: number;
-  cursor?: Date;
+  cursor?: { ts: Date; id: string };
   result?: GameResult;
 }): Promise<{ games: GameSummary[]; nextCursor: string | null }> {
   const rows = await db.game.findMany({
     where: {
       OR: [{ whitePlayerId: input.user.id }, { blackPlayerId: input.user.id }],
-      endedAt: input.cursor ? { not: null, lt: input.cursor } : { not: null },
+      endedAt: { not: null },
       ...(input.result ? { result: input.result } : {}),
+      // Strictly after the cursor row in `(endedAt, id)` order: ties on the
+      // timestamp fall through to the id, so rows that settled in the same
+      // instant are never skipped at a page boundary.
+      ...(input.cursor
+        ? {
+            AND: [
+              {
+                OR: [
+                  { endedAt: { lt: input.cursor.ts } },
+                  { endedAt: input.cursor.ts, id: { lt: input.cursor.id } },
+                ],
+              },
+            ],
+          }
+        : {}),
     },
-    orderBy: { endedAt: "desc" },
+    orderBy: [{ endedAt: "desc" }, { id: "desc" }],
     // One extra row tells us whether another page exists without a second query.
     take: input.limit + 1,
   });
 
   const page = rows.slice(0, input.limit);
-  const next =
-    rows.length > input.limit ? page[page.length - 1]?.endedAt : null;
+  const last = rows.length > input.limit ? page[page.length - 1] : null;
 
   return {
     games: page.map((row) => summarize(row, input.user.id)),
-    nextCursor: next ? next.toISOString() : null,
+    // The `<iso>_<id>` compound `paginationQuerySchema` validates and
+    // `decodeCursor` splits. Opaque to clients, which round-trip it verbatim.
+    nextCursor: last?.endedAt
+      ? `${last.endedAt.toISOString()}_${last.id}`
+      : null,
   };
 }
 

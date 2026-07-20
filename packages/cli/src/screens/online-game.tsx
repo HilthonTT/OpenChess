@@ -31,6 +31,7 @@ import {
 import {
   GameConflictError,
   abortGame,
+  claimVictory,
   fetchGame,
   joinPvpQueue,
   leavePvpQueue,
@@ -53,6 +54,13 @@ const QUEUE_POLL_MS = 2_000;
 
 /** How often a live game checks for the opponent's move or resignation. */
 const GAME_POLL_MS = 2_000;
+
+/**
+ * How long the opponent must sit on their turn before we offer the claim key.
+ * Matches the server's own window; ours starts later (when this client saw the
+ * position), so by the time the offer shows, the server already agrees.
+ */
+const CLAIM_AFTER_MS = 5 * 60_000;
 
 /** The board as the server tells it, rebuilt move by move from its SAN history. */
 function replayHistory(history: string[]): Game {
@@ -211,6 +219,11 @@ function OnlineMatch({
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
   const opponentName = server.opponent?.username ?? "your opponent";
+  // The equipped title is the whole point of buying one; the header is where
+  // it gets shown off. Status lines keep the bare username so they stay short.
+  const opponentDisplay = server.opponent?.title
+    ? `${server.opponent.title} ${opponentName}`
+    : opponentName;
 
   const [cursor, setCursor] = useState(() =>
     squareAt(4, human === "w" ? 1 : 6),
@@ -225,6 +238,8 @@ function OnlineMatch({
   /** A request is on the wire; the board is read-only until it answers. */
   const [pending, setPending] = useState(false);
   const [confirmingResign, setConfirmingResign] = useState(false);
+  /** The opponent has been on the clock long enough to claim the win. */
+  const [claimAvailable, setClaimAvailable] = useState(false);
 
   // The server's history is the game. Replaying it through the same rules code
   // the server runs gives every panel a full local Game to render from.
@@ -307,6 +322,21 @@ function OnlineMatch({
       clearInterval(timer);
     };
   }, [apply, over, pending, server.id, server.ply, server.result]);
+
+  // Arms the claim offer while the opponent sits on their turn. Keyed on ply,
+  // not the turn value: only an actual move resets the clock, the same event
+  // the server measures from.
+  useEffect(() => {
+    setClaimAvailable(false);
+
+    if (over || position.turn === human) {
+      return;
+    }
+
+    const timer = setTimeout(() => setClaimAvailable(true), CLAIM_AFTER_MS);
+
+    return () => clearTimeout(timer);
+  }, [human, over, position.turn, server.ply]);
 
   /** Refetch and accept whatever the server says; our picture was stale. */
   const resync = useCallback(async () => {
@@ -461,6 +491,24 @@ function OnlineMatch({
     }
   }, [apply, server.id, server.ply]);
 
+  /** Take the win from an opponent who walked away. The server is the judge. */
+  const claim = useCallback(async () => {
+    setPending(true);
+    setMessage(null);
+
+    try {
+      apply(await claimVictory(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        // The opponent moved after all, or the server's clock lags ours.
+        await resync();
+      }
+      setMessage(errorMessage(error));
+    } finally {
+      setPending(false);
+    }
+  }, [apply, resync, server.id]);
+
   /** Escape unwinds one step at a time before it gives up the screen. */
   const handleEscape = useCallback(() => {
     if (promotion) {
@@ -545,6 +593,11 @@ function OnlineMatch({
           setConfirmingResign(true);
         }
         break;
+      case "c":
+        if (claimAvailable && !pending && !over) {
+          void claim();
+        }
+        break;
       case "f":
         setFlipped((value) => !value);
         break;
@@ -578,6 +631,10 @@ function OnlineMatch({
         : `You resigned — ${opponentName} wins`;
     }
 
+    if (claimAvailable) {
+      return `${opponentName} has gone quiet — press c to claim the win`;
+    }
+
     return describeOnlineStatus(status, position.turn, human, opponentName);
   };
 
@@ -588,7 +645,7 @@ function OnlineMatch({
 
   return (
     <GameScreen
-      title={`${TITLE} · vs ${opponentName}`}
+      title={`${TITLE} · vs ${opponentDisplay}`}
       width={58}
       onEscape={handleEscape}
       footer={
@@ -599,6 +656,12 @@ function OnlineMatch({
           <span fg={theme.faint}> select </span>
           <span fg={theme.cream}>x</span>
           <span fg={theme.faint}> resign </span>
+          {claimAvailable ? (
+            <>
+              <span fg={theme.cream}>c</span>
+              <span fg={theme.faint}> claim win </span>
+            </>
+          ) : null}
           <span fg={theme.cream}>r</span>
           <span fg={theme.faint}> rematch </span>
           <span fg={theme.cream}>f</span>

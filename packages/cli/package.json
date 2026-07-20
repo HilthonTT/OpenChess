@@ -11,12 +11,12 @@
     "build": "bun build src/index.tsx --outdir dist --target bun"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.3.14",
     "@types/react": "^19.2.17",
     "@openchess/server": "workspace:*"
   },
   "peerDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3 || ^7.0.0"
   },
   "dependencies": {
     "@openchess/shared": "workspace:*",

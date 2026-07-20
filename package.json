@@ -9,7 +9,7 @@
     "dev:server": "bun run --hot packages/server/src/index.ts",
     "test": "bun test",
     "db:seed": "bun run packages/server/src/scripts/seed.ts",
-    "typecheck": "tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p packages/server/tsconfig.json",
+    "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p packages/database/tsconfig.json && tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p packages/server/tsconfig.json",
     "inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
   },
   "devDependencies": {

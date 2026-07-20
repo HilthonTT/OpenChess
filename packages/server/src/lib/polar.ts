@@ -76,3 +76,26 @@ export async function hasActiveSubscription(customerExternalId: string) {
   }
 }
 
+/**
+ * External customer ids (our own `User.id`s) of everyone holding an active
+ * subscription. One paged listing instead of a `getStateExternal` call per
+ * user: the weekly stipend fans out over actual subscribers, and most players
+ * are not subscribers.
+ */
+export async function listActiveSubscriberExternalIds(): Promise<string[]> {
+  const ids = new Set<string>();
+
+  const pages = await polar.subscriptions.list({ active: true, limit: 100 });
+
+  for await (const page of pages) {
+    for (const subscription of page.result.items) {
+      const externalId = subscription.customer.externalId;
+      if (externalId) {
+        ids.add(externalId);
+      }
+    }
+  }
+
+  return [...ids];
+}
+

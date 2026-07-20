@@ -47,9 +47,17 @@ function unauthorized(c: Context, failure: AuthFailure) {
   );
 }
 
-export const requireAuth = createMiddleware<AuthenticatedEnv>(
-  async (c, next) => {
-    const result = await authenticateOAuthRequest(c.req.raw);
+/**
+ * Build the middleware around an injectable verifier. Production uses the
+ * Clerk-backed one; tests hand in a canned `AuthResult` source. This seam is
+ * what lets the suite avoid `mock.module`, whose process-wide replacement
+ * outlives its test file and silently rewires every later import of lib/auth.
+ */
+export function createRequireAuth(
+  verify: typeof authenticateOAuthRequest = authenticateOAuthRequest,
+) {
+  return createMiddleware<AuthenticatedEnv>(async (c, next) => {
+    const result = await verify(c.req.raw);
 
     if (!result.ok) {
       c.var.logger?.warn(
@@ -71,8 +79,10 @@ export const requireAuth = createMiddleware<AuthenticatedEnv>(
     c.set("userId", result.actor.userId);
 
     await next();
-  },
-);
+  });
+}
+
+export const requireAuth = createRequireAuth();
 
 export function requireScopes(...required: string[]) {
   return createMiddleware<AuthenticatedEnv>(async (c, next) => {

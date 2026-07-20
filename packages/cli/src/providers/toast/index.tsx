@@ -11,18 +11,11 @@ import type { ReactNode } from "react";
 import { useTerminalDimensions } from "@opentui/react";
 import { SplitBorderChars } from "../../components/border";
 import { useTheme } from "../theme";
+import { DEFAULT_DURATION, DEFAULT_VARIANT } from "./types";
+import type { ToastOptions, ToastVariant } from "./types";
 
-export type ToastVariant = "success" | "error" | "info";
-
-export type ToastOptions = {
-  message: string;
-  variant?: ToastVariant;
-  duration?: number;
-};
-
-/** How long a toast stays visible, in milliseconds. */
-export const DEFAULT_DURATION = 3000;
-export const DEFAULT_VARIANT: ToastVariant = "info";
+export { DEFAULT_DURATION, DEFAULT_VARIANT } from "./types";
+export type { ToastOptions, ToastVariant } from "./types";
 
 const TOAST_MAX_WIDTH = 60;
 /** Horizontal space kept free between the toast and the terminal edges. */
@@ -51,7 +44,12 @@ type ToastProviderProps = {
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [currentToast, setCurrentToast] = useState<ToastOptions | null>(null);
+  // Toasts fired in the same tick (multi-achievement unlock + level-up) must
+  // all get their turn on screen, so `show` enqueues instead of replacing.
+  const queueRef = useRef<ToastOptions[]>([]);
+  // Non-null exactly while a toast is on screen.
   const timeoutHandleRef = useRef<NodeJS.Timeout | null>(null);
+  const showNextRef = useRef<() => void>(() => {});
 
   const clearCurrentTimeout = useCallback(() => {
     if (timeoutHandleRef.current) {
@@ -60,23 +58,36 @@ export function ToastProvider({ children }: ToastProviderProps) {
     }
   }, []);
 
+  const showNext = useCallback(() => {
+    timeoutHandleRef.current = null;
+
+    const next = queueRef.current.shift() ?? null;
+    setCurrentToast(next);
+
+    if (next) {
+      timeoutHandleRef.current = setTimeout(
+        () => showNextRef.current(),
+        next.duration ?? DEFAULT_DURATION,
+      ).unref();
+    }
+  }, []);
+  showNextRef.current = showNext;
+
   const show = useCallback(
     (options: ToastOptions) => {
-      const duration = options.duration ?? DEFAULT_DURATION;
-
-      clearCurrentTimeout();
-
-      setCurrentToast({
+      queueRef.current.push({
         ...options,
         variant: options.variant ?? DEFAULT_VARIANT,
-        duration,
+        duration: options.duration ?? DEFAULT_DURATION,
       });
 
-      timeoutHandleRef.current = setTimeout(() => {
-        setCurrentToast(null);
-      }, duration).unref();
+      // An active toast keeps its full duration; the queue drains when its
+      // timer fires. Only kick the chain off from idle.
+      if (!timeoutHandleRef.current) {
+        showNext();
+      }
     },
-    [clearCurrentTimeout],
+    [showNext],
   );
 
   useEffect(() => clearCurrentTimeout, [clearCurrentTimeout]);

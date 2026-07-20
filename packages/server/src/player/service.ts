@@ -345,21 +345,32 @@ export async function purchaseTitle(user: User, titleId: string) {
 export async function listTransactions(input: {
   user: User;
   limit: number;
-  cursor?: Date;
+  cursor?: { ts: Date; id: string };
   reason?: CoinReason;
 }) {
   const rows = await db.coinTransaction.findMany({
     where: {
       userId: input.user.id,
-      ...(input.cursor ? { createdAt: { lt: input.cursor } } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
+      // Strictly after the cursor row in `(createdAt, id)` order: a payout
+      // `createMany`s several ledger rows in the same instant, and a
+      // bare-timestamp cursor would skip the rest of that batch at a page
+      // boundary.
+      ...(input.cursor
+        ? {
+            OR: [
+              { createdAt: { lt: input.cursor.ts } },
+              { createdAt: input.cursor.ts, id: { lt: input.cursor.id } },
+            ],
+          }
+        : {}),
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: input.limit + 1,
   });
 
   const page = rows.slice(0, input.limit);
-  const more = rows.length > input.limit;
+  const last = rows.length > input.limit ? page[page.length - 1] : null;
 
   return {
     transactions: page.map((row) => ({
@@ -370,9 +381,9 @@ export async function listTransactions(input: {
       balanceAfter: row.balanceAfter,
       createdAt: row.createdAt.toISOString(),
     })),
-    nextCursor: more
-      ? (page[page.length - 1]?.createdAt.toISOString() ?? null)
-      : null,
+    // The `<iso>_<id>` compound `paginationQuerySchema` validates and
+    // `decodeCursor` splits. Opaque to clients, which round-trip it verbatim.
+    nextCursor: last ? `${last.createdAt.toISOString()}_${last.id}` : null,
   };
 }
 

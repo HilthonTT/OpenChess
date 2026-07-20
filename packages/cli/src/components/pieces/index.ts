@@ -1,4 +1,4 @@
-import type { Piece, SquareContent } from "@openchess/shared";
+import type { SquareContent } from "@openchess/shared";
 import { EMPTY } from "@openchess/shared";
 
 /**
@@ -29,47 +29,7 @@ const DISPLAY: Record<SquareContent, string> = {
   r: "♖",
 };
 
-export function isEmpty(piece: SquareContent): piece is typeof EMPTY {
-  return piece === EMPTY;
-}
-
-export function isWhite(piece: SquareContent): piece is Piece {
-  return !isEmpty(piece) && piece === piece.toUpperCase();
-}
-
-export function isBlack(piece: SquareContent): piece is Piece {
-  return !isEmpty(piece) && piece === piece.toLowerCase();
-}
-
-export function displayPiece(piece: SquareContent): string {
-  return DISPLAY[piece];
-}
-
 /** The glyph plus the text-presentation selector, ready to drop into a cell. */
 export function renderPiece(piece: SquareContent): string {
-  return isEmpty(piece) ? " " : `${DISPLAY[piece]}${TEXT_PRESENTATION}`;
-}
-
-export function isKing(piece: SquareContent): boolean {
-  return piece.toLowerCase() === "k";
-}
-
-export function isPawn(piece: SquareContent): boolean {
-  return piece.toLowerCase() === "p";
-}
-
-export function isRook(piece: SquareContent): boolean {
-  return piece.toLowerCase() === "r";
-}
-
-export function isBishop(piece: SquareContent): boolean {
-  return piece.toLowerCase() === "b";
-}
-
-export function isKnight(piece: SquareContent): boolean {
-  return piece.toLowerCase() === "n";
-}
-
-export function isQueen(piece: SquareContent): boolean {
-  return piece.toLowerCase() === "q";
+  return piece === EMPTY ? " " : `${DISPLAY[piece]}${TEXT_PRESENTATION}`;
 }

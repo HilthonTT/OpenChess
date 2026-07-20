@@ -5,6 +5,7 @@ import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 
 import {
   abortGame,
+  claimVictory,
   createAiGame,
   getGame,
   joinPvpQueue,
@@ -21,6 +22,7 @@ import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import {
   createGameSchema,
+  decodeCursor,
   idParamsSchema,
   gameResultSchema,
   gameSchema,
@@ -195,13 +197,32 @@ const resign = createRoute({
   },
 });
 
+const claim = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/claim",
+  summary: "Claim the win from an absent opponent",
+  description:
+    "Settles an online game as a win for you when your opponent has walked away: it must be their turn, and the game must not have advanced for five minutes. Rating, rewards and the ledger come out exactly as if they had resigned. Claiming an already-finished game returns it unchanged, so a retry is safe.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(gameSchema, "The settled game"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "Not claimable: an AI game, your own turn, or the opponent's clock has not run out",
+    ),
+  },
+});
+
 const abort = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/abort",
   summary: "Abort an unplayed game",
   description:
-    "Only legal before the first move. Pays nothing and records no loss — the escape hatch for a misclicked game.",
+    "Only legal before your own first move — in an AI game where the bot opened, its move does not count against you. Pays nothing and records no loss — the escape hatch for a misclicked game.",
   request: { params: idParamsSchema },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(gameSchema, "The aborted game"),
@@ -246,7 +267,7 @@ const router = base
     const page = await listGames({
       user: c.get("user"),
       limit,
-      cursor: cursor ? new Date(cursor) : undefined,
+      cursor: cursor ? decodeCursor(cursor) : undefined,
       result,
     });
 
@@ -278,6 +299,13 @@ const router = base
     const { id } = c.req.valid("param");
 
     const game = await resignGame(id, c.get("user"));
+
+    return c.json(game, HttpStatusCodes.OK);
+  })
+  .openapi(claim, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await claimVictory(id, c.get("user"));
 
     return c.json(game, HttpStatusCodes.OK);
   })

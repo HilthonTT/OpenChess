@@ -3,12 +3,28 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import app from "../app";
 
-// There is no coverage here for `/checkout` and `/portal` rejecting an
-// anonymous caller, which is what `requireAuth` on those two paths is for.
-// `require-auth.test.ts` replaces `lib/auth` with `mock.module`, which is
-// process-wide and outlives that file, so by the time these tests run an
-// unauthenticated request is answered by whatever actor that mock was last left
-// holding. The guard itself is covered by `require-auth.test.ts`.
+// A token-less request is rejected by `requireAuth` before any Clerk or Polar
+// call, so these run without network. (Historically untestable: an earlier
+// `mock.module("lib/auth")` in require-auth.test.ts leaked process-wide; the
+// middleware now takes its verifier by injection instead.)
+describe("billing auth guards", () => {
+  test.each(["/api/billing/checkout", "/api/billing/portal"])(
+    "POST %s challenges an anonymous caller",
+    async (path) => {
+      const response = await app.request(path, { method: "POST" });
+
+      expect(response.status).toBe(HttpStatusCodes.UNAUTHORIZED);
+      expect(response.headers.get("www-authenticate")).toContain("Bearer");
+    },
+  );
+
+  test("GET /api/billing/status challenges an anonymous caller", async () => {
+    const response = await app.request("/api/billing/status");
+
+    expect(response.status).toBe(HttpStatusCodes.UNAUTHORIZED);
+  });
+});
+
 describe("GET /billing/success", () => {
   // Polar redirects the customer's browser here after checkout, and that
   // browser has no bearer token. When this route sat behind `requireAuth` it

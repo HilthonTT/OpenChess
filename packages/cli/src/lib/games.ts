@@ -147,6 +147,20 @@ export async function resignGame(id: string): Promise<ServerGame> {
   return response.json();
 }
 
+/**
+ * Claim the win in a PvP game whose opponent stopped playing. The server
+ * enforces the inactivity window; a 409 means "not claimable (yet)".
+ */
+export async function claimVictory(id: string): Promise<ServerGame> {
+  const response = await byId.claim.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
 export async function abortGame(id: string): Promise<ServerGame> {
   const response = await byId.abort.$post({ param: { id } });
 

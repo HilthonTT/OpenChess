@@ -64,7 +64,6 @@ variables at boot and refuses to start if one is missing or malformed:
 | `PORT`                      | no       | `9999`        | `.env.example` sets `3000`                               |
 | `LOG_LEVEL`                 | yes      | —             | `fatal`…`trace`, or `silent`                             |
 | `DATABASE_URL`              | yes      | —             | A PostgreSQL connection string                           |
-| `DATABASE_AUTH_TOKEN`       | in prod  | —             | Required when `NODE_ENV=production`                      |
 | `ALLOWED_ORIGINS`           | no       | —             | Comma-separated CORS allowlist for production            |
 | `PUBLIC_BASE_URL`           | in prod  | localhost     | Origin used for Polar post-checkout redirects            |
 | `CLERK_SECRET_KEY`          | yes      | —             | Live key (`sk_live_`) enforced in production             |
@@ -75,9 +74,11 @@ variables at boot and refuses to start if one is missing or malformed:
 | `POLAR_ACCESS_TOKEN`        | yes      | —             | From the Polar dashboard for `POLAR_SERVER`'s environment |
 | `POLAR_PRODUCT_ID`          | yes      | —             |                                                          |
 | `POLAR_SERVER`              | no       | `sandbox`     | Must be `production` when `NODE_ENV=production`          |
+| `INNGEST_DEV`               | dev only | —             | Must be UNSET in production (disables request signing)   |
+| `INNGEST_SIGNING_KEY`       | in prod  | —             | Verifies that `/api/inngest` requests come from Inngest  |
 
-The CLI additionally reads `API_URL` (defaults to `http://localhost:3000`) and
-`OPENCHESS_FPS` (defaults to `60`).
+The CLI additionally reads `API_URL` (defaults to `http://localhost:3000/api`)
+and `OPENCHESS_FPS` (defaults to `60`).
 
 ### Database
 

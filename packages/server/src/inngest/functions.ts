@@ -1,7 +1,10 @@
 import { Prisma } from "@openchess/database";
 import { db } from "@openchess/database/client";
 
-import { hasActiveSubscription } from "../lib/polar";
+import {
+  hasActiveSubscription,
+  listActiveSubscriberExternalIds,
+} from "../lib/polar";
 import { inngest } from ".";
 
 /** What a premium subscription pays out per week, in coins. */
@@ -10,10 +13,11 @@ const PREMIUM_WEEKLY_COINS = 100;
 /**
  * The weekly premium stipend, fan-out half.
  *
- * A Monday-morning cron emits one event per user; `awardPremiumCoins` does the
- * Polar check and the payout. Fanning out keeps one slow or failing Polar call
- * from stalling every other player's stipend, and gives each award its own
- * retry.
+ * A Monday-morning cron lists Polar's active subscribers — a page per hundred,
+ * not a `getStateExternal` call per user in the table — and emits one event
+ * per subscriber; `awardPremiumCoins` re-checks and pays. Fanning out keeps
+ * one slow or failing Polar call from stalling every other player's stipend,
+ * and gives each award its own retry.
  *
  * Every event carries an explicit `id` keyed on user + run date, so a rerun of
  * the cron the same day deduplicates at the Inngest boundary instead of paying
@@ -28,10 +32,11 @@ export const preparePremiumCoinAwards = inngest.createFunction(
     // The date is computed inside the step so a retried run keeps the ids it
     // started with even if it crosses midnight.
     const plan = await step.run("plan-awards", async () => {
-      const users = await db.user.findMany({ select: { id: true } });
+      // These are our own User.ids: checkout keys the Polar customer by them.
+      const userIds = await listActiveSubscriberExternalIds();
 
       return {
-        userIds: users.map((user) => user.id),
+        userIds,
         period: new Date().toISOString().slice(0, 10),
       };
     });

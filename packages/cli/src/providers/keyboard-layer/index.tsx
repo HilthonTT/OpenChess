@@ -95,8 +95,10 @@ export function KeyboardLayerProvider({ children }: Props) {
       }
     }
 
-    // No responder handled it - exit
+    // No responder handled it - exit. destroy() alone doesn't stop the
+    // process, and live polling intervals would keep Bun alive.
     renderer.destroy();
+    process.exit(0);
   });
 
   const value = useMemo<KeyboardLayerContextValue>(

@@ -42,7 +42,6 @@ const EnvSchema = z
       "silent",
     ]),
     DATABASE_URL: z.url(),
-    DATABASE_AUTH_TOKEN: z.string().optional(),
     // Comma-separated CORS allowlist, read by the production CORS manager.
     ALLOWED_ORIGINS: z.string().optional(),
     // The origin this API is reached on, used to build the URLs we hand to
@@ -62,6 +61,10 @@ const EnvSchema = z
     POLAR_ACCESS_TOKEN: z.string().min(1),
     POLAR_PRODUCT_ID: z.string().min(1),
     POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
+    // Read by the Inngest SDK from process.env; validated here so production
+    // fails at boot instead of serving an unauthenticated /api/inngest.
+    INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+    INNGEST_DEV: z.string().optional(),
     // Optional pair backing the read cache. Absent, the server simply runs
     // uncached — a slower server, not a broken one.
     UPSTASH_REDIS_REST_URL: z.url().optional(),
@@ -87,13 +90,27 @@ const EnvSchema = z
       return;
     }
 
-    if (!input.DATABASE_AUTH_TOKEN) {
+    // In dev mode the Inngest SDK skips request-signature verification, and
+    // /api/inngest is mounted publicly (it authenticates via those very
+    // signatures) — shipping either misconfiguration lets anyone who can reach
+    // the endpoint drive our functions, e.g. mint premium coins at will.
+    if (input.INNGEST_DEV) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["INNGEST_DEV"],
+        message:
+          "Refusing to start: INNGEST_DEV disables Inngest signature verification and must not be set in production.",
+      });
+    }
+
+    if (!input.INNGEST_SIGNING_KEY) {
       ctx.addIssue({
         code: "invalid_type",
         expected: "string",
         received: "undefined",
-        path: ["DATABASE_AUTH_TOKEN"],
-        message: "Must be set when NODE_ENV is 'production'",
+        path: ["INNGEST_SIGNING_KEY"],
+        message:
+          "Must be set when NODE_ENV is 'production' so /api/inngest requests are signature-verified",
       });
     }
 

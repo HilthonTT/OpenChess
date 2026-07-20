@@ -1,3 +1,4 @@
+import env from "../env";
 import { CORSManager, wildcardOriginRegExp } from "./cors";
 
 /**
@@ -6,7 +7,7 @@ import { CORSManager, wildcardOriginRegExp } from "./cors";
  */
 export function createEnvironmentBasedCORS(): CORSManager {
   // Entries are trimmed: "a.com, b.com" would otherwise never match b.com.
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  const allowedOrigins = (env.ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -32,6 +33,9 @@ export function createEnvironmentBasedCORS(): CORSManager {
         return false;
       });
     },
-    credentials: true,
+    // The API is bearer-token only. Advertising credential support would be an
+    // open invitation for a future cookie to become CSRF-able from every
+    // allow-listed origin.
+    credentials: false,
   });
 }

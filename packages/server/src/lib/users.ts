@@ -43,13 +43,14 @@ function sanitize(candidate: string): string | null {
   return cleaned.length >= 3 ? cleaned.slice(0, 24) : null;
 }
 
-/** Prefer what the user chose in Clerk, fall back to their email, then to noise. */
+/** Prefer what the user chose in Clerk; anything else falls back to noise. */
 async function baseUsername(clerkUserId: string): Promise<string> {
   const profile = await fetchClerkProfile(clerkUserId);
 
-  const candidate =
-    (profile.username && sanitize(profile.username)) ??
-    (profile.emailLocalPart && sanitize(profile.emailLocalPart));
+  // Never derived from the email address: usernames are public — leaderboards,
+  // the PvP header — and an email local part like jane.doe.1987 identifies its
+  // owner even with the domain stripped.
+  const candidate = profile.username ? sanitize(profile.username) : null;
 
   return candidate ?? `player_${suffix()}`;
 }

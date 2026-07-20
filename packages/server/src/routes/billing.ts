@@ -5,7 +5,7 @@ import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import jsonContent from "stoker/openapi/helpers/json-content";
 import * as HttpStatusCodes from "stoker/http-status-codes";
-import { problemDetailsContent } from "../lib/problem-details";
+import { problemDetailsContent, throwProblem } from "../lib/problem-details";
 import {
   createCheckoutUrl,
   createCustomerPortalUrl,
@@ -46,6 +46,9 @@ const checkout = createRoute({
       "The checkout url",
     ),
     [HttpStatusCodes.UNAUTHORIZED]: problemDetailsContent("Not authenticated"),
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "You already have an active subscription",
+    ),
     [HttpStatusCodes.TOO_MANY_REQUESTS]: problemDetailsContent(
       "Too many billing requests; retry after the window resets",
     ),
@@ -132,6 +135,15 @@ const SUCCESS_PAGE = `<!doctype html>
 const router = base
   .openapi(checkout, async (c) => {
     const user = c.get("user");
+
+    // A subscriber checking out again would be double-billed with two
+    // concurrent subscriptions; Polar does not prevent it on its own.
+    if (await hasActiveSubscription(user.id)) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "You already have an active subscription. Use the billing portal to manage it.",
+      );
+    }
 
     const url = await createCheckoutUrl(user.id);
     const result = { url };

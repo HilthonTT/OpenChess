@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { apiClient } from "../../lib/api-client";
-import { clearAuth, getAuth } from "../../lib/auth";
+import { clearAuth, getAuth, subscribeAuthCleared } from "../../lib/auth";
 import { performLogin } from "../../lib/oauth";
 
 export type AuthProfile = {
@@ -103,6 +103,15 @@ export function AuthProvider({ children }: Props) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // `apiClient` wipes the token from disk on any 401; without this the header
+  // would keep saying "Signed in" against a token that no longer exists.
+  useEffect(() => {
+    return subscribeAuthCleared(() => {
+      setProfile(null);
+      setStatus("signed-out");
+    });
   }, []);
 
   const signIn = useCallback(async () => {
