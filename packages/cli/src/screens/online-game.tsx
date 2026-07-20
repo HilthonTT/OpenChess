@@ -1,33 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useKeyboard } from "@opentui/react";
-import {
-  createGame,
-  fileOf,
-  findKing,
-  findLegalMove,
-  isGameOver,
-  isPiece,
-  movesFromSquare,
-  needsPromotion,
-  opposite,
-  pieceAt,
-  pieceColor,
-  playSan,
-  rankOf,
-  squareAt,
-  toAlgebraic,
-} from "@openchess/shared";
-import type { Color, Game, GameStatus, PromotionPiece } from "@openchess/shared";
-import { Board } from "../components/board";
+import { useCallback, useEffect, useState } from "react";
+import { isGameOver, opposite, toAlgebraic } from "@openchess/shared";
+import type { Color, GameStatus, PromotionPiece } from "@openchess/shared";
 import { GameScreen } from "../components/game-screen";
-import {
-  CapturedSummary,
-  MoveList,
-  PROMOTION_CHOICES,
-  PromotionPrompt,
-  colorName,
-  describeStatus,
-} from "../components/game-panels";
+import { MatchView } from "../components/match-view";
+import { describeStatus } from "../components/game-panels";
 import {
   GameConflictError,
   abortGame,
@@ -41,10 +17,12 @@ import {
 } from "../lib/games";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
-import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
-import { clamp } from "./ai-game/setup";
+import { homeSquare, useBoardCursor } from "../hooks/use-board-cursor";
+import { useGameKeys } from "../hooks/use-game-keys";
+import { useMoveSelection } from "../hooks/use-move-selection";
+import { useReplayedGame } from "../hooks/use-replayed-game";
 
 const TITLE = "Online 1v1";
 const SUBTITLE = "Challenge a player over the network";
@@ -61,15 +39,6 @@ const GAME_POLL_MS = 2_000;
  * position), so by the time the offer shows, the server already agrees.
  */
 const CLAIM_AFTER_MS = 5 * 60_000;
-
-/** The board as the server tells it, rebuilt move by move from its SAN history. */
-function replayHistory(history: string[]): Game {
-  let game = createGame();
-  for (const san of history) {
-    game = playSan(game, san);
-  }
-  return game;
-}
 
 /** The status line reworded for a game against a named human. */
 function describeOnlineStatus(
@@ -214,7 +183,6 @@ function OnlineMatch({
   const theme = useUITheme();
   const toast = useToast();
   const auth = useAuth();
-  const { isTopLayer } = useKeyboardLayer();
 
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
@@ -225,40 +193,34 @@ function OnlineMatch({
     ? `${server.opponent.title} ${opponentName}`
     : opponentName;
 
-  const [cursor, setCursor] = useState(() =>
-    squareAt(4, human === "w" ? 1 : 6),
-  );
-  const [selected, setSelected] = useState<number | null>(null);
-  const [promotion, setPromotion] = useState<{
-    from: number;
-    to: number;
-  } | null>(null);
-  const [flipped, setFlipped] = useState(human === "b");
-  const [message, setMessage] = useState<string | null>(null);
+  const cursor = useBoardCursor({
+    initialSquare: homeSquare(human),
+    initiallyFlipped: human === "b",
+  });
   /** A request is on the wire; the board is read-only until it answers. */
   const [pending, setPending] = useState(false);
   const [confirmingResign, setConfirmingResign] = useState(false);
   /** The opponent has been on the clock long enough to claim the win. */
   const [claimAvailable, setClaimAvailable] = useState(false);
 
-  // The server's history is the game. Replaying it through the same rules code
-  // the server runs gives every panel a full local Game to render from.
-  const game = useMemo(() => replayHistory(server.history), [server.history]);
-
+  const game = useReplayedGame(server.history);
   const { position, status } = game;
   const over = server.result !== null || isGameOver(status);
-  const targets = selected === null ? [] : movesFromSquare(game, selected);
-  const lastMove = game.history[game.history.length - 1]?.move ?? null;
-  const checkSquare =
-    status === "check" || status === "checkmate"
-      ? findKing(position.board, position.turn)
-      : null;
+
+  const selection = useMoveSelection({
+    game,
+    cursor: cursor.cursor,
+    over,
+    overMessage: "The game is over — press r to find another",
+    you: { color: human, waitMessage: `Waiting for ${opponentName}…` },
+    locked: pending,
+  });
+  const { beginCommit, clearSelection, setMessage } = selection;
 
   const apply = useCallback(
     (state: ServerGame) => {
       setServer(state);
-      setSelected(null);
-      setPromotion(null);
+      clearSelection();
 
       // The payout moved our header numbers whether or not this response
       // carried our breakdown — the opponent's request may have settled it.
@@ -285,7 +247,7 @@ function OnlineMatch({
         });
       }
     },
-    [auth, toast],
+    [auth, clearSelection, toast],
   );
 
   // The opponent's moves and resignations arrive by poll. Only a changed board
@@ -345,19 +307,15 @@ function OnlineMatch({
     } catch (error) {
       setMessage(errorMessage(error));
     }
-  }, [apply, server.id]);
+  }, [apply, server.id, setMessage]);
 
   const commit = useCallback(
     async (from: number, to: number, choice?: PromotionPiece) => {
-      if (!findLegalMove(game, from, to, choice)) {
-        setMessage("That isn't a legal move");
+      if (!beginCommit(from, to, choice)) {
         return;
       }
 
       setPending(true);
-      setSelected(null);
-      setPromotion(null);
-      setMessage(null);
 
       try {
         const result = await sendMove(server.id, {
@@ -377,95 +335,7 @@ function OnlineMatch({
         setPending(false);
       }
     },
-    [apply, game, resync, server.id, server.ply],
-  );
-
-  /** Pick up the piece under the cursor, explaining why when we can't. */
-  const select = useCallback(
-    (square: number) => {
-      const piece = pieceAt(position.board, square);
-
-      if (!isPiece(piece)) {
-        setMessage("That square is empty");
-        return;
-      }
-
-      if (pieceColor(piece) !== human) {
-        setMessage(`You play the ${colorName(human)} pieces`);
-        return;
-      }
-
-      if (movesFromSquare(game, square).length === 0) {
-        setMessage("That piece has no legal moves");
-        return;
-      }
-
-      setSelected(square);
-      setMessage(null);
-    },
-    [game, human, position],
-  );
-
-  const confirm = useCallback(() => {
-    if (pending) {
-      return;
-    }
-
-    if (over) {
-      setMessage("The game is over — press r to find another");
-      return;
-    }
-
-    if (position.turn !== human) {
-      setMessage(`Waiting for ${opponentName}…`);
-      return;
-    }
-
-    if (selected === null) {
-      select(cursor);
-      return;
-    }
-
-    if (cursor === selected) {
-      setSelected(null);
-      return;
-    }
-
-    if (needsPromotion(game, selected, cursor)) {
-      setPromotion({ from: selected, to: cursor });
-      return;
-    }
-
-    if (findLegalMove(game, selected, cursor)) {
-      void commit(selected, cursor);
-      return;
-    }
-
-    // Not a legal destination: treat it as picking a different piece instead.
-    select(cursor);
-  }, [
-    commit,
-    cursor,
-    game,
-    human,
-    opponentName,
-    over,
-    pending,
-    position.turn,
-    select,
-    selected,
-  ]);
-
-  const moveCursor = useCallback(
-    (dx: number, dy: number) => {
-      // Flipping the board flips which way "up" moves the cursor, so the arrow
-      // keys always agree with what the player sees.
-      const sign = flipped ? -1 : 1;
-      const x = clamp(fileOf(cursor) + dx * sign);
-      const y = clamp(rankOf(cursor) + dy * sign);
-      setCursor(squareAt(x, y));
-    },
-    [cursor, flipped],
+    [apply, beginCommit, resync, server.id, server.ply, setMessage],
   );
 
   /**
@@ -489,7 +359,7 @@ function OnlineMatch({
     } finally {
       setPending(false);
     }
-  }, [apply, server.id, server.ply]);
+  }, [apply, server.id, server.ply, setMessage]);
 
   /** Take the win from an opponent who walked away. The server is the judge. */
   const claim = useCallback(async () => {
@@ -507,101 +377,65 @@ function OnlineMatch({
     } finally {
       setPending(false);
     }
-  }, [apply, resync, server.id]);
+  }, [apply, resync, server.id, setMessage]);
 
-  /** Escape unwinds one step at a time before it gives up the screen. */
-  const handleEscape = useCallback(() => {
-    if (promotion) {
-      setPromotion(null);
-      return true;
-    }
-
-    if (confirmingResign) {
-      setConfirmingResign(false);
-      return true;
-    }
-
-    if (selected !== null) {
-      setSelected(null);
-      return true;
-    }
-
-    // Leaving mid-game is fine: the game stays active, and the queue hands it
-    // straight back the next time this screen opens.
-    return false;
-  }, [confirmingResign, promotion, selected]);
-
-  useKeyboard((key) => {
-    // Game keys belong to the screen itself; stay quiet under any open dialog.
-    if (!isTopLayer(BASE_LAYER_ID)) {
-      return;
-    }
-
-    if (promotion) {
-      const choice = PROMOTION_CHOICES.find(([piece]) => piece === key.name);
-      if (choice) {
-        void commit(promotion.from, promotion.to, choice[0]);
-      }
-      return;
-    }
-
-    if (confirmingResign && key.name !== "x") {
-      setConfirmingResign(false);
-    }
-
-    switch (key.name) {
-      case "up":
-      case "k":
-        moveCursor(0, 1);
-        break;
-      case "down":
-      case "j":
-        moveCursor(0, -1);
-        break;
-      case "left":
-      case "h":
-        moveCursor(-1, 0);
-        break;
-      case "right":
-      case "l":
-        moveCursor(1, 0);
-        break;
-      case "return":
-      case "space":
-        confirm();
-        break;
-      case "u":
-        setMessage("There's no undo in a rated game");
-        break;
-      case "r":
-        if (pending) {
-          break;
-        }
-        if (over) {
-          onRequeue();
-        } else {
-          setMessage("Finish the game first — press x to resign");
-        }
-        break;
-      case "x":
-        if (pending || over) {
-          break;
-        }
+  // Escape's extra step here: a pending resign confirmation. Leaving mid-game
+  // is fine — the game stays active, and the queue hands it straight back the
+  // next time this screen opens.
+  const handleEscape = useCallback(
+    () =>
+      selection.handleEscape(() => {
         if (confirmingResign) {
-          void concede();
-        } else {
-          setConfirmingResign(true);
+          setConfirmingResign(false);
+          return true;
         }
-        break;
-      case "c":
-        if (claimAvailable && !pending && !over) {
-          void claim();
-        }
-        break;
-      case "f":
-        setFlipped((value) => !value);
-        break;
-    }
+        return false;
+      }),
+    [confirmingResign, selection.handleEscape],
+  );
+
+  useGameKeys({
+    selection,
+    cursor,
+    commit,
+    // A pending resign is called off by any key that isn't its own confirm.
+    before: (name) => {
+      if (confirmingResign && name !== "x") {
+        setConfirmingResign(false);
+      }
+    },
+    onKey: (name) => {
+      switch (name) {
+        case "u":
+          setMessage("There's no undo in a rated game");
+          break;
+        case "r":
+          if (pending) {
+            break;
+          }
+          if (over) {
+            onRequeue();
+          } else {
+            setMessage("Finish the game first — press x to resign");
+          }
+          break;
+        case "x":
+          if (pending || over) {
+            break;
+          }
+          if (confirmingResign) {
+            void concede();
+          } else {
+            setConfirmingResign(true);
+          }
+          break;
+        case "c":
+          if (claimAvailable && !pending && !over) {
+            void claim();
+          }
+          break;
+      }
+    },
   });
 
   const statusText = (): string => {
@@ -615,8 +449,8 @@ function OnlineMatch({
         : "Resign this game? Press x again to confirm";
     }
 
-    if (message) {
-      return message;
+    if (selection.message) {
+      return selection.message;
     }
 
     if (server.result === "ABORTED") {
@@ -669,26 +503,16 @@ function OnlineMatch({
         </>
       }
     >
-      <box flexDirection="row" gap={2}>
-        <Board
-          board={position.board}
-          cursor={cursor}
-          selected={selected}
-          targets={targets}
-          lastMove={lastMove}
-          checkSquare={checkSquare}
-          flipped={flipped}
-        />
-        <MoveList game={game} />
-      </box>
-
-      <CapturedSummary game={game} />
-
-      {promotion ? (
-        <PromotionPrompt />
-      ) : (
-        <text fg={over ? theme.gold : theme.dim}>{statusText()}</text>
-      )}
+      <MatchView
+        game={game}
+        cursor={cursor.cursor}
+        selected={selection.selected}
+        targets={selection.targets}
+        flipped={cursor.flipped}
+        promotion={selection.promotion !== null}
+        over={over}
+        statusText={statusText()}
+      />
 
       {rewards ? (
         <text>

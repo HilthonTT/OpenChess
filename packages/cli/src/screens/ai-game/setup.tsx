@@ -16,10 +16,6 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   hard: "Hard",
 };
 
-export function clamp(value: number): number {
-  return Math.max(0, Math.min(7, value));
-}
-
 /** The status line reworded for a human-versus-engine game. */
 export function describeAiStatus(
   status: GameStatus,

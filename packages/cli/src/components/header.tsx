@@ -12,7 +12,7 @@ export function Header() {
       <box>
         <text>
           <span fg={theme.faint}>────</span>
-          <span fg={theme.walnut}> ♞ </span>
+          <span fg={theme.walnut}> ♞ &nbsp;</span>
           <span fg={theme.dim}>chess, in your terminal</span>
           <span fg={theme.walnut}> ♞ </span>
           <span fg={theme.faint}>────</span>
