@@ -1,4 +1,8 @@
-import { openUpgradeCheckout } from "../../lib/upgrade";
+import {
+  fetchPremiumStatus,
+  openBillingPortal,
+  openUpgradeCheckout,
+} from "../../lib/upgrade";
 import { errorMessage } from "../../lib/utils";
 import type { AuthStatus } from "../../providers/auth";
 import type { MenuItem } from "./types";
@@ -71,7 +75,7 @@ export const MENU_ITEMS: MenuItem[] = [
     id: "upgrade",
     title: "Go Premium",
     icon: "♕",
-    description: "Opens your browser to subscribe",
+    description: "Subscribe, or manage your plan",
     async action(ctx) {
       // Checkout is tied to the account, so there is nothing to buy for
       // a visitor the server doesn't know yet.
@@ -84,14 +88,24 @@ export const MENU_ITEMS: MenuItem[] = [
       }
 
       try {
-        await openUpgradeCheckout();
-        ctx.toast.show({
-          message: "Checkout opened in your browser.",
-          variant: "success",
-        });
+        // A subscriber gets the portal (cancel, invoices, card), not a
+        // second checkout for a product they already pay for.
+        if (await fetchPremiumStatus()) {
+          await openBillingPortal();
+          ctx.toast.show({
+            message: "Billing portal opened in your browser.",
+            variant: "success",
+          });
+        } else {
+          await openUpgradeCheckout();
+          ctx.toast.show({
+            message: "Checkout opened in your browser.",
+            variant: "success",
+          });
+        }
       } catch (error) {
         ctx.toast.show({
-          message: `Couldn't start checkout: ${errorMessage(error)}`,
+          message: `Couldn't open billing: ${errorMessage(error)}`,
           variant: "error",
         });
       }

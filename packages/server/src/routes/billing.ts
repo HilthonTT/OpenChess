@@ -6,7 +6,11 @@ import { requireUser } from "../middlewares/require-user";
 import jsonContent from "stoker/openapi/helpers/json-content";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import { problemDetailsContent } from "../lib/problem-details";
-import { createCheckoutUrl, createCustomerPortalUrl } from "../lib/polar";
+import {
+  createCheckoutUrl,
+  createCustomerPortalUrl,
+  hasActiveSubscription,
+} from "../lib/polar";
 import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
@@ -26,6 +30,7 @@ const guards = [
 
 base.use("/checkout", ...guards);
 base.use("/portal", ...guards);
+base.use("/status", ...guards);
 
 const checkout = createRoute({
   tags: [TAGS.BILLING],
@@ -59,6 +64,27 @@ const portal = createRoute({
         url: z.url(),
       }),
       "The portal url",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: problemDetailsContent("Not authenticated"),
+    [HttpStatusCodes.TOO_MANY_REQUESTS]: problemDetailsContent(
+      "Too many billing requests; retry after the window resets",
+    ),
+  },
+});
+
+const status = createRoute({
+  tags: [TAGS.BILLING],
+  method: "get",
+  path: "/status",
+  summary: "Your subscription status",
+  description:
+    "Whether you hold an active Polar subscription. Lets a client send subscribers to the billing portal instead of a second checkout.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({
+        premium: z.boolean(),
+      }),
+      "Whether you have an active subscription",
     ),
     [HttpStatusCodes.UNAUTHORIZED]: problemDetailsContent("Not authenticated"),
     [HttpStatusCodes.TOO_MANY_REQUESTS]: problemDetailsContent(
@@ -119,6 +145,13 @@ const router = base
     const result = { url };
 
     return c.json(result, HttpStatusCodes.OK);
+  })
+  .openapi(status, async (c) => {
+    const user = c.get("user");
+
+    const premium = await hasActiveSubscription(user.id);
+
+    return c.json({ premium }, HttpStatusCodes.OK);
   })
   .openapi(success, (c) => {
     return c.html(SUCCESS_PAGE, HttpStatusCodes.OK);
