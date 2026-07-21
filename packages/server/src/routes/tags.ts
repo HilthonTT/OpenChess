@@ -6,6 +6,7 @@ export const TAGS = {
   STORE: "Store",
   BILLING: "Billing",
   AUTH: "Auth",
+  HEALTH: "Health",
 } as const;
 
 Object.freeze(TAGS);

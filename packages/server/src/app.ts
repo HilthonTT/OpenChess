@@ -7,6 +7,7 @@ import leaderboard from "./routes/leaderboard";
 import me from "./routes/me";
 import store from "./routes/store";
 import billing from "./routes/billing";
+import health from "./routes/health";
 import { createRouter } from "./lib/create-app";
 import { serve } from "inngest/hono";
 import { inngest } from "./inngest";
@@ -22,7 +23,8 @@ const api = createRouter()
   .route("/titles", store)
   .route("/achievements", achievements)
   .route("/leaderboard", leaderboard)
-  .route("/billing", billing);
+  .route("/billing", billing)
+  .route("/health", health);
 
 app.route("/api", api);
 

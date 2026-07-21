@@ -264,8 +264,7 @@ export const leaderboardEntrySchema = z
  * at a page boundary. Opaque to clients, which round-trip `nextCursor`
  * verbatim; the list services build one and only `decodeCursor` splits one.
  */
-const CURSOR_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z_[^_]+$/;
+const CURSOR_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z_[^_]+$/;
 
 /** Split a cursor `paginationQuerySchema` has already validated. */
 export function decodeCursor(cursor: string): { ts: Date; id: string } {
@@ -285,3 +284,17 @@ export const paginationQuerySchema = z.object({
     .optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+export const healthStatusSchema = z
+  .object({
+    status: z.enum(["healthy", "degraded", "unhealthy"]),
+    timestamp: z.string(),
+    uptime: z.number(),
+    dependencies: z
+      .object({
+        database: z.enum(["connected", "disconnected"]),
+        redis: z.enum(["connected", "disconnected", "disabled"]),
+      })
+      .optional(),
+  })
+  .openapi("HealthStatus");
