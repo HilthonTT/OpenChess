@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useKeyboard } from "@opentui/react";
-import { isGameOver, toAlgebraic } from "@openchess/shared";
-import type { Color, Difficulty, PromotionPiece } from "@openchess/shared";
+import { useNavigate } from "react-router";
+import { isGameOver, timeControlFor, toAlgebraic } from "@openchess/shared";
+import type { Color, PromotionPiece } from "@openchess/shared";
 import { GameScreen } from "../../components/game-screen";
-import { MatchView } from "../../components/match-view";
+import { MatchView, orientClocks } from "../../components/match-view";
 import {
   GameConflictError,
   abortGame,
   createAiGame,
   fetchActiveAiGame,
   fetchGame,
+  flagGame,
   resignGame,
   sendMove,
   toEngineDifficulty,
@@ -24,10 +26,16 @@ import {
 import { useUITheme } from "../../providers/theme";
 import { useToast } from "../../providers/toast";
 import { homeSquare, useBoardCursor } from "../../hooks/use-board-cursor";
+import { useClock } from "../../hooks/use-clock";
 import { useGameKeys } from "../../hooks/use-game-keys";
 import { useMoveSelection } from "../../hooks/use-move-selection";
 import { useReplayedGame } from "../../hooks/use-replayed-game";
-import { DIFFICULTY_LABELS, Setup, describeAiStatus } from "./setup";
+import {
+  DIFFICULTY_LABELS,
+  Setup,
+  describeAiStatus,
+  type SetupChoice,
+} from "./setup";
 import { LocalAIGame } from "./local";
 import { errorMessage } from "../../lib/utils";
 
@@ -45,7 +53,6 @@ type Phase =
 export function ServerAIGame() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [offline, setOffline] = useState(false);
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   /** Bumped to run the resume lookup again after an error. */
   const [attempt, setAttempt] = useState(0);
 
@@ -87,12 +94,13 @@ export function ServerAIGame() {
     };
   }, [attempt, offline]);
 
-  const start = useCallback((chosen: Difficulty, color: Color) => {
+  const start = useCallback((choice: SetupChoice) => {
     setPhase({ kind: "creating" });
 
     void createAiGame({
-      difficulty: toServerDifficulty(chosen),
-      color: color === "w" ? "white" : "black",
+      difficulty: toServerDifficulty(choice.difficulty),
+      color: choice.color === "w" ? "white" : "black",
+      timeControl: choice.timeControl,
     })
       .then((game) => setPhase({ kind: "playing", game }))
       .catch((error) =>
@@ -110,13 +118,7 @@ export function ServerAIGame() {
     case "creating":
       return <Waiting text="Starting your game…" />;
     case "setup":
-      return (
-        <Setup
-          difficulty={difficulty}
-          onDifficulty={setDifficulty}
-          onColor={(color) => difficulty && start(difficulty, color)}
-        />
-      );
+      return <Setup askTimeControl onStart={start} />;
     case "error":
       return (
         <ErrorScreen
@@ -191,6 +193,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   const theme = useUITheme();
   const toast = useToast();
   const auth = useAuth();
+  const navigate = useNavigate();
 
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
@@ -257,6 +260,44 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     }
   }, [apply, server.id, setMessage]);
 
+  /** Concede on time. Only ever our own flag here — the bot is not clocked. */
+  const flag = useCallback(async () => {
+    if (pending || over) {
+      return;
+    }
+    setPending(true);
+
+    try {
+      apply(await flagGame(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        await resync();
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(false);
+    }
+  }, [apply, over, pending, resync, server.id, setMessage]);
+
+  const live = useClock({
+    clock: server.clock,
+    over,
+    onExpire: (color) => {
+      if (color === human) {
+        void flag();
+      }
+    },
+  });
+
+  const clocks = orientClocks({
+    live,
+    running: server.clock?.running ?? "w",
+    over,
+    flipped: cursor.flipped,
+    labelFor: (color) => (color === human ? "You" : "Engine"),
+  });
+
   const commit = useCallback(
     async (from: number, to: number, choice?: PromotionPiece) => {
       if (!beginCommit(from, to, choice)) {
@@ -291,9 +332,18 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     setMessage(null);
 
     try {
+      // Carry the same clock into the next game, named back from its numbers.
+      const preset = server.timeControl
+        ? timeControlFor(
+            server.timeControl.initialSeconds,
+            server.timeControl.incrementSeconds,
+          )
+        : null;
+
       const created = await createAiGame({
         difficulty: server.difficulty ?? "MEDIUM",
         color: human === "w" ? "white" : "black",
+        timeControl: preset?.key ?? null,
       });
       setServer(created);
       cursor.resetCursor();
@@ -376,6 +426,12 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
             setConfirmingResign(true);
           }
           break;
+        case "a":
+          // Once the game is settled, hand it straight to the review screen.
+          if (over) {
+            void navigate("/analysis", { state: { gameId: server.id } });
+          }
+          break;
       }
     },
   });
@@ -430,6 +486,12 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
           <span fg={theme.faint}> select </span>
           <span fg={theme.cream}>x</span>
           <span fg={theme.faint}> resign </span>
+          {over ? (
+            <>
+              <span fg={theme.cream}>a</span>
+              <span fg={theme.faint}> analyze </span>
+            </>
+          ) : null}
           <span fg={theme.cream}>r</span>
           <span fg={theme.faint}> new </span>
           <span fg={theme.cream}>f</span>
@@ -446,6 +508,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         promotion={selection.promotion !== null}
         over={over}
         statusText={statusText()}
+        clocks={clocks}
       />
 
       {rewards ? (

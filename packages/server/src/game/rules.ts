@@ -103,6 +103,66 @@ export function resultForResignation(player: Color): GameResult {
   return player === "w" ? "BLACK_WIN" : "WHITE_WIN";
 }
 
+/**
+ * The result of `player` running out of time: the other side wins, exactly as a
+ * resignation would settle. A stricter engine would call it a draw when the
+ * winner has no mating material left; OpenChess does not model that yet, so a
+ * flag is always a loss for whoever's clock fell.
+ */
+export function resultForTimeout(player: Color): GameResult {
+  return resultForResignation(player);
+}
+
+/** Remaining time on each side's clock, in milliseconds. */
+export type ClockState = {
+  whiteTimeMs: number;
+  blackTimeMs: number;
+};
+
+/** The stored time on `color`'s clock. */
+export function timeOf(clock: ClockState, color: Color): number {
+  return color === "w" ? clock.whiteTimeMs : clock.blackTimeMs;
+}
+
+/**
+ * Whether `color` has run out of time, given how long its clock has been
+ * running since it was last committed. The `<= 0` boundary is a flag: reaching
+ * exactly zero is out of time, matching how a physical clock's flag falls.
+ */
+export function hasFlagged(
+  clock: ClockState,
+  color: Color,
+  elapsedMs: number,
+): boolean {
+  return timeOf(clock, color) - elapsedMs <= 0;
+}
+
+/**
+ * The clock after `mover` completes a move that took `elapsedMs`: their time
+ * drops by the elapsed and gains the increment, the other side untouched.
+ * Returns null when the mover had already flagged — a move played on a fallen
+ * flag does not count, it ends the game.
+ */
+export function clockAfterMove(input: {
+  clock: ClockState;
+  mover: Color;
+  elapsedMs: number;
+  incrementSeconds: number;
+}): ClockState | null {
+  const before = timeOf(input.clock, input.mover);
+  const left = before - input.elapsedMs;
+
+  if (left <= 0) {
+    return null;
+  }
+
+  const after = left + input.incrementSeconds * 1000;
+
+  return input.mover === "w"
+    ? { whiteTimeMs: after, blackTimeMs: input.clock.blackTimeMs }
+    : { whiteTimeMs: input.clock.whiteTimeMs, blackTimeMs: after };
+}
+
 /** How `result` went for the player of `color`. Null for a game that was aborted. */
 export function outcomeFor(
   result: GameResult,

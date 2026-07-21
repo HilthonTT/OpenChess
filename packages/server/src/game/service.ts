@@ -24,12 +24,14 @@ import {
   toPgn,
   toSan,
   toUci,
+  TIME_CONTROLS,
   type Color,
   type Game,
   type HistoryEntry,
   type Move,
   type PgnResult,
   type PromotionPiece,
+  type TimeControlKey,
 } from "@openchess/shared";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
@@ -38,16 +40,21 @@ import { throwProblem } from "../lib/problem-details";
 import { satisfiedCodes } from "./achievements";
 import * as matchmaking from "./matchmaking";
 import {
+  clockAfterMove,
+  hasFlagged,
   levelFor,
   outcomeFor,
   ratingAfter,
   ratingAgainst,
   resultFor,
   resultForResignation,
+  resultForTimeout,
   rewardFor,
   rewardForPvp,
   statsAfter,
+  timeOf,
   toEngineDifficulty,
+  type ClockState,
   type Outcome,
   type Reward,
 } from "./rules";
@@ -94,6 +101,24 @@ export type OpponentView = {
   title: string | null;
 };
 
+export type TimeControlView = {
+  initialSeconds: number;
+  incrementSeconds: number;
+};
+
+export type ClockView = {
+  /** Milliseconds left for each side as of the last committed move. */
+  whiteMs: number;
+  blackMs: number;
+  /**
+   * When the running side's clock started — the last move's commit, or the
+   * game's start. A reader ticks `running`'s time down from here.
+   */
+  turnStartedAt: string;
+  /** Whose clock is running. Only meaningful while the game is live. */
+  running: Color;
+};
+
 export type GameView = {
   id: string;
   mode: GameRow["mode"];
@@ -110,6 +135,10 @@ export type GameView = {
   captured: { byWhite: string[]; byBlack: string[] };
   materialBalance: number;
   result: GameResult | null;
+  /** The game's clock, or null when it is untimed. */
+  timeControl: TimeControlView | null;
+  /** Live clock readings, or null when the game is untimed. */
+  clock: ClockView | null;
   startedAt: string;
   endedAt: string | null;
   /** Populated only on the response that ends the game. */
@@ -161,6 +190,42 @@ function fromHistory(entry: HistoryEntry): MoveView {
   };
 }
 
+/** The game's clock preset, or null when it carries no time control. */
+function timeControlView(row: GameRow): TimeControlView | null {
+  if (row.initialSeconds === null || row.incrementSeconds === null) {
+    return null;
+  }
+  return {
+    initialSeconds: row.initialSeconds,
+    incrementSeconds: row.incrementSeconds,
+  };
+}
+
+/** The live clock, or null when the game is untimed. */
+function clockView(row: GameRow, game: Game): ClockView | null {
+  if (
+    row.whiteTimeMs === null ||
+    row.blackTimeMs === null ||
+    row.turnStartedAt === null
+  ) {
+    return null;
+  }
+  return {
+    whiteMs: row.whiteTimeMs,
+    blackMs: row.blackTimeMs,
+    turnStartedAt: row.turnStartedAt.toISOString(),
+    running: game.position.turn,
+  };
+}
+
+/** The stored clock as a plain pair, or null when the game is untimed. */
+function clockState(row: GameRow): ClockState | null {
+  if (row.whiteTimeMs === null || row.blackTimeMs === null) {
+    return null;
+  }
+  return { whiteTimeMs: row.whiteTimeMs, blackTimeMs: row.blackTimeMs };
+}
+
 function view(
   row: GameRow,
   game: Game,
@@ -193,6 +258,8 @@ function view(
     captured: { byWhite: captured.byWhite, byBlack: captured.byBlack },
     materialBalance: materialBalance(game.position),
     result: row.result,
+    timeControl: timeControlView(row),
+    clock: clockView(row, game),
     startedAt: row.startedAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,
     rewards,
@@ -283,7 +350,14 @@ function nothingEarned(user: User, rating: number): RewardView {
  */
 async function claimGame(
   tx: Prisma.TransactionClient,
-  input: { row: GameRow; game: Game; result: GameResult; pgn: string },
+  input: {
+    row: GameRow;
+    game: Game;
+    result: GameResult;
+    pgn: string;
+    /** Final clock to freeze, e.g. a flagged side at zero. Omitted leaves it. */
+    clock?: ClockState;
+  },
 ): Promise<boolean> {
   const finalFen = toFen(input.game.position);
 
@@ -296,6 +370,12 @@ async function claimGame(
       finalFen,
       currentFen: finalFen,
       moves: gameMoves(input.game),
+      ...(input.clock
+        ? {
+            whiteTimeMs: input.clock.whiteTimeMs,
+            blackTimeMs: input.clock.blackTimeMs,
+          }
+        : {}),
       endedAt: new Date(),
     },
   });
@@ -468,6 +548,8 @@ async function settle(
     user: User;
     color: Color;
     result: GameResult;
+    /** Final clock to freeze; omitted leaves the stored one. */
+    clock?: ClockState;
   },
 ): Promise<RewardView | null> {
   const { row, game, user, color, result } = input;
@@ -480,6 +562,7 @@ async function settle(
     game,
     result,
     pgn: pgnFor(game, row, result, user.username, color),
+    clock: input.clock,
   });
 
   // Lost the race. The winner has already paid this game out.
@@ -533,6 +616,8 @@ async function settlePvp(
     game: Game;
     mover: User;
     result: GameResult;
+    /** Final clock to freeze; omitted leaves the stored one. */
+    clock?: ClockState;
   },
 ): Promise<RewardView | null> {
   const { row, game, mover, result } = input;
@@ -583,6 +668,7 @@ async function settlePvp(
       white?.user.username ?? "Anonymous",
       black?.user.username ?? "Anonymous",
     ),
+    clock: input.clock,
   });
 
   if (!claimed) {
@@ -709,10 +795,39 @@ async function loadFor(
  */
 const MAX_ACTIVE_GAMES = 20;
 
+/**
+ * The clock columns a new game is born with. An untimed game gets none of them,
+ * leaving every clock field null — which is exactly what `view` reads as
+ * "untimed", so the current behaviour is preserved by writing nothing.
+ */
+function initialClockData(timeControl: TimeControlKey | null | undefined): {
+  initialSeconds?: number;
+  incrementSeconds?: number;
+  whiteTimeMs?: number;
+  blackTimeMs?: number;
+  turnStartedAt?: Date;
+} {
+  if (!timeControl) {
+    return {};
+  }
+
+  const preset = TIME_CONTROLS[timeControl];
+  const ms = preset.initialSeconds * 1000;
+
+  return {
+    initialSeconds: preset.initialSeconds,
+    incrementSeconds: preset.incrementSeconds,
+    whiteTimeMs: ms,
+    blackTimeMs: ms,
+    turnStartedAt: new Date(),
+  };
+}
+
 export async function createAiGame(input: {
   user: User;
   difficulty: Difficulty;
   color: "white" | "black" | "random";
+  timeControl?: TimeControlKey | null;
 }): Promise<GameView> {
   // Checked outside a transaction, so two racing creates can land at cap + 1.
   // The ceiling is a backstop against runaway loops, not an invariant — off by
@@ -762,6 +877,9 @@ export async function createAiGame(input: {
       blackPlayerId: color === "b" ? input.user.id : null,
       moves: gameMoves(game),
       currentFen: toFen(game.position),
+      // The clock starts after any opening the bot just played, so the human's
+      // first think is measured from now rather than from before the bot moved.
+      ...initialClockData(input.timeControl),
     },
   });
 
@@ -781,7 +899,10 @@ export type QueueResult =
  * our partner's did, or it has been waiting since yesterday. One live PvP game
  * per player, resumed rather than multiplied.
  */
-export async function joinPvpQueue(user: User): Promise<QueueResult> {
+export async function joinPvpQueue(
+  user: User,
+  timeControl: TimeControlKey | null = null,
+): Promise<QueueResult> {
   const existing = await db.game.findFirst({
     where: {
       mode: "PVP",
@@ -811,10 +932,10 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
     return { status: "waiting", game: null };
   }
 
-  const partnerId = matchmaking.takePartner(user.id);
+  const partnerId = matchmaking.takePartner(user.id, timeControl);
 
   if (partnerId === null) {
-    matchmaking.heartbeat(user.id);
+    matchmaking.heartbeat(user.id, timeControl);
     return { status: "waiting", game: null };
   }
 
@@ -826,7 +947,7 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
 
     // Deleted between queueing and pairing. Back to waiting.
     if (!partner) {
-      matchmaking.heartbeat(user.id);
+      matchmaking.heartbeat(user.id, timeControl);
       return { status: "waiting", game: null };
     }
 
@@ -863,6 +984,8 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
               blackPlayerId: userIsWhite ? partner.id : user.id,
               moves: [],
               currentFen: toFen(createGame().position),
+              // Both sides queued for the same clock; this is that clock.
+              ...initialClockData(timeControl),
             },
           });
         },
@@ -882,7 +1005,7 @@ export async function joinPvpQueue(user: User): Promise<QueueResult> {
     if (row === null) {
       // One of us already has a live game. Whoever it is resumes it on their
       // next poll; if it isn't us, the heartbeat puts us back in line.
-      matchmaking.heartbeat(user.id);
+      matchmaking.heartbeat(user.id, timeControl);
       return { status: "waiting", game: null };
     }
 
@@ -932,6 +1055,11 @@ export async function playMove(input: {
   promotion?: PromotionPiece;
   ply: number;
 }): Promise<MoveResult> {
+  // Stamped before any work: this is the moment the mover's move arrived, and
+  // a timed game charges their clock for the gap since it last started. Taken
+  // ahead of `findBestMove` so the human is never billed for the bot's CPU.
+  const now = Date.now();
+
   // Everything up to and including the engine's reply runs before the
   // transaction opens: `findBestMove` is a synchronous minimax that can chew
   // real time, and running it inside a serializable transaction would spend
@@ -1027,6 +1155,77 @@ export async function playMove(input: {
       );
     }
 
+    // Clock bookkeeping, computed here so the settle and the plain update below
+    // stay one path each whether the game is timed or not.
+    let settleClock: ClockState | undefined;
+    let clockCommit:
+      | { whiteTimeMs: number; blackTimeMs: number; turnStartedAt: Date }
+      | undefined;
+
+    const clock = clockState(fresh);
+    if (
+      clock !== null &&
+      fresh.turnStartedAt !== null &&
+      fresh.incrementSeconds !== null
+    ) {
+      const elapsed = Math.max(0, now - fresh.turnStartedAt.getTime());
+
+      // A move played on a fallen flag does not count: settle the position as
+      // it stood *before* the move, a loss on time for the side that flagged.
+      if (hasFlagged(clock, color, elapsed)) {
+        const flagged: ClockState =
+          color === "w"
+            ? { whiteTimeMs: 0, blackTimeMs: clock.blackTimeMs }
+            : { whiteTimeMs: clock.whiteTimeMs, blackTimeMs: 0 };
+        const timeoutResult = resultForTimeout(color);
+
+        const rewards =
+          fresh.mode === "AI"
+            ? await settle(tx, {
+                row: fresh,
+                game: loaded,
+                user: input.user,
+                color,
+                result: timeoutResult,
+                clock: flagged,
+              })
+            : await settlePvp(tx, {
+                row: fresh,
+                game: loaded,
+                mover: input.user,
+                result: timeoutResult,
+                clock: flagged,
+              });
+
+        const settled = await tx.game.findUniqueOrThrow({
+          where: { id: row.id },
+        });
+        return {
+          yourMove,
+          aiMove,
+          state: view(settled, loaded, color, rewards, opponent),
+        };
+      }
+
+      // The move stands: bank the mover's remaining time plus the increment,
+      // and restart the clock for whoever is now to move. Not flagged, so
+      // `clockAfterMove` never returns null here.
+      const advanced =
+        clockAfterMove({
+          clock,
+          mover: color,
+          elapsedMs: elapsed,
+          incrementSeconds: fresh.incrementSeconds,
+        }) ?? clock;
+
+      settleClock = advanced;
+      clockCommit = {
+        whiteTimeMs: advanced.whiteTimeMs,
+        blackTimeMs: advanced.blackTimeMs,
+        turnStartedAt: new Date(now),
+      };
+    }
+
     if (isGameOver(game.status)) {
       const result = resultFor(game.status, game.position.turn);
 
@@ -1039,12 +1238,14 @@ export async function playMove(input: {
               user: input.user,
               color,
               result: result!,
+              clock: settleClock,
             })
           : await settlePvp(tx, {
               row: fresh,
               game,
               mover: input.user,
               result: result!,
+              clock: settleClock,
             });
 
       const settled = await tx.game.findUniqueOrThrow({
@@ -1059,7 +1260,11 @@ export async function playMove(input: {
 
     const updated = await tx.game.update({
       where: { id: row.id },
-      data: { moves: gameMoves(game), currentFen: toFen(game.position) },
+      data: {
+        moves: gameMoves(game),
+        currentFen: toFen(game.position),
+        ...(clockCommit ?? {}),
+      },
     });
 
     return {
@@ -1258,6 +1463,87 @@ export async function claimVictory(
   lastMoveAt.delete(gameId);
 
   // A claim is a rated win, so the board is stale — same as a resignation.
+  if (result.rewards !== null) {
+    await invalidateCache("leaderboard");
+  }
+
+  return result;
+}
+
+/**
+ * Settle a timed game whose running clock has fallen.
+ *
+ * Either player may call it; the server, not the caller, decides who flagged —
+ * the side to move is the one whose clock is running, so it settles as a loss
+ * for them whether that is the caller (their own flag fell while they sat on it)
+ * or the opponent (whose walk-away the caller is cashing in). The move path
+ * catches a flag the moment the flagged player tries to move; this catches the
+ * one they never do.
+ */
+export async function flagGame(gameId: string, user: User): Promise<GameView> {
+  const now = Date.now();
+
+  const result = await serializable(async (tx) => {
+    const { row, game, color, opponent } = await loadFor(tx, gameId, user.id);
+
+    // Idempotent like resign and claim: a game already settled comes back as it
+    // stands, so a retry the client never saw the answer to is safe.
+    if (row.endedAt !== null) {
+      return view(row, game, color, null, opponent);
+    }
+
+    const clock = clockState(row);
+    if (clock === null || row.turnStartedAt === null) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "This game has no clock to run out.",
+      );
+    }
+
+    // The running clock is the side to move's; that is who can flag right now.
+    const ticking = game.position.turn;
+    const elapsed = Math.max(0, now - row.turnStartedAt.getTime());
+
+    if (!hasFlagged(clock, ticking, elapsed)) {
+      const left = Math.ceil((timeOf(clock, ticking) - elapsed) / 1000);
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        `There is still ${left}s on the clock. Nobody has flagged yet.`,
+      );
+    }
+
+    const flagged: ClockState =
+      ticking === "w"
+        ? { whiteTimeMs: 0, blackTimeMs: clock.blackTimeMs }
+        : { whiteTimeMs: clock.whiteTimeMs, blackTimeMs: 0 };
+    const timeoutResult = resultForTimeout(ticking);
+
+    const rewards =
+      row.mode === "AI"
+        ? await settle(tx, {
+            row,
+            game,
+            user,
+            color,
+            result: timeoutResult,
+            clock: flagged,
+          })
+        : await settlePvp(tx, {
+            row,
+            game,
+            mover: user,
+            result: timeoutResult,
+            clock: flagged,
+          });
+
+    const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
+    return view(settled, game, color, rewards, opponent);
+  });
+
+  lastMoveAt.delete(gameId);
+
+  // A flag settles a decisive game: rating and record moved, so the board is
+  // stale, exactly as a resignation or a claim leaves it.
   if (result.rewards !== null) {
     await invalidateCache("leaderboard");
   }

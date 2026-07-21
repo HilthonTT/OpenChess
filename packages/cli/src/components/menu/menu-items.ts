@@ -63,6 +63,15 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
   {
+    id: "analysis",
+    title: "Analysis",
+    icon: "⌕",
+    description: "Review a finished game with the engine",
+    action(ctx) {
+      ctx.navigate("/analysis");
+    },
+  },
+  {
     id: "store",
     title: "Store",
     icon: "¤",

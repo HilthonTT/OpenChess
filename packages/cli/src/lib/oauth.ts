@@ -199,7 +199,10 @@ export async function performLogin() {
     authorizeUrl.searchParams.set("redirect_uri", redirectUri);
     // `offline_access` is what makes Clerk hand back a refresh token, so the
     // session outlives the ~1-hour access token without another browser trip.
-    authorizeUrl.searchParams.set("scope", "openid email profile offline_access");
+    authorizeUrl.searchParams.set(
+      "scope",
+      "openid email profile offline_access",
+    );
     authorizeUrl.searchParams.set("state", state);
     authorizeUrl.searchParams.set("prompt", "login");
     authorizeUrl.searchParams.set("code_challenge", codeChallenge);
@@ -286,7 +289,11 @@ async function doRefresh(): Promise<RefreshOutcome> {
     return { status: "rejected" };
   }
 
-  let data: { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown };
+  let data: {
+    access_token?: unknown;
+    refresh_token?: unknown;
+    expires_in?: unknown;
+  };
   try {
     data = (await response.json()) as typeof data;
   } catch {

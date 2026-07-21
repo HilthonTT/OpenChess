@@ -7,6 +7,7 @@ import {
   abortGame,
   claimVictory,
   createAiGame,
+  flagGame,
   getGame,
   joinPvpQueue,
   leavePvpQueue,
@@ -30,6 +31,7 @@ import {
   moveResultSchema,
   paginationQuerySchema,
   playMoveSchema,
+  queueJoinSchema,
   queueResultSchema,
 } from "./schemas";
 import { TAGS } from "./tags";
@@ -57,7 +59,7 @@ const create = createRoute({
   path: "/",
   summary: "Start an AI game",
   description:
-    "When the bot draws white it plays its opening move before responding, so the board you get back is always yours to move on.",
+    "When the bot draws white it plays its opening move before responding, so the board you get back is always yours to move on. Pass a `timeControl` to play on a clock — the bot is not clocked, so only your own flag can fall.",
   request: {
     body: jsonContentRequired(createGameSchema, "The game to start"),
   },
@@ -91,7 +93,10 @@ const queueJoin = createRoute({
   path: "/pvp/queue",
   summary: "Find an online match",
   description:
-    "Joins the matchmaking queue, or reports on a search already under way. Poll this every couple of seconds: each call is also the heartbeat that keeps you eligible for pairing, and a player who stops polling drops out of the queue on their own. Returns `matched` with the game as soon as an opponent is found — or immediately, if you already have an unfinished online game to resume.",
+    "Joins the matchmaking queue, or reports on a search already under way. Poll this every couple of seconds: each call is also the heartbeat that keeps you eligible for pairing, and a player who stops polling drops out of the queue on their own. You are only paired with someone who chose the same `timeControl`, so each clock is effectively its own queue. Returns `matched` with the game as soon as an opponent is found — or immediately, if you already have an unfinished online game to resume.",
+  request: {
+    body: jsonContentRequired(queueJoinSchema, "The clock to queue for"),
+  },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(
       queueResultSchema,
@@ -216,6 +221,25 @@ const claim = createRoute({
   },
 });
 
+const flag = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/flag",
+  summary: "Settle a game on time",
+  description:
+    "Ends a timed game whose running clock has fallen. The server, not the caller, decides who flagged — it is always the side to move — so this settles as a loss for whoever ran out, whether that is your opponent (whose walk-away you are cashing in) or you (having sat past your own flag). Flagging an already-finished game returns it unchanged, so a retry is safe.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(gameSchema, "The settled game"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "Not flaggable: the game is untimed, or there is still time on the running clock",
+    ),
+  },
+});
+
 const abort = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
@@ -240,9 +264,14 @@ const abort = createRoute({
 // full shape. That type is what `hc<AppType>` builds the typed CLI client from.
 const router = base
   .openapi(create, async (c) => {
-    const { difficulty, color } = c.req.valid("json");
+    const { difficulty, color, timeControl } = c.req.valid("json");
 
-    const game = await createAiGame({ user: c.get("user"), difficulty, color });
+    const game = await createAiGame({
+      user: c.get("user"),
+      difficulty,
+      color,
+      timeControl: timeControl ?? null,
+    });
 
     return c.json(game, HttpStatusCodes.CREATED);
   })
@@ -252,7 +281,9 @@ const router = base
     return c.json({ games }, HttpStatusCodes.OK);
   })
   .openapi(queueJoin, async (c) => {
-    const result = await joinPvpQueue(c.get("user"));
+    const { timeControl } = c.req.valid("json");
+
+    const result = await joinPvpQueue(c.get("user"), timeControl ?? null);
 
     return c.json(result, HttpStatusCodes.OK);
   })
@@ -306,6 +337,13 @@ const router = base
     const { id } = c.req.valid("param");
 
     const game = await claimVictory(id, c.get("user"));
+
+    return c.json(game, HttpStatusCodes.OK);
+  })
+  .openapi(flag, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await flagGame(id, c.get("user"));
 
     return c.json(game, HttpStatusCodes.OK);
   })

@@ -10,6 +10,7 @@ import { Leaderboard } from "./screens/leaderboard";
 import { Achievements } from "./screens/achievements";
 import { Stats } from "./screens/stats";
 import { Store } from "./screens/store";
+import { Analysis } from "./screens/analysis";
 
 const router = createMemoryRouter([
   {
@@ -24,6 +25,7 @@ const router = createMemoryRouter([
       { path: "/achievements", element: <Achievements /> },
       { path: "/stats", element: <Stats /> },
       { path: "/store", element: <Store /> },
+      { path: "/analysis", element: <Analysis /> },
     ],
   },
 ]);

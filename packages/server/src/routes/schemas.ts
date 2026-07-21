@@ -33,6 +33,29 @@ export const gameStatusSchema = z.enum([
 
 export const promotionSchema = z.enum(["q", "r", "b", "n"]);
 
+export const timeControlKeySchema = z
+  .enum(["bullet", "blitz", "rapid"])
+  .openapi({ example: "blitz" });
+
+export const timeControlSchema = z
+  .object({
+    initialSeconds: z.number().int().openapi({ example: 180 }),
+    incrementSeconds: z.number().int().openapi({ example: 2 }),
+  })
+  .openapi("TimeControl");
+
+export const clockSchema = z
+  .object({
+    /** Milliseconds left for each side as of the last committed move. */
+    whiteMs: z.number().int(),
+    blackMs: z.number().int(),
+    /** When the running side's clock started; a reader ticks down from here. */
+    turnStartedAt: z.string(),
+    /** Whose clock is running. Only meaningful while the game is live. */
+    running: colorSchema,
+  })
+  .openapi("Clock");
+
 export const moveSchema = z
   .object({
     from: z.string().openapi({ example: "e2" }),
@@ -93,6 +116,10 @@ export const gameSchema = z
     }),
     materialBalance: z.number().int(),
     result: gameResultSchema.nullable(),
+    /** The game's clock, or null when it is untimed. */
+    timeControl: timeControlSchema.nullable().openapi({ example: null }),
+    /** Live clock readings, or null when the game is untimed. */
+    clock: clockSchema.nullable().openapi({ example: null }),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     /** Present only on the response that ends the game. */
@@ -117,8 +144,17 @@ export const createGameSchema = z
   .object({
     difficulty: difficultySchema,
     color: z.enum(["white", "black", "random"]).default("random"),
+    /** Omit or pass null for an untimed game. */
+    timeControl: timeControlKeySchema.nullish(),
   })
   .openapi("CreateGame");
+
+export const queueJoinSchema = z
+  .object({
+    /** The clock to be matched on. Omit or null to queue for an untimed game. */
+    timeControl: timeControlKeySchema.nullish(),
+  })
+  .openapi("QueueJoin");
 
 export const playMoveSchema = z
   .object({

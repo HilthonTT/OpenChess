@@ -2,15 +2,19 @@ import { describe, expect, test } from "bun:test";
 
 import {
   MIN_REWARDED_PLIES,
+  clockAfterMove,
   expectedScore,
+  hasFlagged,
   outcomeFor,
   ratingAfter,
   ratingAgainst,
   resultFor,
   resultForResignation,
+  resultForTimeout,
   rewardFor,
   rewardForPvp,
   statsAfter,
+  timeOf,
 } from "./rules";
 
 const LONG_ENOUGH = MIN_REWARDED_PLIES + 2;
@@ -269,5 +273,66 @@ describe("statsAfter", () => {
 
   test("the rating handed in is the rating recorded", () => {
     expect(statsAfter(before, "win", 1234).rating).toBe(1234);
+  });
+});
+
+describe("resultForTimeout", () => {
+  test("a flag falling loses for the side whose clock ran out", () => {
+    expect(resultForTimeout("w")).toBe("BLACK_WIN");
+    expect(resultForTimeout("b")).toBe("WHITE_WIN");
+  });
+});
+
+describe("clock helpers", () => {
+  const clock = { whiteTimeMs: 30_000, blackTimeMs: 45_000 };
+
+  test("timeOf reads the right side", () => {
+    expect(timeOf(clock, "w")).toBe(30_000);
+    expect(timeOf(clock, "b")).toBe(45_000);
+  });
+
+  test("hasFlagged is true once the elapsed time reaches the clock", () => {
+    expect(hasFlagged(clock, "w", 29_999)).toBe(false);
+    // Reaching exactly zero is a fallen flag, like a physical clock.
+    expect(hasFlagged(clock, "w", 30_000)).toBe(true);
+    expect(hasFlagged(clock, "w", 31_000)).toBe(true);
+  });
+
+  test("a move deducts the elapsed time and adds the increment", () => {
+    // White thinks 10s on a 2s-increment clock: 30 - 10 + 2 = 22s left.
+    const after = clockAfterMove({
+      clock,
+      mover: "w",
+      elapsedMs: 10_000,
+      incrementSeconds: 2,
+    });
+
+    expect(after).not.toBeNull();
+    expect(after?.whiteTimeMs).toBe(22_000);
+    // The side that did not move is untouched.
+    expect(after?.blackTimeMs).toBe(45_000);
+  });
+
+  test("a move on a fallen flag returns null — it does not count", () => {
+    const after = clockAfterMove({
+      clock,
+      mover: "w",
+      elapsedMs: 30_001,
+      incrementSeconds: 2,
+    });
+
+    expect(after).toBeNull();
+  });
+
+  test("increment can carry a clock above its start, as real clocks do", () => {
+    const after = clockAfterMove({
+      clock,
+      mover: "b",
+      elapsedMs: 1_000,
+      incrementSeconds: 5,
+    });
+
+    // 45 - 1 + 5 = 49s.
+    expect(after?.blackTimeMs).toBe(49_000);
   });
 });

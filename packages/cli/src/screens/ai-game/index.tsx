@@ -26,7 +26,10 @@ function CheckingSession() {
   const theme = useUITheme();
 
   return (
-    <GameScreen title="Play vs AI" subtitle="Test your skill against the engine">
+    <GameScreen
+      title="Play vs AI"
+      subtitle="Test your skill against the engine"
+    >
       <text fg={theme.dim}>Checking your session…</text>
     </GameScreen>
   );

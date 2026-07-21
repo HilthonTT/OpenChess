@@ -6,7 +6,7 @@ import {
   isInsufficientMaterial,
 } from "./moves";
 import { pieceValue } from "./game";
-import type { Move, PieceType, Position } from "./types";
+import type { Color, Move, PieceType, Position } from "./types";
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -224,4 +224,153 @@ export function findBestMove(
   }
 
   return bestMoves[Math.floor(Math.random() * bestMoves.length)] ?? null;
+}
+
+/**
+ * The same engine turned inward, for reviewing a game rather than playing one.
+ *
+ * `analyzePosition` reports what the search thinks of a position; `centipawnLoss`
+ * turns a pair of those verdicts into how much a move gave away, and
+ * `classifyMove` labels that loss the way an analysis board does. All scores are
+ * centipawns from *white's* point of view — positive favours white — so the
+ * whole game reads on one axis rather than flipping with the side to move.
+ */
+
+/** Default review depth. A ply deeper than `hard` play, still snappy on the client. */
+export const ANALYSIS_DEPTH = 3;
+
+export type MoveQuality =
+  | "best"
+  | "good"
+  | "inaccuracy"
+  | "mistake"
+  | "blunder";
+
+export type Analysis = {
+  /** Centipawns from white's POV; positive favours white. */
+  scoreCp: number;
+  /**
+   * Moves until forced mate — positive when white is mating, negative when
+   * black is — or null when neither side has one in view.
+   */
+  mateIn: number | null;
+  /** The move the search would play, or null in a terminal position. */
+  bestMove: Move | null;
+};
+
+/**
+ * Static evaluation in centipawns from white's point of view. `evaluate` scores
+ * from the side to move's perspective, the way negamax needs; this flips it so
+ * callers get one consistent axis.
+ */
+export function evaluatePosition(position: Position): number {
+  const score = evaluate(position);
+  return position.turn === "w" ? score : -score;
+}
+
+/** How close to `MATE_SCORE` a value must be to be read as a forced mate. */
+const MATE_THRESHOLD = MATE_SCORE - 1000;
+
+/** Search `position` and report the verdict, white's POV. */
+export function analyzePosition(
+  position: Position,
+  depth: number = ANALYSIS_DEPTH,
+): Analysis {
+  const moves = generateLegalMoves(position);
+
+  // A terminal position has no move to recommend: checkmate is a decisive
+  // score for whoever delivered it, any other end is a dead-level draw.
+  if (moves.length === 0) {
+    if (isInCheck(position, position.turn)) {
+      const whiteMated = position.turn === "w";
+      return {
+        scoreCp: whiteMated ? -MATE_SCORE : MATE_SCORE,
+        // The mate is already on the board — zero moves away, either side.
+        mateIn: 0,
+        bestMove: null,
+      };
+    }
+    return { scoreCp: 0, mateIn: null, bestMove: null };
+  }
+
+  if (
+    position.halfmoveClock >= 100 ||
+    isInsufficientMaterial(position)
+  ) {
+    return { scoreCp: 0, mateIn: null, bestMove: null };
+  }
+
+  // A full-window root search — no aspiration trick, because here the true best
+  // score matters, not just which move ties for it.
+  let bestScore = -Infinity;
+  let bestMove: Move | null = null;
+
+  for (const move of orderMoves(moves)) {
+    const score = -negamax(
+      applyMove(position, move),
+      depth - 1,
+      -Infinity,
+      Infinity,
+      1,
+    );
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = move;
+    }
+  }
+
+  // `bestScore` is from the side to move's POV; flip it to white's.
+  const whiteScore = position.turn === "w" ? bestScore : -bestScore;
+
+  let mateIn: number | null = null;
+  if (Math.abs(bestScore) >= MATE_THRESHOLD) {
+    const plies = MATE_SCORE - Math.abs(bestScore);
+    const movesToMate = Math.max(1, Math.ceil(plies / 2));
+    // The side to move is mating when its score is positive.
+    const whiteMating = (bestScore > 0) === (position.turn === "w");
+    mateIn = whiteMating ? movesToMate : -movesToMate;
+  }
+
+  return { scoreCp: whiteScore, mateIn, bestMove };
+}
+
+/**
+ * How much the mover gave up, in centipawns, given the white-POV evaluation
+ * before and after their move. A move that keeps the evaluation where it stood
+ * loses nothing; one that hands the opponent an edge loses the difference.
+ * Never negative — a move that happens to out-search the reference position (a
+ * shallow search finding more on the reply) is not a "gain", it is noise.
+ */
+export function centipawnLoss(
+  mover: Color,
+  whiteEvalBefore: number,
+  whiteEvalAfter: number,
+): number {
+  const delta =
+    mover === "w"
+      ? whiteEvalBefore - whiteEvalAfter
+      : whiteEvalAfter - whiteEvalBefore;
+  return Math.max(0, delta);
+}
+
+/**
+ * Thresholds in centipawns. Generous at the top — a one-ply-shallow review
+ * should not brand every third move an inaccuracy — and unmistakable at the
+ * bottom, where a blunder is a piece or a lost game.
+ */
+export function classifyMove(centipawnLoss: number): MoveQuality {
+  if (centipawnLoss <= 20) {
+    return "best";
+  }
+  if (centipawnLoss <= 60) {
+    return "good";
+  }
+  if (centipawnLoss <= 120) {
+    return "inaccuracy";
+  }
+  if (centipawnLoss <= 250) {
+    return "mistake";
+  }
+  return "blunder";
 }

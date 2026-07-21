@@ -9,7 +9,10 @@ import { getProblemDetails } from "./http-errors";
  */
 
 export type Profile = InferResponseType<typeof apiClient.me.$get, 200>;
-export type PlayerStats = InferResponseType<typeof apiClient.me.stats.$get, 200>;
+export type PlayerStats = InferResponseType<
+  typeof apiClient.me.stats.$get,
+  200
+>;
 
 export async function fetchProfile(): Promise<Profile> {
   const response = await apiClient.me.$get();

@@ -24,11 +24,14 @@ export function LocalAIGame({ subtitle }: { subtitle?: string }) {
   const [human, setHuman] = useState<Color | null>(null);
 
   if (difficulty === null || human === null) {
+    // No clock offline: it would need in-process timing with nothing to enforce
+    // it against, so the engine game stays untimed.
     return (
       <Setup
-        difficulty={difficulty}
-        onDifficulty={setDifficulty}
-        onColor={setHuman}
+        onStart={(choice) => {
+          setDifficulty(choice.difficulty);
+          setHuman(choice.color);
+        }}
         subtitle={subtitle}
       />
     );

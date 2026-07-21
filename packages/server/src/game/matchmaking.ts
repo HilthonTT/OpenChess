@@ -11,8 +11,16 @@
  * Single-process by construction, like the rate limiter next door.
  */
 
+/**
+ * A player's chosen clock while they wait, or null for an untimed match. Two
+ * players are only paired when theirs are equal — a bullet seeker never lands
+ * in a rapid game — so the single FIFO doubles as one queue per time control.
+ */
+export type QueueTimeControl = string | null;
+
 type Entry = {
   userId: string;
+  timeControl: QueueTimeControl;
   enqueuedAt: number;
   lastSeenAt: number;
 };
@@ -35,16 +43,27 @@ const queue = new Map<string, Entry>();
  */
 const pairing = new Set<string>();
 
-/** Join the queue, or refresh the heartbeat of an entry already in it. */
-export function heartbeat(userId: string, now: number = Date.now()): void {
+/**
+ * Join the queue, or refresh the heartbeat of an entry already in it. A player
+ * who re-polls with a different time control switches queues in place — their
+ * old wait is abandoned, which is what a player changing their pick expects.
+ */
+export function heartbeat(
+  userId: string,
+  timeControl: QueueTimeControl = null,
+  now: number = Date.now(),
+): void {
   const entry = queue.get(userId);
 
-  if (entry) {
+  if (entry && entry.timeControl === timeControl) {
     entry.lastSeenAt = now;
     return;
   }
 
-  queue.set(userId, { userId, enqueuedAt: now, lastSeenAt: now });
+  // Re-insert (deleting first) so a switched time control also moves the player
+  // to the back of the FIFO, rather than keeping a seniority they abandoned.
+  queue.delete(userId);
+  queue.set(userId, { userId, timeControl, enqueuedAt: now, lastSeenAt: now });
 }
 
 /**
@@ -59,6 +78,7 @@ export function heartbeat(userId: string, now: number = Date.now()): void {
  */
 export function takePartner(
   userId: string,
+  timeControl: QueueTimeControl = null,
   now: number = Date.now(),
 ): string | null {
   // A caller already mid-pairing must not open a second one. The service
@@ -76,6 +96,12 @@ export function takePartner(
     }
 
     if (entry.userId === userId || pairing.has(entry.userId)) {
+      continue;
+    }
+
+    // Only pair a like-for-like clock: a bullet seeker and a rapid seeker each
+    // keep waiting past the other rather than land in a game neither chose.
+    if (entry.timeControl !== timeControl) {
       continue;
     }
 

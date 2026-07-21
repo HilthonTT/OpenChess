@@ -1,7 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useKeyboard } from "@opentui/react";
-import { opposite } from "@openchess/shared";
-import type { Color, Difficulty, GameStatus } from "@openchess/shared";
+import { opposite, TIME_CONTROLS } from "@openchess/shared";
+import type {
+  Color,
+  Difficulty,
+  GameStatus,
+  TimeControlKey,
+} from "@openchess/shared";
 import { GameScreen } from "../../components/game-screen";
 import { describeStatus } from "../../components/game-panels";
 import { useUITheme } from "../../providers/theme";
@@ -14,6 +19,14 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   easy: "Easy",
   medium: "Medium",
   hard: "Hard",
+};
+
+/** Everything the setup collects before a board appears. */
+export type SetupChoice = {
+  difficulty: Difficulty;
+  color: Color;
+  /** Null when the player picked an untimed game, or was never asked. */
+  timeControl: TimeControlKey | null;
 };
 
 /** The status line reworded for a human-versus-engine game. */
@@ -36,36 +49,86 @@ export function describeAiStatus(
   }
 }
 
-/** Two quick questions — difficulty, then color — before the board appears. */
+type Step = "difficulty" | "time" | "color";
+
+/**
+ * The quick questions before the board appears — difficulty, then an optional
+ * time control, then colour. `askTimeControl` is off for the offline engine
+ * (nothing there to clock) and on for server games, which the clock is enforced
+ * on. Colour is always last, since choosing it is what starts the game.
+ */
 export function Setup({
-  difficulty,
-  onDifficulty,
-  onColor,
+  onStart,
+  askTimeControl = false,
   subtitle = "Test your skill against the engine",
 }: {
-  difficulty: Difficulty | null;
-  onDifficulty: (difficulty: Difficulty | null) => void;
-  onColor: (color: Color) => void;
+  onStart: (choice: SetupChoice) => void;
+  askTimeControl?: boolean;
   subtitle?: string;
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  // `undefined` means "not chosen yet"; `null` means the player picked untimed.
+  const [timeControl, setTimeControl] = useState<
+    TimeControlKey | null | undefined
+  >(undefined);
+
+  const step: Step =
+    difficulty === null
+      ? "difficulty"
+      : askTimeControl && timeControl === undefined
+        ? "time"
+        : "color";
+
+  const start = useCallback(
+    (color: Color) => {
+      if (difficulty === null) {
+        return;
+      }
+      onStart({
+        difficulty,
+        color,
+        timeControl: askTimeControl ? (timeControl ?? null) : null,
+      });
+    },
+    [askTimeControl, difficulty, onStart, timeControl],
+  );
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID)) {
       return;
     }
 
-    if (difficulty === null) {
+    if (step === "difficulty") {
       switch (key.name) {
         case "1":
-          onDifficulty("easy");
+          setDifficulty("easy");
           break;
         case "2":
-          onDifficulty("medium");
+          setDifficulty("medium");
           break;
         case "3":
-          onDifficulty("hard");
+          setDifficulty("hard");
+          break;
+      }
+      return;
+    }
+
+    if (step === "time") {
+      switch (key.name) {
+        case "1":
+          setTimeControl(null);
+          break;
+        case "2":
+          setTimeControl("bullet");
+          break;
+        case "3":
+          setTimeControl("blitz");
+          break;
+        case "4":
+          setTimeControl("rapid");
           break;
       }
       return;
@@ -73,29 +136,40 @@ export function Setup({
 
     switch (key.name) {
       case "w":
-        onColor("w");
+        start("w");
         break;
       case "b":
-        onColor("b");
+        start("b");
         break;
       case "r":
-        onColor(Math.random() < 0.5 ? "w" : "b");
+        start(Math.random() < 0.5 ? "w" : "b");
         break;
     }
   });
 
-  /** Escape steps back to the difficulty question before leaving the screen. */
+  /** Escape unwinds one question at a time before it gives up the screen. */
   const handleEscape = useCallback(() => {
-    if (difficulty !== null) {
-      onDifficulty(null);
+    if (step === "color") {
+      if (askTimeControl) {
+        setTimeControl(undefined);
+      } else {
+        setDifficulty(null);
+      }
+      return true;
+    }
+    if (step === "time") {
+      setDifficulty(null);
       return true;
     }
     return false;
-  }, [difficulty, onDifficulty]);
+  }, [askTimeControl, step]);
+
+  const chosenTimeControlLabel =
+    timeControl == null ? "Untimed" : TIME_CONTROLS[timeControl].label;
 
   return (
     <GameScreen title="Play vs AI" subtitle={subtitle} onEscape={handleEscape}>
-      {difficulty === null ? (
+      {step === "difficulty" ? (
         <box flexDirection="column" alignItems="center" gap={1}>
           <text fg={theme.walnut}>Choose a difficulty</text>
           <text>
@@ -107,11 +181,35 @@ export function Setup({
             <span fg={theme.faint}> Hard</span>
           </text>
         </box>
+      ) : step === "time" ? (
+        <box flexDirection="column" alignItems="center" gap={1}>
+          <text>
+            <span fg={theme.faint}>Difficulty: </span>
+            <span fg={theme.gold}>{DIFFICULTY_LABELS[difficulty!]}</span>
+          </text>
+          <text fg={theme.walnut}>Choose a time control</text>
+          <text>
+            <span fg={theme.cream}>1</span>
+            <span fg={theme.faint}> Untimed </span>
+            <span fg={theme.cream}>2</span>
+            <span fg={theme.faint}> {TIME_CONTROLS.bullet.label} </span>
+            <span fg={theme.cream}>3</span>
+            <span fg={theme.faint}> {TIME_CONTROLS.blitz.label} </span>
+            <span fg={theme.cream}>4</span>
+            <span fg={theme.faint}> {TIME_CONTROLS.rapid.label}</span>
+          </text>
+        </box>
       ) : (
         <box flexDirection="column" alignItems="center" gap={1}>
           <text>
             <span fg={theme.faint}>Difficulty: </span>
-            <span fg={theme.gold}>{DIFFICULTY_LABELS[difficulty]}</span>
+            <span fg={theme.gold}>{DIFFICULTY_LABELS[difficulty!]}</span>
+            {askTimeControl ? (
+              <>
+                <span fg={theme.faint}> · Clock: </span>
+                <span fg={theme.gold}>{chosenTimeControlLabel}</span>
+              </>
+            ) : null}
           </text>
           <text fg={theme.walnut}>Choose your side</text>
           <text>

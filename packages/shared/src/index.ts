@@ -6,5 +6,6 @@ export * from "./chess/game";
 export * from "./chess/pgn";
 export * from "./chess/pgn-text";
 export * from "./chess/ai";
+export * from "./chess/time-control";
 export * from "./progression/level";
 export * from "./problem-details/problem-details";

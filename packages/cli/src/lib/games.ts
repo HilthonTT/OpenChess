@@ -1,5 +1,9 @@
 import type { InferResponseType } from "hono/client";
-import type { Difficulty, PromotionPiece } from "@openchess/shared";
+import type {
+  Difficulty,
+  PromotionPiece,
+  TimeControlKey,
+} from "@openchess/shared";
 import { apiClient } from "./api-client";
 import { getProblemDetails } from "./http-errors";
 
@@ -63,6 +67,8 @@ export function toEngineDifficulty(
 export async function createAiGame(input: {
   difficulty: ServerDifficulty;
   color: "white" | "black" | "random";
+  /** Omit or null for an untimed game. */
+  timeControl?: TimeControlKey | null;
 }): Promise<ServerGame> {
   const response = await apiClient.games.$post({ json: input });
 
@@ -81,10 +87,15 @@ export type QueueResult = InferResponseType<
 /**
  * One poll of the matchmaking queue. Each call doubles as the heartbeat that
  * keeps us eligible for pairing, so the caller is expected to keep calling
- * until it answers `matched`.
+ * until it answers `matched`. Only players who queue for the same `timeControl`
+ * are paired, so the value must stay the same across a search's polls.
  */
-export async function joinPvpQueue(): Promise<QueueResult> {
-  const response = await apiClient.games.pvp.queue.$post();
+export async function joinPvpQueue(
+  timeControl: TimeControlKey | null = null,
+): Promise<QueueResult> {
+  const response = await apiClient.games.pvp.queue.$post({
+    json: { timeControl },
+  });
 
   if (response.status !== 200) {
     throw await toError(response);
@@ -163,6 +174,46 @@ export async function claimVictory(id: string): Promise<ServerGame> {
 
 export async function abortGame(id: string): Promise<ServerGame> {
   const response = await byId.abort.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+/**
+ * Settle a timed game whose running clock has fallen. The server decides who
+ * flagged (always the side to move), so this claims a win from an opponent who
+ * ran out — or, called on your own fallen flag, concedes it. A 409 means the
+ * server's clock still shows time; the cure, as ever, is to refetch.
+ */
+export async function flagGame(id: string): Promise<ServerGame> {
+  const response = await byId.flag.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+export type GameHistoryEntry = InferResponseType<
+  typeof apiClient.games.$get,
+  200
+>["games"][number];
+
+/** A page of your finished games, newest first, for the review browser. */
+export async function listFinishedGames(input?: {
+  limit?: number;
+  cursor?: string;
+}): Promise<{ games: GameHistoryEntry[]; nextCursor: string | null }> {
+  const response = await apiClient.games.$get({
+    query: {
+      limit: String(input?.limit ?? 20),
+      ...(input?.cursor ? { cursor: input.cursor } : {}),
+    },
+  });
 
   if (response.status !== 200) {
     throw await toError(response);

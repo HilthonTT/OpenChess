@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import { isGameOver, opposite, toAlgebraic } from "@openchess/shared";
-import type { Color, GameStatus, PromotionPiece } from "@openchess/shared";
+import {
+  isGameOver,
+  opposite,
+  TIME_CONTROLS,
+  timeControlFor,
+  toAlgebraic,
+} from "@openchess/shared";
+import type {
+  Color,
+  GameStatus,
+  PromotionPiece,
+  TimeControlKey,
+} from "@openchess/shared";
+import { useKeyboard } from "@opentui/react";
+import { useNavigate } from "react-router";
 import { GameScreen } from "../components/game-screen";
-import { MatchView } from "../components/match-view";
+import { MatchView, orientClocks } from "../components/match-view";
 import { describeStatus } from "../components/game-panels";
 import {
   GameConflictError,
   abortGame,
   claimVictory,
   fetchGame,
+  flagGame,
   joinPvpQueue,
   leavePvpQueue,
   resignGame,
@@ -17,9 +31,11 @@ import {
 } from "../lib/games";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
+import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 import { homeSquare, useBoardCursor } from "../hooks/use-board-cursor";
+import { useClock } from "../hooks/use-clock";
 import { useGameKeys } from "../hooks/use-game-keys";
 import { useMoveSelection } from "../hooks/use-move-selection";
 import { useReplayedGame } from "../hooks/use-replayed-game";
@@ -53,7 +69,9 @@ function describeOnlineStatus(
         ? "Checkmate — you win!"
         : `Checkmate — ${opponent} wins`;
     case "check":
-      return turn === you ? "Your move — check!" : `${opponent} to move — check!`;
+      return turn === you
+        ? "Your move — check!"
+        : `${opponent} to move — check!`;
     case "playing":
       return turn === you ? "Your move" : `Waiting for ${opponent}…`;
     default:
@@ -70,8 +88,13 @@ export function OnlineGame() {
   const auth = useAuth();
   const theme = useUITheme();
   const [match, setMatch] = useState<ServerGame | null>(null);
+  // `undefined` until the player picks a clock; `null` is an untimed queue.
+  const [timeControl, setTimeControl] = useState<
+    TimeControlKey | null | undefined
+  >(undefined);
 
   const onMatched = useCallback((game: ServerGame) => setMatch(game), []);
+  // A rematch drops back into the same queue, keeping the chosen clock.
   const onRequeue = useCallback(() => setMatch(null), []);
 
   if (auth.status === "checking") {
@@ -87,16 +110,79 @@ export function OnlineGame() {
       <GameScreen title={TITLE} subtitle={SUBTITLE}>
         <box flexDirection="column" alignItems="center" gap={1}>
           <text fg={theme.gold}>Online play needs an account</text>
-          <text fg={theme.dim}>Sign in from the home screen, then come back.</text>
+          <text fg={theme.dim}>
+            Sign in from the home screen, then come back.
+          </text>
         </box>
       </GameScreen>
     );
   }
 
-  return match ? (
-    <OnlineMatch key={match.id} initial={match} onRequeue={onRequeue} />
-  ) : (
-    <Searching onMatched={onMatched} />
+  if (match) {
+    return <OnlineMatch key={match.id} initial={match} onRequeue={onRequeue} />;
+  }
+
+  if (timeControl === undefined) {
+    return <QueueSetup onChoose={setTimeControl} />;
+  }
+
+  return (
+    <Searching
+      timeControl={timeControl}
+      onMatched={onMatched}
+      onBack={() => setTimeControl(undefined)}
+    />
+  );
+}
+
+/** Pick the clock to queue for. You are only paired with a like-for-like one. */
+function QueueSetup({
+  onChoose,
+}: {
+  onChoose: (timeControl: TimeControlKey | null) => void;
+}) {
+  const theme = useUITheme();
+  const { isTopLayer } = useKeyboardLayer();
+
+  useKeyboard((key) => {
+    if (!isTopLayer(BASE_LAYER_ID)) {
+      return;
+    }
+    switch (key.name) {
+      case "1":
+        onChoose(null);
+        break;
+      case "2":
+        onChoose("bullet");
+        break;
+      case "3":
+        onChoose("blitz");
+        break;
+      case "4":
+        onChoose("rapid");
+        break;
+    }
+  });
+
+  return (
+    <GameScreen title={TITLE} subtitle={SUBTITLE}>
+      <box flexDirection="column" alignItems="center" gap={1}>
+        <text fg={theme.walnut}>Choose a time control</text>
+        <text>
+          <span fg={theme.cream}>1</span>
+          <span fg={theme.faint}> Untimed </span>
+          <span fg={theme.cream}>2</span>
+          <span fg={theme.faint}> {TIME_CONTROLS.bullet.label} </span>
+          <span fg={theme.cream}>3</span>
+          <span fg={theme.faint}> {TIME_CONTROLS.blitz.label} </span>
+          <span fg={theme.cream}>4</span>
+          <span fg={theme.faint}> {TIME_CONTROLS.rapid.label}</span>
+        </text>
+        <text fg={theme.dim}>
+          You'll only be paired with a player who picked the same.
+        </text>
+      </box>
+    </GameScreen>
   );
 }
 
@@ -105,10 +191,20 @@ export function OnlineGame() {
  * first poll to find a partner creates the game, and an unfinished online game
  * is returned immediately — so this screen is also how a match is resumed.
  */
-function Searching({ onMatched }: { onMatched: (game: ServerGame) => void }) {
+function Searching({
+  timeControl,
+  onMatched,
+  onBack,
+}: {
+  timeControl: TimeControlKey | null;
+  onMatched: (game: ServerGame) => void;
+  onBack: () => void;
+}) {
   const theme = useUITheme();
   const [message, setMessage] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
+
+  const speedLabel = timeControl ? TIME_CONTROLS[timeControl].label : "Untimed";
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +212,7 @@ function Searching({ onMatched }: { onMatched: (game: ServerGame) => void }) {
 
     const poll = async () => {
       try {
-        const result = await joinPvpQueue();
+        const result = await joinPvpQueue(timeControl);
         if (cancelled) {
           return;
         }
@@ -153,7 +249,7 @@ function Searching({ onMatched }: { onMatched: (game: ServerGame) => void }) {
       // rather than by heartbeat timeout.
       void leavePvpQueue();
     };
-  }, [onMatched]);
+  }, [onMatched, timeControl]);
 
   useEffect(() => {
     const timer = setInterval(() => setSeconds((value) => value + 1), 1_000);
@@ -161,11 +257,20 @@ function Searching({ onMatched }: { onMatched: (game: ServerGame) => void }) {
   }, []);
 
   return (
-    <GameScreen title={TITLE} subtitle={SUBTITLE}>
+    <GameScreen
+      title={`${TITLE} · ${speedLabel}`}
+      subtitle={SUBTITLE}
+      onEscape={() => {
+        onBack();
+        return true;
+      }}
+    >
       <box flexDirection="column" alignItems="center" gap={1}>
-        <text fg={theme.walnut}>{`Searching for an opponent… ${seconds}s`}</text>
+        <text
+          fg={theme.walnut}
+        >{`Searching for an opponent… ${seconds}s`}</text>
         <text fg={theme.dim}>
-          You'll be paired with the next player who queues up.
+          {`You'll be paired with the next ${speedLabel.toLowerCase()} player.`}
         </text>
         {message ? <text fg={theme.gold}>{message}</text> : null}
       </box>
@@ -183,6 +288,7 @@ function OnlineMatch({
   const theme = useUITheme();
   const toast = useToast();
   const auth = useAuth();
+  const navigate = useNavigate();
 
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
@@ -309,6 +415,45 @@ function OnlineMatch({
     }
   }, [apply, server.id, setMessage]);
 
+  /**
+   * Settle on time: cash in the opponent's fallen flag, or concede our own.
+   * The server decides which it is, so a clock that only looks fallen to us
+   * (a lagging tick) comes back a conflict and we just resync.
+   */
+  const flag = useCallback(async () => {
+    if (pending || over) {
+      return;
+    }
+    setPending(true);
+    setMessage(null);
+
+    try {
+      apply(await flagGame(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        await resync();
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(false);
+    }
+  }, [apply, over, pending, resync, server.id, setMessage]);
+
+  const live = useClock({
+    clock: server.clock,
+    over,
+    onExpire: () => void flag(),
+  });
+
+  const clocks = orientClocks({
+    live,
+    running: server.clock?.running ?? "w",
+    over,
+    flipped: cursor.flipped,
+    labelFor: (color) => (color === human ? "You" : opponentName),
+  });
+
   const commit = useCallback(
     async (from: number, to: number, choice?: PromotionPiece) => {
       if (!beginCommit(from, to, choice)) {
@@ -434,6 +579,12 @@ function OnlineMatch({
             void claim();
           }
           break;
+        case "a":
+          // A finished rated game is worth reviewing; jump straight in.
+          if (over) {
+            void navigate("/analysis", { state: { gameId: server.id } });
+          }
+          break;
       }
     },
   });
@@ -477,9 +628,16 @@ function OnlineMatch({
       ? server.rewards
       : null;
 
+  const speed = server.timeControl
+    ? (timeControlFor(
+        server.timeControl.initialSeconds,
+        server.timeControl.incrementSeconds,
+      )?.name ?? null)
+    : null;
+
   return (
     <GameScreen
-      title={`${TITLE} · vs ${opponentDisplay}`}
+      title={`${TITLE}${speed ? ` · ${speed}` : ""} · vs ${opponentDisplay}`}
       width={58}
       onEscape={handleEscape}
       footer={
@@ -494,6 +652,12 @@ function OnlineMatch({
             <>
               <span fg={theme.cream}>c</span>
               <span fg={theme.faint}> claim win </span>
+            </>
+          ) : null}
+          {over ? (
+            <>
+              <span fg={theme.cream}>a</span>
+              <span fg={theme.faint}> analyze </span>
             </>
           ) : null}
           <span fg={theme.cream}>r</span>
@@ -512,6 +676,7 @@ function OnlineMatch({
         promotion={selection.promotion !== null}
         over={over}
         statusText={statusText()}
+        clocks={clocks}
       />
 
       {rewards ? (

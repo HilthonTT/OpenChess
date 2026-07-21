@@ -106,6 +106,22 @@ model Game {
   pgn      String?
   finalFen String?
 
+  // Time control. Null on an untimed game — the current default — and both set
+  // together otherwise, naming a preset in @openchess/shared by its numbers.
+  initialSeconds   Int?
+  incrementSeconds Int?
+
+  // Remaining time per side, in milliseconds, as of the last committed move.
+  // The clock of the side to move is still running against `turnStartedAt`; a
+  // reader ticks it down from there rather than trusting these verbatim. Null
+  // exactly when the game is untimed.
+  whiteTimeMs Int?
+  blackTimeMs Int?
+
+  // When the side-to-move's clock started running: the last move's commit, or
+  // the game's start before the first move. Null on an untimed game.
+  turnStartedAt DateTime?
+
   startedAt DateTime  @default(now())
   endedAt   DateTime?
 

@@ -25,6 +25,10 @@ terminal.
 - **Play vs AI** — three difficulties; server games pay out XP and coins
 - **Online 1v1** — matched against the next player in the queue; the only
   games that move your Elo rating, and they pay the biggest rewards
+- **Time controls** — bullet, blitz and rapid clocks on server AI and online
+  games; run out and you lose on time (the bot itself is never clocked)
+- **Analysis** — step through any finished game with the engine: an eval bar,
+  a move-quality verdict per ply, and the move it would have played
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
 - **Stats** — your record, streaks, rating and level progress
@@ -120,9 +124,18 @@ At the board:
 | `u`            | Take the last move back                   |
 | `r`            | Start a new game                          |
 | `f`            | Flip the board                            |
+| `a`            | Review the game (once it's over)          |
 
 Selecting a piece dots the squares it may move to and highlights the pieces it
 may capture. Promotions prompt for `Q`, `R`, `B`, or `N`.
+
+On a clocked game each side's remaining time shows above and below the board,
+counting down for whoever is to move; a fallen flag ends the game on time.
+
+In the **Analysis** screen — reached from the menu or with `a` from a finished
+game — `←→` step through the moves, `home`/`end` jump to either end, and `f`
+flips the board. The eval bar and the move-quality verdict fill in as the engine
+works back through the game.
 
 On the other screens: `↑↓` browse, `←→` page the leaderboard, `s` cycles its
 sort, and `r` refreshes. In the store, `enter` buys the highlighted title
