@@ -17,6 +17,13 @@ import {
   resignGame,
 } from "../game/service";
 import { createPlayerRouter } from "../lib/create-app";
+import {
+  API_PATHS,
+  pageLinks,
+  pageLinksSchema,
+  withGameLinks,
+  withGameSummaryLinks,
+} from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
 import { rateLimit } from "../middlewares/rate-limit";
 import { requireAuth } from "../middlewares/require-auth";
@@ -137,6 +144,7 @@ const list = createRoute({
       z.object({
         games: z.array(gameSummarySchema),
         nextCursor: z.string().nullable(),
+        _links: pageLinksSchema,
       }),
       "A page of finished games, newest first",
     ),
@@ -273,19 +281,28 @@ const router = base
       timeControl: timeControl ?? null,
     });
 
-    return c.json(game, HttpStatusCodes.CREATED);
+    return c.json(withGameLinks(game), HttpStatusCodes.CREATED);
   })
   .openapi(active, async (c) => {
     const games = await listActiveGames(c.get("user"));
 
-    return c.json({ games }, HttpStatusCodes.OK);
+    return c.json(
+      { games: games.map(withGameSummaryLinks) },
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(queueJoin, async (c) => {
     const { timeControl } = c.req.valid("json");
 
     const result = await joinPvpQueue(c.get("user"), timeControl ?? null);
 
-    return c.json(result, HttpStatusCodes.OK);
+    return c.json(
+      {
+        status: result.status,
+        game: result.game ? withGameLinks(result.game) : null,
+      },
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(queueLeave, async (c) => {
     const left = leavePvpQueue(c.get("user"));
@@ -302,14 +319,25 @@ const router = base
       result,
     });
 
-    return c.json(page, HttpStatusCodes.OK);
+    return c.json(
+      {
+        games: page.games.map(withGameSummaryLinks),
+        nextCursor: page.nextCursor,
+        _links: pageLinks(
+          API_PATHS.games,
+          { cursor, limit, result },
+          page.nextCursor,
+        ),
+      },
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(read, async (c) => {
     const { id } = c.req.valid("param");
 
     const game = await getGame(id, c.get("user"));
 
-    return c.json(game, HttpStatusCodes.OK);
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
   })
   .openapi(move, async (c) => {
     const { id } = c.req.valid("param");
@@ -324,35 +352,38 @@ const router = base
       ply,
     });
 
-    return c.json(result, HttpStatusCodes.OK);
+    return c.json(
+      { ...result, state: withGameLinks(result.state) },
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(resign, async (c) => {
     const { id } = c.req.valid("param");
 
     const game = await resignGame(id, c.get("user"));
 
-    return c.json(game, HttpStatusCodes.OK);
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
   })
   .openapi(claim, async (c) => {
     const { id } = c.req.valid("param");
 
     const game = await claimVictory(id, c.get("user"));
 
-    return c.json(game, HttpStatusCodes.OK);
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
   })
   .openapi(flag, async (c) => {
     const { id } = c.req.valid("param");
 
     const game = await flagGame(id, c.get("user"));
 
-    return c.json(game, HttpStatusCodes.OK);
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
   })
   .openapi(abort, async (c) => {
     const { id } = c.req.valid("param");
 
     const game = await abortGame(id, c.get("user"));
 
-    return c.json(game, HttpStatusCodes.OK);
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
   });
 
 export default router;

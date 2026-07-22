@@ -3,6 +3,11 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import jsonContent from "stoker/openapi/helpers/json-content";
 
 import { createPlayerRouter } from "../lib/create-app";
+import {
+  API_PATHS,
+  offsetPageLinks,
+  offsetPageLinksSchema,
+} from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
 import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
@@ -37,6 +42,7 @@ const board = createRoute({
         entries: z.array(leaderboardEntrySchema),
         total: z.number().int(),
         page: z.number().int(),
+        _links: offsetPageLinksSchema,
       }),
       "A page of the leaderboard",
     ),
@@ -56,7 +62,17 @@ const router = base.openapi(board, async (c) => {
     limit,
   });
 
-  return c.json(result, HttpStatusCodes.OK);
+  return c.json(
+    {
+      ...result,
+      _links: offsetPageLinks(
+        API_PATHS.leaderboard,
+        { sort, limit },
+        { page: result.page, limit, total: result.total },
+      ),
+    },
+    HttpStatusCodes.OK,
+  );
 });
 
 export default router;

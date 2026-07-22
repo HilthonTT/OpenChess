@@ -3,6 +3,7 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import jsonContent from "stoker/openapi/helpers/json-content";
 
 import { createPlayerRouter } from "../lib/create-app";
+import { withTitleLinks } from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
 import { rateLimit } from "../middlewares/rate-limit";
 import { requireAuth } from "../middlewares/require-auth";
@@ -65,14 +66,17 @@ const router = base
   .openapi(catalog, async (c) => {
     const titles = await listTitles(c.get("user"));
 
-    return c.json({ titles }, HttpStatusCodes.OK);
+    return c.json({ titles: titles.map(withTitleLinks) }, HttpStatusCodes.OK);
   })
   .openapi(purchase, async (c) => {
     const { id } = c.req.valid("param");
 
     const bought = await purchaseTitle(c.get("user"), id);
 
-    return c.json(bought, HttpStatusCodes.OK);
+    return c.json(
+      { title: withTitleLinks(bought.title), coins: bought.coins },
+      HttpStatusCodes.OK,
+    );
   });
 
 export default router;

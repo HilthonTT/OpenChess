@@ -1,5 +1,13 @@
 import { z } from "@hono/zod-openapi";
 
+import {
+  gameLinksSchema,
+  profileLinksSchema,
+  selfLinksSchema,
+  titleLinksSchema,
+  transactionLinksSchema,
+} from "../lib/hateoas";
+
 /**
  * The response and request shapes, registered with OpenAPI so the Scalar
  * reference at `/reference` documents them by name rather than inlining an
@@ -124,6 +132,8 @@ export const gameSchema = z
     endedAt: z.string().nullable(),
     /** Present only on the response that ends the game. */
     rewards: rewardSchema.nullable(),
+    /** The requests this game supports right now. */
+    _links: gameLinksSchema,
   })
   .openapi("Game");
 
@@ -137,6 +147,7 @@ export const gameSummarySchema = z
     ply: z.number().int(),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
+    _links: selfLinksSchema,
   })
   .openapi("GameSummary");
 
@@ -216,6 +227,8 @@ export const titleSchema = z
     /** Whether the caller can afford it *and* is high enough level. */
     affordable: z.boolean(),
     equipped: z.boolean(),
+    /** What you can do with the title: buy it, or display it. */
+    _links: titleLinksSchema,
   })
   .openapi("Title");
 
@@ -239,6 +252,8 @@ export const profileSchema = z
       .pick({ id: true, code: true, label: true, rarity: true })
       .nullable(),
     createdAt: z.string(),
+    /** The rest of your account, one hop away. */
+    _links: profileLinksSchema,
   })
   .openapi("Profile");
 
@@ -275,6 +290,7 @@ export const transactionSchema = z
     gameId: z.string().nullable(),
     balanceAfter: z.number().int(),
     createdAt: z.string(),
+    _links: transactionLinksSchema,
   })
   .openapi("CoinTransaction");
 

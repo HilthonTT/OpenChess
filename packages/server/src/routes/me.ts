@@ -4,6 +4,14 @@ import jsonContent from "stoker/openapi/helpers/json-content";
 import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 
 import { createPlayerRouter } from "../lib/create-app";
+import {
+  API_PATHS,
+  pageLinks,
+  pageLinksSchema,
+  withProfileLinks,
+  withTitleLinks,
+  withTransactionLinks,
+} from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
 import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
@@ -125,6 +133,7 @@ const transactions = createRoute({
       z.object({
         transactions: z.array(transactionSchema),
         nextCursor: z.string().nullable(),
+        _links: pageLinksSchema,
       }),
       "A page of ledger entries, newest first",
     ),
@@ -137,7 +146,10 @@ const transactions = createRoute({
 // full shape. That type is what `hc<AppType>` builds the typed CLI client from.
 const router = base
   .openapi(profile, async (c) => {
-    return c.json(await getProfile(c.get("user")), HttpStatusCodes.OK);
+    return c.json(
+      withProfileLinks(await getProfile(c.get("user"))),
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(stats, async (c) => {
     return c.json(await getStats(c.get("user")), HttpStatusCodes.OK);
@@ -150,14 +162,14 @@ const router = base
   .openapi(titles, async (c) => {
     const owned = await listOwnedTitles(c.get("user"));
 
-    return c.json({ titles: owned }, HttpStatusCodes.OK);
+    return c.json({ titles: owned.map(withTitleLinks) }, HttpStatusCodes.OK);
   })
   .openapi(equip, async (c) => {
     const { titleId } = c.req.valid("json");
 
     const updated = await equipTitle(c.get("user"), titleId);
 
-    return c.json(updated, HttpStatusCodes.OK);
+    return c.json(withProfileLinks(updated), HttpStatusCodes.OK);
   })
   .openapi(transactions, async (c) => {
     const { cursor, limit, reason } = c.req.valid("query");
@@ -169,7 +181,18 @@ const router = base
       reason,
     });
 
-    return c.json(page, HttpStatusCodes.OK);
+    return c.json(
+      {
+        transactions: page.transactions.map(withTransactionLinks),
+        nextCursor: page.nextCursor,
+        _links: pageLinks(
+          `${API_PATHS.me}/transactions`,
+          { cursor, limit, reason },
+          page.nextCursor,
+        ),
+      },
+      HttpStatusCodes.OK,
+    );
   });
 
 export default router;

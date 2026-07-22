@@ -8,6 +8,7 @@ import me from "./routes/me";
 import store from "./routes/store";
 import billing from "./routes/billing";
 import health from "./routes/health";
+import root from "./routes/root";
 import { createRouter } from "./lib/create-app";
 import { serve } from "inngest/hono";
 import { inngest } from "./inngest";
@@ -17,6 +18,7 @@ const app = createApp();
 configureOpenAPI(app);
 
 const api = createRouter()
+  .route("/", root)
   .route("/auth", auth)
   .route("/games", game)
   .route("/me", me)

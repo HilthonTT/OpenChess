@@ -1,4 +1,5 @@
 export const TAGS = {
+  ROOT: "Root",
   ACHIEVEMENTS: "Achievements",
   GAMES: "Games",
   LEADERBOARD: "Leaderboard",
