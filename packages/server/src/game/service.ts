@@ -37,7 +37,9 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import { invalidateCache } from "../lib/cache";
 import { throwProblem } from "../lib/problem-details";
+import { unlockAchievements } from "../player/unlocks";
 import { satisfiedCodes } from "./achievements";
+import { publishGameChanged } from "./events";
 import * as matchmaking from "./matchmaking";
 import {
   clockAfterMove,
@@ -384,16 +386,6 @@ async function claimGame(
 }
 
 /**
- * Titles awarded by an achievement rather than sold: unlocking the key grants
- * the title in the same transaction. Both sides are the seeded stable codes
- * (`scripts/seed.ts`), never display copy.
- */
-const TITLE_BY_ACHIEVEMENT: Record<string, string> = {
-  HUNDRED_WINS: "CENTURION",
-  IRON_WALL: "THE_WALL",
-};
-
-/**
  * Pay one player for one settled game: stats, achievements, XP, coins, ledger.
  * Runs only after `claimGame` succeeded, so exactly once per game per player.
  */
@@ -427,56 +419,7 @@ async function payoutPlayer(
     byCheckmate: input.byCheckmate,
   });
 
-  const candidates = await tx.achievement.findMany({
-    where: { code: { in: codes } },
-  });
-
-  const held = await tx.userAchievement.findMany({
-    where: {
-      userId: user.id,
-      achievementId: { in: candidates.map((achievement) => achievement.id) },
-    },
-    select: { achievementId: true },
-  });
-
-  const heldIds = new Set(held.map((row) => row.achievementId));
-  const unlocked = candidates.filter(
-    (achievement) => !heldIds.has(achievement.id),
-  );
-
-  if (unlocked.length > 0) {
-    await tx.userAchievement.createMany({
-      data: unlocked.map((achievement) => ({
-        userId: user.id,
-        achievementId: achievement.id,
-      })),
-      skipDuplicates: true,
-    });
-
-    const titleCodes = unlocked.flatMap((achievement) => {
-      const code = TITLE_BY_ACHIEVEMENT[achievement.code];
-      return code === undefined ? [] : [code];
-    });
-
-    if (titleCodes.length > 0) {
-      const titles = await tx.title.findMany({
-        where: { code: { in: titleCodes } },
-      });
-
-      // `skipDuplicates` rides the same `@@unique([userId, titleId])` the
-      // store leans on: a title somehow already owned is left alone, not an
-      // error that would roll back the whole payout.
-      await tx.userTitle.createMany({
-        data: titles.map((title) => ({
-          userId: user.id,
-          titleId: title.id,
-          // Granted, not bought.
-          pricePaid: 0,
-        })),
-        skipDuplicates: true,
-      });
-    }
-  }
+  const unlocked = await unlockAchievements(tx, user.id, codes);
 
   const bonusXp = unlocked.reduce((sum, a) => sum + a.xpReward, 0);
   const bonusCoins = unlocked.reduce((sum, a) => sum + a.coinReward, 0);
@@ -529,13 +472,7 @@ async function payoutPlayer(
     levelAfter,
     ratingBefore: stats.rating,
     ratingAfter: after.rating,
-    unlocked: unlocked.map((achievement) => ({
-      code: achievement.code,
-      name: achievement.name,
-      description: achievement.description,
-      xpReward: achievement.xpReward,
-      coinReward: achievement.coinReward,
-    })),
+    unlocked,
   };
 }
 
@@ -913,7 +850,7 @@ export async function joinPvpQueue(
   });
 
   if (existing) {
-    matchmaking.leave(user.id);
+    await matchmaking.leave(user.id);
 
     // `colorOf` cannot miss: the query matched this user on one side or the
     // other. The fallback is for the type, not for a case that happens.
@@ -928,14 +865,14 @@ export async function joinPvpQueue(
 
   // Our partner's poll is creating the game row right now; our next poll will
   // find it above. Re-enqueueing here would risk a second pairing.
-  if (matchmaking.isPairing(user.id)) {
+  if (await matchmaking.isPairing(user.id)) {
     return { status: "waiting", game: null };
   }
 
-  const partnerId = matchmaking.takePartner(user.id, timeControl);
+  const partnerId = await matchmaking.takePartner(user.id, timeControl);
 
   if (partnerId === null) {
-    matchmaking.heartbeat(user.id, timeControl);
+    await matchmaking.heartbeat(user.id, timeControl);
     return { status: "waiting", game: null };
   }
 
@@ -947,7 +884,7 @@ export async function joinPvpQueue(
 
     // Deleted between queueing and pairing. Back to waiting.
     if (!partner) {
-      matchmaking.heartbeat(user.id, timeControl);
+      await matchmaking.heartbeat(user.id, timeControl);
       return { status: "waiting", game: null };
     }
 
@@ -1005,7 +942,7 @@ export async function joinPvpQueue(
     if (row === null) {
       // One of us already has a live game. Whoever it is resumes it on their
       // next poll; if it isn't us, the heartbeat puts us back in line.
-      matchmaking.heartbeat(user.id, timeControl);
+      await matchmaking.heartbeat(user.id, timeControl);
       return { status: "waiting", game: null };
     }
 
@@ -1019,7 +956,7 @@ export async function joinPvpQueue(
   } finally {
     // Whatever the create's fate, release both players from the pairing
     // marker — on a failure they re-enqueue on their next poll.
-    matchmaking.completePairing(user.id, partnerId);
+    await matchmaking.completePairing(user.id, partnerId);
   }
 }
 
@@ -1030,9 +967,9 @@ export async function joinPvpQueue(
  * entry is gone either way, but a game is about to exist, and claiming "left"
  * would be a lie. The unwanted game can be aborted before its first move.
  */
-export function leavePvpQueue(user: User): boolean {
-  matchmaking.leave(user.id);
-  return !matchmaking.isPairing(user.id);
+export async function leavePvpQueue(user: User): Promise<boolean> {
+  await matchmaking.leave(user.id);
+  return !(await matchmaking.isPairing(user.id));
 }
 
 export async function getGame(gameId: string, user: User): Promise<GameView> {
@@ -1282,6 +1219,11 @@ export async function playMove(input: {
     } else {
       lastMoveAt.delete(row.id);
     }
+
+    // The opponent is watching this game on a stream. Only PvP: an AI game has
+    // nobody on the other side to tell, and telling them anyway would spend a
+    // Redis write per bot move.
+    publishGameChanged(row.id);
   }
 
   // After the commit, never inside it: a bump inside the transaction could be
@@ -1319,6 +1261,10 @@ export async function resignGame(
   });
 
   lastMoveAt.delete(gameId);
+
+  if (result.mode === "PVP") {
+    publishGameChanged(gameId);
+  }
 
   // A resignation is a loss: rating and record moved, so the board is stale.
   if (result.rewards !== null) {
@@ -1367,6 +1313,10 @@ export async function abortGame(gameId: string, user: User): Promise<GameView> {
   });
 
   lastMoveAt.delete(gameId);
+
+  if (result.mode === "PVP") {
+    publishGameChanged(gameId);
+  }
 
   return result;
 }
@@ -1462,6 +1412,10 @@ export async function claimVictory(
 
   lastMoveAt.delete(gameId);
 
+  // Always PvP by the guard above: the absent opponent's stream, if they left
+  // one open, learns the game is over rather than hanging on a dead position.
+  publishGameChanged(gameId);
+
   // A claim is a rated win, so the board is stale — same as a resignation.
   if (result.rewards !== null) {
     await invalidateCache("leaderboard");
@@ -1541,6 +1495,10 @@ export async function flagGame(gameId: string, user: User): Promise<GameView> {
   });
 
   lastMoveAt.delete(gameId);
+
+  if (result.mode === "PVP") {
+    publishGameChanged(gameId);
+  }
 
   // A flag settles a decisive game: rating and record moved, so the board is
   // stale, exactly as a resignation or a claim leaves it.

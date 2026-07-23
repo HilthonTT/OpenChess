@@ -23,14 +23,16 @@ terminal.
 
 - **Local 1v1** — two players sharing one keyboard, no account needed
 - **Play vs AI** — three difficulties; server games pay out XP and coins
-- **Online 1v1** — matched against the next player in the queue; the only
-  games that move your Elo rating, and they pay the biggest rewards
+- **Online 1v1** — matched against the next player in the queue, with the
+  opponent's moves pushed over a live stream; the only games that move your Elo
+  rating, and they pay the biggest rewards
 - **Time controls** — bullet, blitz and rapid clocks on server AI and online
   games; run out and you lose on time (the bot itself is never clocked)
 - **Analysis** — step through any finished game with the engine: an eval bar,
   a move-quality verdict per ply, and the move it would have played
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
+- **Daily streaks** — check in each day for a growing XP and coin payout
 - **Stats** — your record, streaks, rating and level progress
 - **Store** — buy titles with coins and wear one on the leaderboard
 - **30+ themes** — the whole UI and board repaint from one picker
@@ -80,6 +82,14 @@ variables at boot and refuses to start if one is missing or malformed:
 | `POLAR_SERVER`              | no       | `sandbox`     | Must be `production` when `NODE_ENV=production`          |
 | `INNGEST_DEV`               | dev only | —             | Must be UNSET in production (disables request signing)   |
 | `INNGEST_SIGNING_KEY`       | in prod  | —             | Verifies that `/api/inngest` requests come from Inngest  |
+| `UPSTASH_REDIS_REST_URL`    | see note | —             | Read cache, matchmaking queue, live-game change counter  |
+| `UPSTASH_REDIS_REST_TOKEN`  | see note | —             | Must be set together with the URL, or neither            |
+
+Without the Upstash pair the server runs uncached, keeps the matchmaking queue
+in process, and falls back to reloading a game on each stream tick — slower and
+single-instance, not broken. **Set it before running more than one instance**:
+an in-process queue means one queue per instance, and two players on different
+instances would wait forever beside each other.
 
 The CLI additionally reads `API_URL` (defaults to `http://localhost:3000/api`)
 and `OPENCHESS_FPS` (defaults to `60`).
@@ -106,6 +116,28 @@ bun run dev:server   # the API, on http://localhost:3000
 
 Interactive API docs are served at `/reference`, and the raw OpenAPI document at
 `/doc`.
+
+### Live games
+
+`GET /api/games/{id}/events` is a
+[Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+stream — the one route not in the OpenAPI document, because its body is a stream
+rather than a modelled response. It emits `state` events whose data is exactly
+the JSON body of `GET /api/games/{id}`: one immediately on connect, one on every
+change, and then the server hangs up once the game is settled. It sits behind the
+same auth as every other game route and refuses a game you are not playing in.
+
+That is how the opponent's moves reach the CLI. They used to arrive by polling
+every two seconds, each poll paying for a token verification and a full game
+load; now a move made on the same instance is pushed the moment it commits. A
+move made on *another* instance is caught by a change counter in Redis that each
+stream re-checks on a tick — Upstash speaks REST, which has no pub/sub, so the
+polling did not vanish so much as move off the client and onto a counter that is
+cheap to read.
+
+The matchmaking queue is polled, and stays that way: a poll *is* the "still here"
+heartbeat the server pairs on, so there is nothing to push that the next poll
+would not already ask for.
 
 ## Playing
 
@@ -149,6 +181,13 @@ draws some, and losses a consolation of XP only. Games shorter than ten plies
 pay nothing, so resign-farming is worthless. Payouts can unlock achievements,
 which grant one-time XP and coin bonuses on top; coins buy titles in the store,
 and the title you equip is shown next to your name on the leaderboard.
+
+Signing in also claims that day's **streak**. Consecutive days pay more, up to a
+cap on the seventh — worth about half a won online game, so showing up is a
+reason to come back and never a substitute for playing. Days are UTC calendar
+days as the server counts them, a missed day restarts the run at one, and the
+claim is idempotent: launching the game five times in a day pays once. Streaks
+of 3, 7 and 30 days unlock achievements of their own.
 
 ## API errors
 
@@ -211,6 +250,13 @@ bun run db:seed      # reseed the catalogs after editing them
 The chess engine is verified with [perft](https://www.chessprogramming.org/Perft)
 against the standard positions, so move generation can be trusted before
 anything is built on top of it.
+
+Search is alpha-beta negamax over a material and piece-square evaluation, with a
+[quiescence](https://www.chessprogramming.org/Quiescence_Search) search past the
+fixed horizon. That last part is what stops the engine trusting a score taken
+mid-exchange: without it a depth-3 search that stops right after `RxN` counts the
+knight and never sees the pawn recapture, so it walks into losing trades and
+believes they were winning ones. The same search backs the Analysis screen.
 
 ## License
 

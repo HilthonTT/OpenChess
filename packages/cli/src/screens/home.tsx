@@ -8,6 +8,7 @@ import { Menu } from "../components/menu";
 import { createAuthMenuItem, MENU_ITEMS } from "../components/menu/menu-items";
 import type { MenuItem } from "../components/menu/types";
 import { ThemeDialogContent } from "../components/dialogs/theme-dialog";
+import { useDailyCheckIn } from "../hooks/use-daily-check-in";
 import { useAuth } from "../providers/auth";
 import { useToast } from "../providers/toast";
 import { useDialog } from "../providers/dialog";
@@ -27,6 +28,11 @@ export function Home() {
   const auth = useAuth();
   const { currentTheme } = useTheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  // The menu is where a session first lands, whether the token was restored at
+  // launch or signed in for from the row below, so it is where the day is
+  // claimed. Silent unless there was actually something to claim.
+  useDailyCheckIn();
 
   const authItem = useMemo(
     () => createAuthMenuItem(auth.status),

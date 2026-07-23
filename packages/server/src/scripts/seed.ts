@@ -10,8 +10,9 @@ import { invalidateCache } from "../lib/cache";
  * store reference — so reruns rewrite copy, rewards and prices in place
  * without duplicating rows or touching what players have already unlocked.
  *
- * Every code in `game/achievements.ts` RULES has a row here: a rule whose code
- * has no row unlocks nothing, silently.
+ * Every code in `game/achievements.ts` — both the game RULES and the
+ * STREAK_RULES beside them — has a row here: a rule whose code has no row
+ * unlocks nothing, silently.
  */
 
 type AchievementSeed = Omit<Prisma.AchievementCreateInput, "unlockedBy">;
@@ -103,6 +104,27 @@ const ACHIEVEMENTS: AchievementSeed[] = [
     coinReward: 150,
     secret: true,
   },
+  {
+    code: "DAILY_STREAK_3",
+    name: "Habit Forming",
+    description: "Check in three days running.",
+    xpReward: 75,
+    coinReward: 40,
+  },
+  {
+    code: "DAILY_STREAK_7",
+    name: "Week at the Board",
+    description: "Check in seven days running.",
+    xpReward: 200,
+    coinReward: 120,
+  },
+  {
+    code: "DAILY_STREAK_30",
+    name: "The Regular",
+    description: "Check in thirty days running.",
+    xpReward: 1000,
+    coinReward: 600,
+  },
 ];
 
 type TitleSeed = Omit<Prisma.TitleCreateInput, "ownedBy" | "equippedBy">;
@@ -171,6 +193,14 @@ const TITLES: TitleSeed[] = [
     description: "Awarded for holding the hard engine to a draw.",
     price: 0,
     rarity: "RARE",
+    isPurchasable: false,
+  },
+  {
+    code: "THE_REGULAR",
+    label: "The Regular",
+    description: "Awarded for checking in thirty days running.",
+    price: 0,
+    rarity: "EPIC",
     isPurchasable: false,
   },
 ];

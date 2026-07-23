@@ -412,18 +412,52 @@ export function generatePseudoLegalMoves(position: Position): Move[] {
 }
 
 /**
- * The legal moves for the side to move. A pseudo-legal move is legal exactly
- * when playing it doesn't leave (or place) our own king under attack — which
- * covers pins, check evasions, and the rare en-passant discovered check for
- * free, because `applyMove` really does lift both pawns off the board.
+ * Whether `candidate` leaves the side that played it with a safe king — the one
+ * condition that separates a pseudo-legal move from a legal one. It covers pins,
+ * check evasions, and the rare en-passant discovered check for free, because
+ * `applyMove` really does lift both pawns off the board.
+ *
+ * This is the expensive half of move generation: a board copy and a ray scan per
+ * candidate. Everything below is arranged to run it on as few moves as possible.
  */
-export function generateLegalMoves(position: Position): Move[] {
+function leavesKingSafe(position: Position, candidate: Move): boolean {
   const color = position.turn;
+  const next = applyMove(position, candidate);
+  return !isInCheck({ ...next, turn: color }, color);
+}
 
-  return generatePseudoLegalMoves(position).filter((candidate) => {
-    const next = applyMove(position, candidate);
-    return !isInCheck({ ...next, turn: color }, color);
-  });
+/** The legal moves for the side to move. */
+export function generateLegalMoves(position: Position): Move[] {
+  return generatePseudoLegalMoves(position).filter((candidate) =>
+    leavesKingSafe(position, candidate),
+  );
+}
+
+/**
+ * The legal captures and promotions for the side to move — the moves a
+ * quiescence search extends into.
+ *
+ * Filtering the pseudo-legal list *before* the legality check is the whole
+ * point. A quiet middlegame position offers thirty-odd moves and two captures,
+ * so `generateLegalMoves(...).filter(isCapture)` would pay for thirty board
+ * copies to keep two; this pays for two.
+ */
+export function generateLegalCaptures(position: Position): Move[] {
+  return generatePseudoLegalMoves(position)
+    .filter((move) => move.captured !== null || move.promotion !== null)
+    .filter((candidate) => leavesKingSafe(position, candidate));
+}
+
+/**
+ * Whether the side to move has any legal move at all, stopping at the first one
+ * found. This is how a search that only generated captures tells a genuinely
+ * quiet position from a stalemate without paying for the full legal list — in
+ * a position with moves it almost always returns on the first candidate.
+ */
+export function hasLegalMove(position: Position): boolean {
+  return generatePseudoLegalMoves(position).some((candidate) =>
+    leavesKingSafe(position, candidate),
+  );
 }
 
 /** The legal moves that start from `square`. */

@@ -1,7 +1,9 @@
 import { isPiece, pieceColor } from "./board";
 import {
   applyMove,
+  generateLegalCaptures,
   generateLegalMoves,
+  hasLegalMove,
   isInCheck,
   isInsufficientMaterial,
 } from "./moves";
@@ -12,7 +14,11 @@ export type Difficulty = "easy" | "medium" | "hard";
 
 export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
-/** Search depth in plies. Easy is a pure one-ply material grab. */
+/**
+ * Full-width search depth in plies. Captures are searched past this by
+ * `quiescence`, so the real horizon in a sharp position is deeper than the
+ * number here. Easy never reaches the search at all — it plays at random.
+ */
 const SEARCH_DEPTH: Record<Difficulty, number> = {
   easy: 1,
   medium: 2,
@@ -140,6 +146,132 @@ function orderMoves(moves: Move[]): Move[] {
   return [...moves].sort((a, b) => priority(b) - priority(a));
 }
 
+/**
+ * How far past the main search's horizon the capture search may run. A real
+ * exchange resolves in a handful of plies; the cap exists only so that a
+ * pathological position — a long forcing sequence of checks — cannot stall a
+ * bullet clock.
+ */
+const MAX_QUIESCENCE_PLY = 8;
+
+/**
+ * Delta-pruning margin, in centipawns. A capture is searched only if the
+ * standing score plus the whole captured piece plus this much slack — enough to
+ * cover the positional swing a piece-square table can contribute — could still
+ * reach alpha. Roughly a minor piece of headroom.
+ */
+const DELTA_MARGIN = 150;
+
+/**
+ * Search on past the main horizon until the position is quiet.
+ *
+ * This is what stops the engine from believing a static score taken in the
+ * middle of an exchange. A fixed-depth search that stops right after RxN counts
+ * the knight and never sees PxR, so it walks into losing trades and calls them
+ * winning ones; extending only the captures — a cheap, sharply narrowing
+ * subtree — makes a leaf score mean "material once the dust settles" rather than
+ * "material as of this instant".
+ *
+ * Scores are centipawns from the side-to-move's point of view and `ply` counts
+ * from the root, both exactly as `negamax` has them, so the two interleave.
+ */
+function quiescence(
+  position: Position,
+  alpha: number,
+  beta: number,
+  ply: number,
+  depth: number,
+): number {
+  const inCheck = isInCheck(position, position.turn);
+
+  // A side in check is searched over all its legal replies, the way negamax
+  // would. Restricting it to captures would let the search "pass" its way out
+  // of a mate it has no actual escape from.
+  const moves = inCheck
+    ? generateLegalMoves(position)
+    : generateLegalCaptures(position);
+
+  if (moves.length === 0) {
+    if (inCheck) {
+      // Checkmate. Counted from the root so faster mates outrank slower ones,
+      // exactly as in negamax.
+      return -(MATE_SCORE - ply);
+    }
+
+    // Having no captures is not yet evidence of stalemate: the quiet moves were
+    // never generated. Worth the one question here, because scoring a dead-drawn
+    // position as a rout is the one error this search could make that a deeper
+    // search would not correct.
+    if (!hasLegalMove(position)) {
+      return 0;
+    }
+  }
+
+  if (position.halfmoveClock >= 100 || isInsufficientMaterial(position)) {
+    return 0;
+  }
+
+  let best: number;
+
+  if (inCheck) {
+    // Nothing to stand on: the position has to be resolved by a real move, so
+    // the search starts from nothing and tries every reply. With no budget left
+    // to do that, the static score is all that remains.
+    if (depth === 0) {
+      return evaluate(position);
+    }
+    best = -Infinity;
+  } else {
+    // Standing pat. Outside of check the side to move is never *obliged* to
+    // capture, so declining to is a floor under every capture beneath it — and
+    // it is the answer outright once there is no budget left to search them.
+    best = evaluate(position);
+
+    if (best >= beta || depth === 0) {
+      return best;
+    }
+    if (best > alpha) {
+      alpha = best;
+    }
+  }
+
+  for (const move of orderMoves(moves)) {
+    // Delta pruning: when the standing score plus the entire captured piece
+    // plus the margin still falls short of alpha, nothing under this capture
+    // can matter. Skipped in check, where `best` is not a stand-pat score and
+    // the reply is forced rather than optional, and on promotions, which swing
+    // by more than the piece they take.
+    if (
+      !inCheck &&
+      move.promotion === null &&
+      move.captured !== null &&
+      best + pieceValue(move.captured) * 100 + DELTA_MARGIN <= alpha
+    ) {
+      continue;
+    }
+
+    const score = -quiescence(
+      applyMove(position, move),
+      -beta,
+      -alpha,
+      ply + 1,
+      depth - 1,
+    );
+
+    if (score > best) {
+      best = score;
+    }
+    if (score > alpha) {
+      alpha = score;
+    }
+    if (alpha >= beta) {
+      break;
+    }
+  }
+
+  return best;
+}
+
 function negamax(
   position: Position,
   depth: number,
@@ -147,6 +279,13 @@ function negamax(
   beta: number,
   ply: number,
 ): number {
+  // The horizon, where the capture search takes over. Returning before the move
+  // list is built costs nothing: `quiescence` repeats the terminal and draw
+  // checks below, so no position is scored without them.
+  if (depth === 0) {
+    return quiescence(position, alpha, beta, ply, MAX_QUIESCENCE_PLY);
+  }
+
   const moves = generateLegalMoves(position);
 
   if (moves.length === 0) {
@@ -156,10 +295,6 @@ function negamax(
 
   if (position.halfmoveClock >= 100 || isInsufficientMaterial(position)) {
     return 0;
-  }
-
-  if (depth === 0) {
-    return evaluate(position);
   }
 
   let best = -Infinity;
@@ -300,8 +435,12 @@ export function analyzePosition(
     return { scoreCp: 0, mateIn: null, bestMove: null };
   }
 
-  // A full-window root search — no aspiration trick, because here the true best
-  // score matters, not just which move ties for it.
+  // Ordinary alpha-beta at the root, with the window closing as the best score
+  // rises. Unlike `findBestMove` there is no `- 1` slack: ties need not be
+  // searched exactly here, because only one move is reported and the first to
+  // reach a score keeps it. The score that survives is still the exact best —
+  // a move cut off against this window is bounded *above* by it, so it could
+  // only ever have tied, never won.
   let bestScore = -Infinity;
   let bestMove: Move | null = null;
 
@@ -310,7 +449,7 @@ export function analyzePosition(
       applyMove(position, move),
       depth - 1,
       -Infinity,
-      Infinity,
+      -bestScore,
       1,
     );
 

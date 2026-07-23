@@ -54,3 +54,26 @@ export function satisfiedCodes(context: UnlockContext): string[] {
     .filter(([, rule]) => rule(context))
     .map(([code]) => code);
 }
+
+/**
+ * The daily check-in rules, kept beside the game ones so that every unlock
+ * condition in the product is readable in one file — and so the seed's
+ * invariant, that every code here has a row in the catalog, stays checkable by
+ * looking in a single place.
+ *
+ * These take a streak day rather than an `UnlockContext`: a check-in has no
+ * game, no outcome and no difficulty, and threading nulls through the game
+ * shape to pretend otherwise would make both rule sets harder to read.
+ */
+const STREAK_RULES: Record<string, (day: number) => boolean> = {
+  DAILY_STREAK_3: (day) => day >= 3,
+  DAILY_STREAK_7: (day) => day >= 7,
+  DAILY_STREAK_30: (day) => day >= 30,
+};
+
+/** The codes a check-in landing on streak day `day` satisfies. */
+export function satisfiedStreakCodes(day: number): string[] {
+  return Object.entries(STREAK_RULES)
+    .filter(([, rule]) => rule(day))
+    .map(([code]) => code);
+}

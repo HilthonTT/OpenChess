@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   isGameOver,
   opposite,
@@ -29,6 +29,7 @@ import {
   sendMove,
   type ServerGame,
 } from "../lib/games";
+import { subscribeToGame } from "../lib/game-events";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -43,11 +44,14 @@ import { useReplayedGame } from "../hooks/use-replayed-game";
 const TITLE = "Online 1v1";
 const SUBTITLE = "Challenge a player over the network";
 
-/** How often a searching player pokes the queue — also its heartbeat. */
+/**
+ * How often a searching player pokes the queue — also its heartbeat.
+ *
+ * The queue is still polled, unlike a live game: a poll *is* the "I am still
+ * here" signal the server pairs on, so there is nothing to push until there is
+ * something to say, and by then the poll has already asked.
+ */
 const QUEUE_POLL_MS = 2_000;
-
-/** How often a live game checks for the opponent's move or resignation. */
-const GAME_POLL_MS = 2_000;
 
 /**
  * How long the opponent must sit on their turn before we offer the claim key.
@@ -356,40 +360,34 @@ function OnlineMatch({
     [auth, clearSelection, toast],
   );
 
-  // The opponent's moves and resignations arrive by poll. Only a changed board
-  // is applied — `apply` clears the current selection, and having a square
-  // picked up must survive an uneventful poll.
+  // What the board is showing right now, readable from inside the stream
+  // callback without making the subscription depend on it. One connection has
+  // to outlive every move of the game; an effect that re-ran on each ply would
+  // tear the stream down and rebuild it after every single one.
+  const latest = useRef(server);
+  latest.current = server;
+
+  // The opponent's moves and resignations arrive pushed, not polled. Only a
+  // changed board is applied — `apply` clears the current selection, and having
+  // a square picked up must survive an event that says nothing new.
+  //
+  // That same guard is what protects the rewards breakdown: our own move's POST
+  // response carries it and the stream's copy never does, so the echo of our
+  // move arriving a moment later matches on ply and result and is ignored.
   useEffect(() => {
-    if (over || pending) {
+    if (over) {
       return;
     }
 
-    // Clearing the interval does not cancel a fetch already in flight, and a
-    // stale response landing after our own move resolves would overwrite the
-    // settled state — GET never carries the rewards breakdown — so every
-    // response is checked against this run's flag before it may apply.
-    let cancelled = false;
-
-    const timer = setInterval(() => {
-      fetchGame(server.id)
-        .then((state) => {
-          if (cancelled) {
-            return;
-          }
-          if (state.ply !== server.ply || state.result !== server.result) {
-            apply(state);
-          }
-        })
-        .catch(() => {
-          // A missed poll is fine; the next one will land.
-        });
-    }, GAME_POLL_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [apply, over, pending, server.id, server.ply, server.result]);
+    return subscribeToGame(server.id, {
+      onState: (state) => {
+        const current = latest.current;
+        if (state.ply !== current.ply || state.result !== current.result) {
+          apply(state);
+        }
+      },
+    });
+  }, [apply, over, server.id]);
 
   // Arms the claim offer while the opponent sits on their turn. Keyed on ply,
   // not the turn value: only an actual move resets the clock, the same event

@@ -1,6 +1,6 @@
 import { Prisma, type CoinReason, type User } from "@openchess/database";
 import { db } from "@openchess/database/client";
-import { levelProgress } from "@openchess/shared";
+import { levelProgress, streakIsAlive, utcDay } from "@openchess/shared";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import { cached, invalidateCache } from "../lib/cache";
@@ -71,6 +71,18 @@ export async function getStats(user: User) {
     draws: stats.draws,
     currentWinStreak: stats.currentWinStreak,
     topWinStreak: stats.topWinStreak,
+    // The check-in run, plus whether it is still extendable. A client rendering
+    // "3 days" wants to know whether that is a live streak or the remains of one
+    // already broken, and only the server's calendar can say.
+    currentLoginStreak: stats.currentLoginStreak,
+    topLoginStreak: stats.topLoginStreak,
+    lastCheckInDay: stats.lastCheckInDay
+      ? utcDay(stats.lastCheckInDay)
+      : null,
+    loginStreakAlive: streakIsAlive(
+      stats.lastCheckInDay ? utcDay(stats.lastCheckInDay) : null,
+      utcDay(new Date()),
+    ),
     rating: stats.rating,
   };
 }

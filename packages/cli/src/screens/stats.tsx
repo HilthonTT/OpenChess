@@ -154,6 +154,20 @@ function Card({ data }: { data: Data }) {
           <span fg={theme.text}>{String(stats.currentWinStreak)}</span>
           <span fg={theme.dim}>{` now · best ${stats.topWinStreak}`}</span>
         </Row>
+        <Row label="Daily streak">
+          {/* A broken run is shown greyed rather than zeroed: the number is
+              still true, it just cannot be extended any more. */}
+          <span fg={stats.loginStreakAlive ? theme.gold : theme.faint}>
+            {`${stats.currentLoginStreak} ${
+              stats.currentLoginStreak === 1 ? "day" : "days"
+            }`}
+          </span>
+          <span fg={theme.dim}>
+            {stats.loginStreakAlive
+              ? ` · best ${stats.topLoginStreak}`
+              : ` (lapsed) · best ${stats.topLoginStreak}`}
+          </span>
+        </Row>
         <Row label="Playing since">
           <span fg={theme.dim}>
             {new Date(profile.createdAt).toLocaleDateString()}

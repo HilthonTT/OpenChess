@@ -158,6 +158,9 @@ export const profileLinksSchema = z
     titles: linkSchema,
     transactions: linkSchema,
     equipTitle: linkSchema,
+    /** Always present: the call is idempotent per day, so it is never an
+     * error to make it, and whether anything is owed is the server's call. */
+    checkIn: linkSchema,
   })
   .openapi("ProfileLinks");
 
@@ -175,6 +178,7 @@ export function withProfileLinks<T extends object>(
       titles: get(`${API_PATHS.me}/titles`),
       transactions: get(`${API_PATHS.me}/transactions`),
       equipTitle: put(`${API_PATHS.me}/title`),
+      checkIn: post(`${API_PATHS.me}/check-in`),
     },
   };
 }

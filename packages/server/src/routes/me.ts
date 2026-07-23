@@ -23,8 +23,10 @@ import {
   listOwnedTitles,
   listTransactions,
 } from "../player/service";
+import { checkIn } from "../player/streak";
 import {
   achievementSchema,
+  checkInSchema,
   decodeCursor,
   equipTitleSchema,
   paginationQuerySchema,
@@ -60,6 +62,25 @@ const stats = createRoute({
   responses: {
     [HttpStatusCodes.OK]: jsonContent(statsSchema, "Your stats"),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const checkInRoute = createRoute({
+  tags: [TAGS.ME],
+  method: "post",
+  path: "/check-in",
+  summary: "Claim today's login streak",
+  description:
+    "Idempotent per UTC day. The first call of a day extends the streak and pays; every call after it reports the same streak with `claimed: false` and pays nothing, so a client may fire it on every sign-in without tracking whether it already has.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      checkInSchema,
+      "Your streak, and what today paid",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "Another request changed your balance at the same time",
+    ),
   },
 });
 
@@ -124,7 +145,13 @@ const transactions = createRoute({
   request: {
     query: paginationQuerySchema.extend({
       reason: z
-        .enum(["GAME_REWARD", "ACHIEVEMENT", "PURCHASE", "ADMIN_GRANT"])
+        .enum([
+          "GAME_REWARD",
+          "ACHIEVEMENT",
+          "PURCHASE",
+          "ADMIN_GRANT",
+          "DAILY_STREAK",
+        ])
         .optional(),
     }),
   },
@@ -153,6 +180,9 @@ const router = base
   })
   .openapi(stats, async (c) => {
     return c.json(await getStats(c.get("user")), HttpStatusCodes.OK);
+  })
+  .openapi(checkInRoute, async (c) => {
+    return c.json(await checkIn(c.get("user")), HttpStatusCodes.OK);
   })
   .openapi(achievements, async (c) => {
     const unlocked = await listAchievements(c.get("user"), true);

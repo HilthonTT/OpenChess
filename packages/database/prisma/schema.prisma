@@ -53,6 +53,20 @@ model UserStats {
   currentWinStreak Int @default(0)
   topWinStreak     Int @default(0)
 
+  // The daily check-in streak, counted in UTC calendar days by
+  // @openchess/shared's `advanceStreak`. Zero for a player who has never
+  // checked in, and never reset on a miss — the next check-in simply starts
+  // again at one, so a lapsed streak reads as "1", not as a hole.
+  currentLoginStreak Int @default(0)
+  topLoginStreak     Int @default(0)
+
+  // The last day claimed. Date-typed rather than a timestamp on purpose: this
+  // doubles as the idempotency key for the day's payout, and a conditional
+  // write against `lastCheckInDay < today` is what stops two concurrent
+  // check-ins from paying twice. A timestamp would make that a range query and
+  // the guard would stop being exact.
+  lastCheckInDay DateTime? @db.Date
+
   rating Int @default(1200)
 
   updatedAt DateTime @updatedAt
@@ -219,6 +233,7 @@ enum CoinReason {
   ACHIEVEMENT
   PURCHASE
   ADMIN_GRANT
+  DAILY_STREAK
 }
 
 model CoinTransaction {

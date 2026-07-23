@@ -1,8 +1,10 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import { streamSSE } from "hono/streaming";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import jsonContent from "stoker/openapi/helpers/json-content";
 import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 
+import { gameVersion, subscribeToGame } from "../game/events";
 import {
   abortGame,
   claimVictory,
@@ -267,6 +269,132 @@ const abort = createRoute({
   },
 });
 
+/**
+ * How often a stream re-checks a game it has heard nothing about.
+ *
+ * A move made on *this* instance wakes the stream immediately, so this tick is
+ * only the cross-instance path. Two seconds matches what the client used to poll
+ * at, so a multi-instance deployment is never slower than it was — and on the
+ * common path it is now as fast as the network allows.
+ */
+const REVALIDATE_MS = 2_000;
+
+/**
+ * A comment sent when nothing has happened, purely so idle connections stay
+ * open. Proxies and load balancers cut streams that go quiet, and a chess game
+ * can legitimately have nothing to say for minutes at a time.
+ */
+const KEEPALIVE_MS = 15_000;
+
+/**
+ * Wait for the game to change, or for the tick to elapse, whichever comes
+ * first — and report which it was, because only a tick needs the version check
+ * that follows it.
+ */
+function waitForChange(
+  gameId: string,
+  signal: AbortSignal,
+): Promise<"changed" | "tick"> {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const finish = (reason: "changed" | "tick") => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      unsubscribe();
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve(reason);
+    };
+
+    // An aborted request resolves as a tick; the loop then sees the abort on
+    // its own condition and exits without touching the database.
+    const onAbort = () => finish("tick");
+    const unsubscribe = subscribeToGame(gameId, () => finish("changed"));
+    const timer = setTimeout(() => finish("tick"), REVALIDATE_MS);
+
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * The live feed for one game.
+ *
+ * Registered with `.get` rather than `.openapi` because the response is a
+ * `text/event-stream` rather than a modelled JSON body — it is documented in the
+ * README instead, and the CLI reads it with a plain fetch. It still sits behind
+ * the `requireAuth`/`requireUser` middleware above, and `getGame` still refuses
+ * a game the caller is not a player in, so this exposes nothing the polling
+ * route did not.
+ *
+ * Events are `state`, carrying exactly the JSON body of `GET /games/{id}`. The
+ * first one is sent immediately so a client needs no separate fetch to start,
+ * and the stream closes itself once the game is over — there is nothing further
+ * to report, and holding the connection open would only cost both ends.
+ */
+base.get("/:id/events", (c) => {
+  const gameId = c.req.param("id");
+  const user = c.get("user");
+
+  return streamSSE(c, async (stream) => {
+    let lastPly = -1;
+    let lastResult: string | null = null;
+    let first = true;
+    let knownVersion = await gameVersion(gameId);
+    let quietSince = Date.now();
+
+    while (!stream.aborted && !stream.closed) {
+      const state = await getGame(gameId, user);
+
+      // Resend only on a real change. A client holding a picked-up piece must
+      // not have its selection cleared by an event that says nothing new.
+      if (first || state.ply !== lastPly || state.result !== lastResult) {
+        lastPly = state.ply;
+        lastResult = state.result;
+        first = false;
+        quietSince = Date.now();
+
+        await stream.writeSSE({
+          event: "state",
+          data: JSON.stringify(withGameLinks(state)),
+        });
+      }
+
+      // A finished game has nothing left to say.
+      if (state.result !== null) {
+        break;
+      }
+
+      const reason = await waitForChange(gameId, c.req.raw.signal);
+
+      if (stream.aborted || stream.closed) {
+        break;
+      }
+
+      if (reason === "tick") {
+        // Nothing local happened. Ask Redis whether another instance moved the
+        // game before paying for a database read; a null means we cannot tell,
+        // so reload rather than risk sitting on a stale board.
+        const version = await gameVersion(gameId);
+
+        if (version !== null && version === knownVersion) {
+          if (Date.now() - quietSince >= KEEPALIVE_MS) {
+            await stream.write(": keepalive\n\n");
+            quietSince = Date.now();
+          }
+          continue;
+        }
+
+        knownVersion = version;
+      } else {
+        knownVersion = await gameVersion(gameId);
+      }
+    }
+  });
+});
+
 // Chained rather than registered as separate statements: `.openapi()` returns a
 // router carrying the new route in its type, so only the chained value knows the
 // full shape. That type is what `hc<AppType>` builds the typed CLI client from.
@@ -305,7 +433,7 @@ const router = base
     );
   })
   .openapi(queueLeave, async (c) => {
-    const left = leavePvpQueue(c.get("user"));
+    const left = await leavePvpQueue(c.get("user"));
 
     return c.json({ left }, HttpStatusCodes.OK);
   })

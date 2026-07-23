@@ -13,6 +13,10 @@ export type PlayerStats = InferResponseType<
   typeof apiClient.me.stats.$get,
   200
 >;
+export type CheckIn = InferResponseType<
+  (typeof apiClient.me)["check-in"]["$post"],
+  200
+>;
 
 export async function fetchProfile(): Promise<Profile> {
   const response = await apiClient.me.$get();
@@ -27,6 +31,22 @@ export async function fetchProfile(): Promise<Profile> {
 
 export async function fetchStats(): Promise<PlayerStats> {
   const response = await apiClient.me.stats.$get();
+
+  if (response.status !== 200) {
+    const problem = await getProblemDetails(response);
+    throw new Error(problem.detail ?? problem.title);
+  }
+
+  return response.json();
+}
+
+/**
+ * Claim today's login streak. Idempotent per UTC day — the server pays at most
+ * once and reports `claimed: false` on every later call — so the caller may fire
+ * this on any sign-in without remembering whether it already did.
+ */
+export async function checkIn(): Promise<CheckIn> {
+  const response = await apiClient.me["check-in"].$post();
 
   if (response.status !== 200) {
     const problem = await getProblemDetails(response);

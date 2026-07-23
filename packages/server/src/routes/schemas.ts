@@ -264,9 +264,40 @@ export const statsSchema = z
     draws: z.number().int(),
     currentWinStreak: z.number().int(),
     topWinStreak: z.number().int(),
+    /** Consecutive days checked in. Zero for a player who never has. */
+    currentLoginStreak: z.number().int(),
+    topLoginStreak: z.number().int(),
+    /** The last day claimed, `YYYY-MM-DD` UTC, or null. */
+    lastCheckInDay: z.string().nullable().openapi({ example: "2026-07-23" }),
+    /**
+     * Whether `currentLoginStreak` can still be extended — false once a day has
+     * been missed and the next check-in will restart the run at one.
+     */
+    loginStreakAlive: z.boolean(),
     rating: z.number().int(),
   })
   .openapi("Stats");
+
+export const checkInSchema = z
+  .object({
+    /** True when this request is what claimed the day. */
+    claimed: z.boolean(),
+    current: z.number().int().openapi({ example: 3 }),
+    best: z.number().int().openapi({ example: 12 }),
+    /** The UTC day claimed. */
+    day: z.string().openapi({ example: "2026-07-23" }),
+    /** What today paid, achievement bonuses included. Zeroes if already claimed. */
+    reward: z.object({
+      xp: z.number().int(),
+      coins: z.number().int(),
+    }),
+    levelBefore: z.number().int(),
+    levelAfter: z.number().int(),
+    /** The wallet after the payout. */
+    coins: z.number().int(),
+    unlocked: z.array(unlockSchema),
+  })
+  .openapi("CheckIn");
 
 export const achievementSchema = z
   .object({
@@ -286,7 +317,13 @@ export const transactionSchema = z
   .object({
     id: z.string(),
     amount: z.number().int().openapi({ example: -250 }),
-    reason: z.enum(["GAME_REWARD", "ACHIEVEMENT", "PURCHASE", "ADMIN_GRANT"]),
+    reason: z.enum([
+      "GAME_REWARD",
+      "ACHIEVEMENT",
+      "PURCHASE",
+      "ADMIN_GRANT",
+      "DAILY_STREAK",
+    ]),
     gameId: z.string().nullable(),
     balanceAfter: z.number().int(),
     createdAt: z.string(),
