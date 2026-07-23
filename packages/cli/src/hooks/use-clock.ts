@@ -47,6 +47,27 @@ export function useClock({
     firedRef.current = false;
   }, [turnKey]);
 
+  // `turnStartedAt` is server time; subtracting it from the local clock bakes
+  // any skew between the two into every reading. A machine running a minute
+  // fast would show the opponent flagged the moment their turn starts — and
+  // fire a doomed flag claim each turn. Each turn boundary observes
+  // `local now − server turnStartedAt`, which is skew plus delivery delay;
+  // the minimum across the game is the best skew estimate available without
+  // a time API, and it's discounted from elapsed below.
+  const [skewMs, setSkewMs] = useState<number | null>(null);
+  useEffect(() => {
+    if (!clock) {
+      return;
+    }
+    const offset = Date.now() - Date.parse(clock.turnStartedAt);
+    setSkewMs((current) =>
+      current === null ? offset : Math.min(current, offset),
+    );
+    // Sampled once per turn: mid-turn refetches of the same snapshot carry the
+    // same turnStartedAt but a later arrival time, which is not skew.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnKey]);
+
   // Only a live, timed game needs a heartbeat; a frozen or untimed one is still.
   const ticking = clock !== null && !over;
   useEffect(() => {
@@ -58,7 +79,8 @@ export function useClock({
   }, [ticking]);
 
   const started = clock ? Date.parse(clock.turnStartedAt) : 0;
-  const elapsed = clock && !over ? Math.max(0, nowMs - started) : 0;
+  const elapsed =
+    clock && !over ? Math.max(0, nowMs - started - (skewMs ?? 0)) : 0;
 
   const whiteMs = clock
     ? clock.running === "w"

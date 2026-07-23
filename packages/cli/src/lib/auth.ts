@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -63,6 +64,17 @@ export function getAuth(): AuthData | null {
   return cached;
 }
 
+/**
+ * Re-read auth.json, bypassing the in-memory cache. Another CLI process is
+ * also a legitimate writer — Clerk rotates the refresh token on every use, so
+ * anything about to spend the grant must read the newest one off disk, not
+ * this process's snapshot.
+ */
+export function reloadAuth(): AuthData | null {
+  cached = undefined;
+  return getAuth();
+}
+
 export function saveAuth(data: AuthData) {
   if (!existsSync(AUTH_DIR)) {
     // Owner-only permissions (rwx------) so other users on the machine can't read tokens
@@ -72,6 +84,15 @@ export function saveAuth(data: AuthData) {
   // Windows ignores POSIX modes entirely — there the file inherits the home
   // directory's ACL, which for a normal single-user setup is still owner-only.
   writeFileSync(AUTH_FILE, JSON.stringify(data), { mode: 0o600 });
+  // `mode` above only applies when the file is created — a file left behind by
+  // an older build (or a restored backup) keeps whatever it had, so tighten it
+  // on every save. Windows ignores POSIX modes; see the note above.
+  try {
+    chmodSync(AUTH_DIR, 0o700);
+    chmodSync(AUTH_FILE, 0o600);
+  } catch {
+    // Best-effort: an exotic filesystem without chmod shouldn't break sign-in.
+  }
   cached = { ...data };
 }
 

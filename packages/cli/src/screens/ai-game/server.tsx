@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { useNavigate } from "react-router";
 import { isGameOver, timeControlFor, toAlgebraic } from "@openchess/shared";
 import type { Color, PromotionPiece } from "@openchess/shared";
+import { ErrorNotice } from "../../components/error-notice";
 import { GameScreen } from "../../components/game-screen";
 import { MatchView, orientClocks } from "../../components/match-view";
 import {
@@ -154,7 +155,6 @@ function ErrorScreen({
   onRetry: () => void;
   onOffline: () => void;
 }) {
-  const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
 
   useKeyboard((key) => {
@@ -175,16 +175,14 @@ function ErrorScreen({
       title="Play vs AI"
       subtitle="Test your skill against the engine"
     >
-      <box flexDirection="column" alignItems="center" gap={1}>
-        <text fg={theme.gold}>Couldn't reach the server</text>
-        <text fg={theme.dim}>{message}</text>
-        <text>
-          <span fg={theme.cream}>r</span>
-          <span fg={theme.faint}> retry </span>
-          <span fg={theme.cream}>o</span>
-          <span fg={theme.faint}> play offline</span>
-        </text>
-      </box>
+      <ErrorNotice
+        title="Couldn't start an online game"
+        message={message}
+        hints={[
+          { key: "r", label: "retry" },
+          { key: "o", label: "play offline" },
+        ]}
+      />
     </GameScreen>
   );
 }

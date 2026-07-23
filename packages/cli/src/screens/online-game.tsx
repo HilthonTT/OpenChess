@@ -515,8 +515,9 @@ function OnlineMatch({
       if (error instanceof GameConflictError) {
         // The opponent moved after all, or the server's clock lags ours.
         await resync();
+      } else {
+        setMessage(errorMessage(error));
       }
-      setMessage(errorMessage(error));
     } finally {
       setPending(false);
     }

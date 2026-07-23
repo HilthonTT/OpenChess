@@ -1,6 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { apiClient } from "./api-client";
-import { getProblemDetails } from "./http-errors";
+import { responseError } from "./http-errors";
 
 /**
  * Typed calls to the server's `/leaderboard` API. Like the `/games` helpers,
@@ -38,8 +38,7 @@ export async function fetchLeaderboard(input: {
   });
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();

@@ -1,6 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { apiClient } from "./api-client";
-import { getProblemDetails } from "./http-errors";
+import { responseError } from "./http-errors";
 
 /**
  * Typed calls to the server's `/titles` store API. Like the `/games` helpers,
@@ -20,8 +20,7 @@ export async function fetchTitles(): Promise<TitleCatalog> {
   const response = await apiClient.titles.$get();
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();
@@ -33,8 +32,7 @@ export async function purchaseTitle(id: string): Promise<Purchase> {
   });
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();

@@ -163,6 +163,31 @@ export function parseFen(fen: string): Position {
     throw new Error(`Invalid FEN: bad en passant square "${enPassant}"`);
   }
 
+  // Move generation trusts `enPassant` blindly — it emits the capture whenever
+  // a pawn can reach the square, and applyMove then clears the square behind it
+  // as "the captured pawn". A FEN whose en passant square is inconsistent with
+  // the board (wrong rank, or no enemy pawn that just double-pushed to sit
+  // behind it) would therefore fabricate a capture that deletes an arbitrary
+  // piece — including the mover's own. Reject it here so only a real, capturable
+  // en passant square survives parsing.
+  if (enPassantSquare !== null) {
+    const epRank = rankOf(enPassantSquare); // 0-based: rank 6 -> 5, rank 3 -> 2
+    const expectedRank = turn === "w" ? 5 : 2;
+    const pawnRank = turn === "w" ? 4 : 3;
+    const enemyPawn: Piece = turn === "w" ? "p" : "P";
+    const pawnSquare = squareAt(fileOf(enPassantSquare), pawnRank);
+
+    if (
+      epRank !== expectedRank ||
+      pieceAt(board, enPassantSquare) !== EMPTY ||
+      pieceAt(board, pawnSquare) !== enemyPawn
+    ) {
+      throw new Error(
+        `Invalid FEN: en passant square "${enPassant}" has no pawn to capture`,
+      );
+    }
+  }
+
   const halfmoveClock = halfmove ? Number(halfmove) : 0;
   if (!Number.isInteger(halfmoveClock) || halfmoveClock < 0) {
     throw new Error(`Invalid FEN: bad halfmove clock "${halfmove}"`);
@@ -228,10 +253,49 @@ export function toFen(position: Position): string {
 }
 
 /**
+ * Whether the position's en passant square can actually be captured — i.e. a
+ * pawn of the side to move sits beside the just-pushed enemy pawn. `applyMove`
+ * records an en passant square after *every* double push, capturable or not, so
+ * this is what separates a real en passant possibility from a phantom one.
+ */
+export function enPassantIsCapturable(position: Position): boolean {
+  const ep = position.enPassant;
+  if (ep === null) {
+    return false;
+  }
+
+  // The capturing pawn shares a rank with the pushed pawn (one rank below the
+  // en passant square, from the mover's side) and stands on an adjacent file.
+  const epFile = fileOf(ep);
+  const capturerRank = position.turn === "w" ? 4 : 3;
+  const capturer: Piece = position.turn === "w" ? "P" : "p";
+
+  for (const file of [epFile - 1, epFile + 1]) {
+    if (isOnBoard(file, capturerRank) &&
+      pieceAt(position.board, squareAt(file, capturerRank)) === capturer) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Identifies a position for threefold-repetition purposes: the pieces, the side
  * to move, castling rights, and the en passant square — but not the clocks.
  */
 export function repetitionKey(position: Position): string {
-  const fen = toFen(position);
-  return fen.split(" ").slice(0, 4).join(" ");
+  const fields = toFen(position).split(" ").slice(0, 4);
+
+  // FIDE Art. 9.2 counts two positions as the same unless the en passant
+  // *possibility* differs. A double push that no enemy pawn can answer records
+  // a square all the same, so an otherwise-identical position reached later
+  // with no en passant square keys differently — and a legitimate threefold
+  // goes uncounted. Normalize a phantom square away so only a real, capturable
+  // en passant distinguishes positions.
+  if (position.enPassant !== null && !enPassantIsCapturable(position)) {
+    fields[3] = "-";
+  }
+
+  return fields.join(" ");
 }

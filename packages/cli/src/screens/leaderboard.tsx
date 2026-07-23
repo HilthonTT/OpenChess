@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useKeyboard } from "@opentui/react";
+import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
 import {
@@ -142,7 +143,7 @@ export function Leaderboard() {
   return (
     <Frame sort={sort} page={page} pageCount={pageCount} total={data?.total}>
       {error ? (
-        <ErrorBody message={error} />
+        <ErrorNotice title="Couldn't load the leaderboard" message={error} />
       ) : !data ? (
         <Notice text="Loading…" />
       ) : (
@@ -189,21 +190,6 @@ function Frame({
 function Notice({ text }: { text: string }) {
   const theme = useUITheme();
   return <text fg={theme.dim}>{text}</text>;
-}
-
-function ErrorBody({ message }: { message: string }) {
-  const theme = useUITheme();
-
-  return (
-    <box flexDirection="column" alignItems="center" gap={1}>
-      <text fg={theme.gold}>Couldn't load the leaderboard</text>
-      <text fg={theme.dim}>{message}</text>
-      <text>
-        <span fg={theme.cream}>r</span>
-        <span fg={theme.faint}> retry</span>
-      </text>
-    </box>
-  );
 }
 
 /** Column widths, left to right. Ranks are absolute so allow for five digits. */

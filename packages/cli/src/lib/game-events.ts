@@ -1,4 +1,4 @@
-import { getAuth } from "./auth";
+import { clearAuth, getAuth } from "./auth";
 import { refreshAccessToken } from "./oauth";
 import type { ServerGame } from "./games";
 
@@ -153,7 +153,15 @@ export function subscribeToGame(
         // normal. One refresh and one retry, matching the api-client's policy.
         if (response.status === 401) {
           const outcome = await refreshAccessToken();
+          if (outcome.status === "rejected") {
+            // The session is truly over. Match the api-client's policy: wipe
+            // the stored auth so listeners flip the UI to signed-out, and stop
+            // — reconnecting with a dead token can never succeed.
+            clearAuth();
+            return;
+          }
           if (outcome.status !== "refreshed") {
+            // Clerk unreachable; the token may still be good. Retry later.
             throw new Error("Not authorized to watch this game");
           }
           response = await open(gameId, signal);

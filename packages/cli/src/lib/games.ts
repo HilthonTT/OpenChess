@@ -5,7 +5,7 @@ import type {
   TimeControlKey,
 } from "@openchess/shared";
 import { apiClient } from "./api-client";
-import { getProblemDetails } from "./http-errors";
+import { getProblemDetails, problemMessage } from "./http-errors";
 
 /**
  * Typed calls to the server's `/games` API. Every helper either returns the
@@ -35,7 +35,7 @@ async function toError(response: {
   statusText: string;
 }): Promise<Error> {
   const problem = await getProblemDetails(response);
-  const message = problem.detail ?? problem.title;
+  const message = problemMessage(problem);
 
   return response.status === 409
     ? new GameConflictError(message)

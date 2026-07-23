@@ -53,6 +53,7 @@ import {
   resultForTimeout,
   rewardFor,
   rewardForPvp,
+  MIN_REWARDED_PLIES,
   statsAfter,
   timeOf,
   toEngineDifficulty,
@@ -405,6 +406,23 @@ async function payoutPlayer(
   },
 ): Promise<RewardView> {
   const { user, stats, outcome, base } = input;
+
+  // The reward floor zeroes the *base* payout for a game too short to be a
+  // game, but wins, rating and achievements are minted here — so a sub-floor
+  // decisive result still moved the leaderboard and unlocked win-count trophies
+  // for free. That is the win-trading farm: two accounts queue, the loser
+  // resigns at move one, and the winner banks a win, a rating bump and
+  // achievement coins at no cost. Settle such a game as a no-contest — like an
+  // abort, nobody's record moves. A genuine fast win is a checkmate
+  // (fool's/scholar's mate) and is exempt, matching how the ply floor already
+  // reasons about "not really a game".
+  if (
+    (outcome === "win" || outcome === "loss") &&
+    input.plies < MIN_REWARDED_PLIES &&
+    !input.byCheckmate
+  ) {
+    return nothingEarned(user, stats.rating);
+  }
 
   const after = statsAfter(stats, outcome, input.newRating);
   await tx.userStats.update({ where: { userId: user.id }, data: after });
@@ -1215,7 +1233,7 @@ export async function playMove(input: {
   // `lastMoveAt`. A settled game no longer needs one.
   if (row.mode === "PVP") {
     if (result.state.endedAt === null) {
-      lastMoveAt.set(row.id, Date.now());
+      markMoved(row.id, Date.now());
     } else {
       lastMoveAt.delete(row.id);
     }
@@ -1334,6 +1352,35 @@ const CLAIM_VICTORY_AFTER_MS = 5 * 60_000;
  * just before it.
  */
 const lastMoveAt = new Map<string, number>();
+
+/**
+ * An entry only matters for the 5-minute claim window that follows a move, so
+ * one that has not advanced in far longer belongs to a game that was abandoned
+ * without ever settling — an untimed PvP game both players walked away from
+ * leaves its entry behind forever, since only a settlement drops it. Sweeping
+ * such entries is safe under the same guarantee a restart gives: a game that
+ * later resumes just has its clock re-based to `now` by `lastActivityAt`, which
+ * can only delay a claim, never award one. Generous so a genuinely long think
+ * on an untimed board is never evicted out from under an active game.
+ */
+const LAST_MOVE_STALE_MS = 60 * 60_000;
+const SWEEP_INTERVAL_MS = 5 * 60_000;
+let lastSweepAt = 0;
+
+/** Record a PvP move's time, opportunistically evicting long-dead entries. */
+function markMoved(gameId: string, at: number): void {
+  lastMoveAt.set(gameId, at);
+
+  if (at - lastSweepAt < SWEEP_INTERVAL_MS) {
+    return;
+  }
+  lastSweepAt = at;
+  for (const [id, when] of lastMoveAt) {
+    if (at - when > LAST_MOVE_STALE_MS) {
+      lastMoveAt.delete(id);
+    }
+  }
+}
 
 /** The last time `row` demonstrably advanced. */
 function lastActivityAt(row: GameRow): number {

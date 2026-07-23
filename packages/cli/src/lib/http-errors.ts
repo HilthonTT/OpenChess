@@ -34,3 +34,39 @@ export async function getProblemDetails(
     status: response.status,
   };
 }
+
+/**
+ * The screen-ready sentence for a problem. `detail` over `title` (the RFC
+ * makes `detail` the human explanation), field-level validation issues spelled
+ * out so a 400 says which field, and — on server faults only — the request id,
+ * which is the one token that lets a bug report be matched to a log line.
+ */
+export function problemMessage(problem: ProblemDetails): string {
+  const parts: string[] = [problem.detail ?? problem.title];
+
+  if (problem.errors && problem.errors.length > 0) {
+    parts.push(
+      problem.errors
+        .map((issue) =>
+          issue.path ? `${issue.path}: ${issue.message}` : issue.message,
+        )
+        .join("; "),
+    );
+  }
+
+  if (problem.status >= 500 && problem.requestId) {
+    parts.push(`(ref ${problem.requestId})`);
+  }
+
+  return parts.join(" — ");
+}
+
+/**
+ * The standard "response refused" error: reads the problem off the response
+ * and wraps its screen-ready message in an `Error`, so API helpers can
+ * `throw await responseError(response)` and screens can show `error.message`
+ * as-is.
+ */
+export async function responseError(response: ErrorResponse): Promise<Error> {
+  return new Error(problemMessage(await getProblemDetails(response)));
+}

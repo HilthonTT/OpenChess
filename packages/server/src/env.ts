@@ -86,6 +86,27 @@ const EnvSchema = z
       });
     }
 
+    // The confused-deputy defence (auth.ts rejects tokens issued to other OAuth
+    // apps on the same Clerk instance) only runs when CLERK_OAUTH_CLIENT_ID is
+    // set. A *live* Clerk key means a real Clerk instance that can host other
+    // OAuth apps — so require the client id whenever a live key is in use, not
+    // just when NODE_ENV is exactly "production". A staging/preview box that
+    // forgets to set NODE_ENV but points at the live instance is the case this
+    // catches; the sk_test_ dev key stays exempt.
+    if (
+      input.CLERK_SECRET_KEY.startsWith("sk_live_") &&
+      !input.CLERK_OAUTH_CLIENT_ID
+    ) {
+      ctx.addIssue({
+        code: "invalid_type",
+        expected: "string",
+        received: "undefined",
+        path: ["CLERK_OAUTH_CLIENT_ID"],
+        message:
+          "Must be set when using a live Clerk key (sk_live_) so tokens issued to other OAuth apps are rejected",
+      });
+    }
+
     if (input.NODE_ENV !== "production") {
       return;
     }

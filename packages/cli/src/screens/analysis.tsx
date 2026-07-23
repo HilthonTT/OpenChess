@@ -11,6 +11,7 @@ import {
   toSan,
 } from "@openchess/shared";
 import type { Analysis, Game, MoveQuality } from "@openchess/shared";
+import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
 import { Board } from "../components/board";
@@ -155,14 +156,7 @@ function History({ onOpen }: { onOpen: (gameId: string) => void }) {
   return (
     <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
       {error ? (
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Couldn't load your games</text>
-          <text fg={theme.dim}>{error}</text>
-          <text>
-            <span fg={theme.cream}>r</span>
-            <span fg={theme.faint}> retry</span>
-          </text>
-        </box>
+        <ErrorNotice title="Couldn't load your games" message={error} />
       ) : !games ? (
         <text fg={theme.dim}>Loading…</text>
       ) : games.length === 0 ? (
@@ -418,10 +412,11 @@ function Review({
           return true;
         }}
       >
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Couldn't load that game</text>
-          <text fg={theme.dim}>{error}</text>
-        </box>
+        <ErrorNotice
+          title="Couldn't load that game"
+          message={error}
+          hints={[{ key: "esc", label: "back" }]}
+        />
       </GameScreen>
     );
   }

@@ -1,6 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { apiClient } from "./api-client";
-import { getProblemDetails } from "./http-errors";
+import { responseError } from "./http-errors";
 
 /**
  * Typed calls to the server's `/me` API. Like the `/games` helpers, every call
@@ -22,8 +22,7 @@ export async function fetchProfile(): Promise<Profile> {
   const response = await apiClient.me.$get();
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();
@@ -33,8 +32,7 @@ export async function fetchStats(): Promise<PlayerStats> {
   const response = await apiClient.me.stats.$get();
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();
@@ -49,8 +47,7 @@ export async function checkIn(): Promise<CheckIn> {
   const response = await apiClient.me["check-in"].$post();
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();
@@ -61,8 +58,7 @@ export async function equipTitle(titleId: string | null): Promise<Profile> {
   const response = await apiClient.me.title.$put({ json: { titleId } });
 
   if (response.status !== 200) {
-    const problem = await getProblemDetails(response);
-    throw new Error(problem.detail ?? problem.title);
+    throw await responseError(response);
   }
 
   return response.json();

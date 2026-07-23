@@ -1,5 +1,5 @@
 import open from "open";
-import { getAuth, saveAuth } from "./auth";
+import { reloadAuth, saveAuth } from "./auth";
 import { errorMessage } from "./utils";
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -257,7 +257,9 @@ export function refreshAccessToken(): Promise<RefreshOutcome> {
 async function doRefresh(): Promise<RefreshOutcome> {
   const clerkFrontendApi = process.env.CLERK_FRONTEND_API;
   const clientId = process.env.CLERK_OAUTH_CLIENT_ID;
-  const refreshToken = getAuth()?.refreshToken;
+  // Read off disk, not the cache: another CLI process may have refreshed since
+  // and rotated the grant — presenting the spent one gets the session revoked.
+  const refreshToken = reloadAuth()?.refreshToken;
 
   // No grant (a pre-refresh-support session) or no way to use one: the old
   // 401 behavior — treat it as signed out — is the only honest answer.
