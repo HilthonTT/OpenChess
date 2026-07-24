@@ -1,9 +1,11 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import jsonContent from "stoker/openapi/helpers/json-content";
 import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 
+import { createRematch } from "../game/challenges";
 import { gameVersion, subscribeToGame } from "../game/events";
 import {
   abortGame,
@@ -11,37 +13,46 @@ import {
   createAiGame,
   flagGame,
   getGame,
+  getGamePgn,
   joinPvpQueue,
   leavePvpQueue,
   listActiveGames,
   listGames,
+  listLiveGames,
   playMove,
   resignGame,
+  watchGame,
 } from "../game/service";
 import { createPlayerRouter } from "../lib/create-app";
+import type { PlayerEnv } from "../middlewares/require-user";
 import {
   API_PATHS,
   pageLinks,
   pageLinksSchema,
+  withChallengeLinks,
   withGameLinks,
   withGameSummaryLinks,
+  withLiveGameLinks,
 } from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
 import { rateLimit } from "../middlewares/rate-limit";
 import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
 import {
+  challengeSchema,
   createGameSchema,
   decodeCursor,
   idParamsSchema,
   gameResultSchema,
   gameSchema,
   gameSummarySchema,
+  liveGameSchema,
   moveResultSchema,
   paginationQuerySchema,
   playMoveSchema,
   queueJoinSchema,
   queueResultSchema,
+  spectatorGameSchema,
 } from "./schemas";
 import { TAGS } from "./tags";
 
@@ -250,6 +261,87 @@ const flag = createRoute({
   },
 });
 
+// Registered ahead of `/{id}` so the literal segment wins the match.
+const live = createRoute({
+  tags: [TAGS.GAMES],
+  method: "get",
+  path: "/live",
+  summary: "Games being played right now",
+  description:
+    "Online games with at least one move played, strongest first — the lower of the two ratings, so an even game outranks a mismatch. Anyone signed in can watch any of them.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ games: z.array(liveGameSchema) }),
+      "Live games, best first",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const watch = createRoute({
+  tags: [TAGS.GAMES],
+  method: "get",
+  path: "/{id}/watch",
+  summary: "Watch a game you are not in",
+  description:
+    "The spectator's view of an online game: both players, the position, the clock and the move list — but no legal moves and no colour of your own, because a watcher has neither. Only online games can be watched; an AI game is a private board.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(spectatorGameSchema, "The game"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: problemDetailsContent(
+      "Only online games can be watched",
+    ),
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+  },
+});
+
+const pgn = createRoute({
+  tags: [TAGS.GAMES],
+  method: "get",
+  path: "/{id}/pgn",
+  summary: "Download a finished game as PGN",
+  description:
+    "The archival PGN written when the game settled, with the players' names as they stood then. Served as `application/x-chess-pgn` with a filename, so a client can write it straight to disk.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: {
+      description: "The PGN",
+      content: {
+        "application/x-chess-pgn": { schema: z.string() },
+      },
+    },
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "The game is not over yet",
+    ),
+  },
+});
+
+const rematch = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/rematch",
+  summary: "Offer a rematch",
+  description:
+    "Sends the opponent of a finished online game a challenge for another one: same clock, colours swapped. It is an ordinary challenge from there — they accept it from their challenge list, and a repeated offer returns the one already standing rather than filling their inbox.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.CREATED]: jsonContent(
+      challengeSchema,
+      "The rematch offer",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "Not rematchable: an AI game, one still going, or an opponent who is gone",
+    ),
+  },
+});
+
 const abort = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
@@ -320,24 +412,25 @@ function waitForChange(
 }
 
 /**
- * The live feed for one game.
+ * The live feed for one game, in whatever shape the caller is entitled to.
  *
  * Registered with `.get` rather than `.openapi` because the response is a
  * `text/event-stream` rather than a modelled JSON body — it is documented in the
- * README instead, and the CLI reads it with a plain fetch. It still sits behind
- * the `requireAuth`/`requireUser` middleware above, and `getGame` still refuses
- * a game the caller is not a player in, so this exposes nothing the polling
- * route did not.
+ * README instead, and the CLI reads it with a plain fetch. Both streams still
+ * sit behind the `requireAuth`/`requireUser` middleware above, and the loader
+ * each one is given is the same authorization check the polling route makes, so
+ * neither exposes anything the polling routes did not.
  *
- * Events are `state`, carrying exactly the JSON body of `GET /games/{id}`. The
+ * Events are `state`, carrying exactly the JSON body of the matching GET. The
  * first one is sent immediately so a client needs no separate fetch to start,
  * and the stream closes itself once the game is over — there is nothing further
  * to report, and holding the connection open would only cost both ends.
  */
-base.get("/:id/events", (c) => {
-  const gameId = c.req.param("id");
-  const user = c.get("user");
-
+function streamGameState<T extends { ply: number; result: string | null }>(
+  c: Context<PlayerEnv>,
+  gameId: string,
+  load: () => Promise<T>,
+) {
   return streamSSE(c, async (stream) => {
     let lastPly = -1;
     let lastResult: string | null = null;
@@ -353,7 +446,7 @@ base.get("/:id/events", (c) => {
     };
 
     while (!stream.aborted && !stream.closed) {
-      const state = await getGame(gameId, user);
+      const state = await load();
 
       // Resend only on a real change. A client holding a picked-up piece must
       // not have its selection cleared by an event that says nothing new.
@@ -365,7 +458,7 @@ base.get("/:id/events", (c) => {
 
         await stream.writeSSE({
           event: "state",
-          data: JSON.stringify(withGameLinks(state)),
+          data: JSON.stringify(state),
         });
       } else {
         // Reached on every tick when Redis is absent (nothing to compare, so
@@ -404,6 +497,30 @@ base.get("/:id/events", (c) => {
       }
     }
   });
+}
+
+/** The players' feed: the same body as `GET /games/{id}`, pushed. */
+base.get("/:id/events", (c) => {
+  const gameId = c.req.param("id");
+  const user = c.get("user");
+
+  return streamGameState(c, gameId, async () =>
+    withGameLinks(await getGame(gameId, user)),
+  );
+});
+
+/**
+ * The spectators' feed: the same body as `GET /games/{id}/watch`, pushed.
+ *
+ * Sharing the loop with the players' stream is what keeps a watcher from ever
+ * being a tick behind them — both wake on the same notification — and it is
+ * also why a spectator never sees a legal-move list: the shape is decided by
+ * `watchGame`, which has none to give.
+ */
+base.get("/:id/watch/events", (c) => {
+  const gameId = c.req.param("id");
+
+  return streamGameState(c, gameId, () => watchGame(gameId));
 });
 
 // Chained rather than registered as separate statements: `.openapi()` returns a
@@ -429,6 +546,11 @@ const router = base
       { games: games.map(withGameSummaryLinks) },
       HttpStatusCodes.OK,
     );
+  })
+  .openapi(live, async (c) => {
+    const games = await listLiveGames();
+
+    return c.json({ games: games.map(withLiveGameLinks) }, HttpStatusCodes.OK);
   })
   .openapi(queueJoin, async (c) => {
     const { timeControl } = c.req.valid("json");
@@ -477,6 +599,32 @@ const router = base
     const game = await getGame(id, c.get("user"));
 
     return c.json(withGameLinks(game), HttpStatusCodes.OK);
+  })
+  .openapi(watch, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await watchGame(id);
+
+    return c.json(game, HttpStatusCodes.OK);
+  })
+  .openapi(pgn, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const { pgn: text, filename } = await getGamePgn(id, c.get("user"));
+
+    // `attachment` rather than `inline`: this is a file to save, and the CLI
+    // reads the name off the header rather than inventing one.
+    c.header("Content-Type", "application/x-chess-pgn; charset=utf-8");
+    c.header("Content-Disposition", `attachment; filename="${filename}"`);
+
+    return c.body(text, HttpStatusCodes.OK);
+  })
+  .openapi(rematch, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const challenge = await createRematch({ user: c.get("user"), gameId: id });
+
+    return c.json(withChallengeLinks(challenge), HttpStatusCodes.CREATED);
   })
   .openapi(move, async (c) => {
     const { id } = c.req.valid("param");

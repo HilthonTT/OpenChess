@@ -1,16 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { InputRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useLocation } from "react-router";
 import {
   analyzePosition,
+  buildGameReport,
   centipawnLoss,
   classifyMove,
+  clampEval,
   createGame,
   findKing,
+  mistakes,
   playSan,
+  STARTING_FEN,
   toSan,
+  EVAL_CLAMP,
 } from "@openchess/shared";
-import type { Analysis, Game, MoveQuality } from "@openchess/shared";
+import type {
+  Analysis,
+  AnalyzedPly,
+  Color,
+  Game,
+  GameReport,
+  MoveQuality,
+} from "@openchess/shared";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
@@ -23,6 +36,11 @@ import {
   type ServerGame,
 } from "../lib/games";
 import { toEngineDifficulty } from "../lib/games";
+import {
+  DEFAULT_EXPORT_DIR,
+  exportGamePgn,
+  importPgnFile,
+} from "../lib/pgn-files";
 import { DIFFICULTY_LABELS } from "./ai-game/setup";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -32,6 +50,22 @@ import { errorMessage } from "../lib/utils";
 const TITLE = "Analysis";
 const SUBTITLE = "Step through a finished game with the engine";
 const WIDTH = 62;
+
+/**
+ * Everything the review board needs, whichever way the game got here — off the
+ * server, or out of a PGN file. Keeping the board blind to the difference is
+ * what lets an imported game get the same treatment as one you played.
+ */
+type ReviewSource = {
+  /** The moves in SAN. */
+  history: string[];
+  startingFen: string;
+  /** Which way up to draw the board. */
+  orientation: Color;
+  subtitle: string;
+  /** Present only for a game the server holds, which is what can be exported. */
+  gameId: string | null;
+};
 
 /**
  * The review screen. Reached from the menu — which lists your finished games to
@@ -46,6 +80,30 @@ export function Analysis() {
   const initialGameId =
     (location.state as { gameId?: string } | null)?.gameId ?? null;
   const [selected, setSelected] = useState<string | null>(initialGameId);
+  /** A game read out of a PGN file, which needs no account at all. */
+  const [imported, setImported] = useState<ReviewSource | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const back = useCallback(() => {
+    setSelected(null);
+    setImported(null);
+  }, []);
+
+  if (importing) {
+    return (
+      <ImportPgn
+        onCancel={() => setImporting(false)}
+        onImported={(source) => {
+          setImporting(false);
+          setImported(source);
+        }}
+      />
+    );
+  }
+
+  if (imported) {
+    return <ReviewBoard source={imported} onBack={back} />;
+  }
 
   if (auth.status === "checking") {
     return (
@@ -55,28 +113,56 @@ export function Analysis() {
     );
   }
 
+  // Importing is the one thing here that works signed out: the file is the
+  // whole game, and the engine that reviews it is running locally anyway.
   if (auth.status !== "signed-in") {
     return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Analysis needs an account</text>
-          <text fg={theme.dim}>
-            Your finished games live on the server; sign in to review them.
-          </text>
-        </box>
-      </GameScreen>
+      <SignedOutAnalysis onImport={() => setImporting(true)} />
     );
   }
 
   return selected ? (
-    <Review gameId={selected} onBack={() => setSelected(null)} />
+    <Review gameId={selected} onBack={back} />
   ) : (
-    <History onOpen={setSelected} />
+    <History onOpen={setSelected} onImport={() => setImporting(true)} />
+  );
+}
+
+function SignedOutAnalysis({ onImport }: { onImport: () => void }) {
+  const theme = useUITheme();
+  const { isTopLayer } = useKeyboardLayer();
+
+  useKeyboard((key) => {
+    if (isTopLayer(BASE_LAYER_ID) && key.name === "i") {
+      onImport();
+    }
+  });
+
+  return (
+    <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
+      <box flexDirection="column" alignItems="center" gap={1}>
+        <text fg={theme.gold}>Analysis needs an account</text>
+        <text fg={theme.dim}>
+          Your finished games live on the server; sign in to review them.
+        </text>
+        <text fg={theme.dim}>
+          A PGN file needs no account — the engine runs here.
+        </text>
+      </box>
+
+      <HintBar hints={[{ key: "i", label: "import a PGN" }]} />
+    </GameScreen>
   );
 }
 
 /** Your finished games, newest first; pick one to review. */
-function History({ onOpen }: { onOpen: (gameId: string) => void }) {
+function History({
+  onOpen,
+  onImport,
+}: {
+  onOpen: (gameId: string) => void;
+  onImport: () => void;
+}) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
 
@@ -85,6 +171,7 @@ function History({ onOpen }: { onOpen: (gameId: string) => void }) {
   const [cursor, setCursor] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [attempt, setAttempt] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +207,22 @@ function History({ onOpen }: { onOpen: (gameId: string) => void }) {
       .catch((cause) => setError(errorMessage(cause)));
   }, [cursor]);
 
+  /** Write the highlighted game out as PGN, without leaving the list. */
+  const exportSelected = useCallback(async () => {
+    const game = games?.[index];
+    if (!game) {
+      return;
+    }
+
+    setNote("Exporting…");
+    try {
+      const { path } = await exportGamePgn(game.id);
+      setNote(`Saved to ${path}`);
+    } catch (cause) {
+      setNote(errorMessage(cause));
+    }
+  }, [games, index]);
+
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || !games) {
       return;
@@ -148,8 +251,15 @@ function History({ onOpen }: { onOpen: (gameId: string) => void }) {
         }
         break;
       }
+      case "e":
+        void exportSelected();
+        break;
+      case "i":
+        onImport();
+        break;
       case "r":
         setIndex(0);
+        setNote(null);
         setAttempt((value) => value + 1);
         break;
     }
@@ -169,10 +279,14 @@ function History({ onOpen }: { onOpen: (gameId: string) => void }) {
         <HistoryTable games={games} index={index} />
       )}
 
+      {note ? <text fg={theme.gold}>{note}</text> : null}
+
       <HintBar
         hints={[
           { key: "↑↓", label: "browse" },
           { key: "enter", label: "review" },
+          { key: "e", label: "export PGN" },
+          { key: "i", label: "import" },
           { key: "r", label: "refresh" },
         ]}
       />
@@ -249,9 +363,93 @@ function HistoryTable({
   );
 }
 
+/** Read a game out of a PGN file on disk. */
+function ImportPgn({
+  onImported,
+  onCancel,
+}: {
+  onImported: (source: ReviewSource) => void;
+  onCancel: () => void;
+}) {
+  const theme = useUITheme();
+  const { isTopLayer } = useKeyboardLayer();
+
+  const inputRef = useRef<InputRenderable>(null);
+  const [path, setPath] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const load = useCallback(async () => {
+    if (path.trim() === "") {
+      return;
+    }
+
+    setPending(true);
+    setMessage(null);
+
+    try {
+      const { game, total } = await importPgnFile(path);
+      const white = game.tags.white ?? "White";
+      const black = game.tags.black ?? "Black";
+
+      onImported({
+        history: game.moves,
+        startingFen: game.startingFen,
+        orientation: "w",
+        subtitle: `${white} vs ${black} · ${game.result}${
+          total > 1 ? ` · game 1 of ${total}` : ""
+        }`,
+        gameId: null,
+      });
+    } catch (cause) {
+      setMessage(errorMessage(cause));
+      setPending(false);
+    }
+  }, [onImported, path]);
+
+  useKeyboard((key) => {
+    if (!isTopLayer(BASE_LAYER_ID) || pending) {
+      return;
+    }
+    if (key.name === "return" || key.name === "enter") {
+      void load();
+    }
+  });
+
+  return (
+    <GameScreen
+      title="Import a PGN"
+      subtitle="Review a game that was never played here"
+      width={WIDTH}
+      onEscape={() => {
+        onCancel();
+        return true;
+      }}
+    >
+      <box flexDirection="column" width={WIDTH - 6} gap={1}>
+        <input
+          ref={inputRef}
+          placeholder={`path to a .pgn file (exports land in ${DEFAULT_EXPORT_DIR})`}
+          focused
+          onContentChange={() => setPath(inputRef.current?.value ?? "")}
+        />
+        {message ? <text fg={theme.gold}>{message}</text> : null}
+        {pending ? <text fg={theme.dim}>Reading…</text> : null}
+      </box>
+
+      <HintBar
+        hints={[
+          { key: "enter", label: "open" },
+          { key: "esc", label: "cancel" },
+        ]}
+      />
+    </GameScreen>
+  );
+}
+
 /** Rebuild every intermediate position: `frames[i]` is the game after i plies. */
-function buildFrames(history: string[]): Game[] {
-  const frames: Game[] = [createGame()];
+function buildFrames(history: string[], startingFen: string): Game[] {
+  const frames: Game[] = [createGame(startingFen)];
   let game = frames[0]!;
   for (const san of history) {
     game = playSan(game, san);
@@ -317,6 +515,43 @@ function useGameAnalysis(frames: Game[]): {
   return { analyses, done };
 }
 
+/**
+ * The game report, over as much of the game as has been evaluated.
+ *
+ * Built from the prefix rather than waiting for the whole search: the analyses
+ * arrive in order, so a partial report is the report of the opening, and
+ * showing it while the rest fills in beats showing nothing for ten seconds.
+ */
+function useGameReport(
+  frames: Game[],
+  analyses: Array<Analysis | null>,
+  history: string[],
+): GameReport {
+  return useMemo(() => {
+    const plies: AnalyzedPly[] = [];
+
+    for (let ply = 1; ply < frames.length; ply += 1) {
+      const before = analyses[ply - 1];
+      const after = analyses[ply];
+
+      // The first gap ends the report: everything past it is unevaluated.
+      if (!before || !after) {
+        break;
+      }
+
+      plies.push({
+        mover: frames[ply - 1]!.position.turn,
+        san: history[ply - 1] ?? "",
+        before: before.scoreCp,
+        after: after.scoreCp,
+        mateInvolved: before.mateIn !== null || after.mateIn !== null,
+      });
+    }
+
+    return buildGameReport(plies);
+  }, [analyses, frames, history]);
+}
+
 const QUALITY_LABEL: Record<MoveQuality, string> = {
   best: "Best move",
   good: "Good",
@@ -326,7 +561,6 @@ const QUALITY_LABEL: Record<MoveQuality, string> = {
 };
 
 /** Centipawns clamped to a pawn axis for the eval bar. */
-const EVAL_CLAMP = 1000;
 const BAR_W = 24;
 
 /** A signed pawn reading, or mate notation, from white's point of view. */
@@ -346,8 +580,7 @@ function whiteShare(analysis: Analysis): number {
   if (analysis.mateIn !== null) {
     return analysis.scoreCp >= 0 ? 1 : 0;
   }
-  const clamped = Math.max(-EVAL_CLAMP, Math.min(EVAL_CLAMP, analysis.scoreCp));
-  return 0.5 + clamped / (2 * EVAL_CLAMP);
+  return 0.5 + clampEval(analysis.scoreCp) / (2 * EVAL_CLAMP);
 }
 
 function subtitleFor(game: ServerGame): string {
@@ -377,7 +610,6 @@ function Review({
   onBack: () => void;
 }) {
   const theme = useUITheme();
-  const { isTopLayer } = useKeyboardLayer();
 
   const [game, setGame] = useState<ServerGame | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -441,34 +673,90 @@ function Review({
 
   return (
     <ReviewBoard
-      game={game}
+      source={{
+        history: game.history,
+        // Every server game starts from the initial array; the record format
+        // has no room for anything else.
+        startingFen: STARTING_FEN,
+        orientation: game.yourColor,
+        subtitle: subtitleFor(game),
+        gameId: game.id,
+      }}
       onBack={onBack}
-      isTopLayer={() => isTopLayer(BASE_LAYER_ID)}
     />
   );
 }
 
 function ReviewBoard({
-  game,
+  source,
   onBack,
-  isTopLayer,
 }: {
-  game: ServerGame;
+  source: ReviewSource;
   onBack: () => void;
-  isTopLayer: () => boolean;
 }) {
   const theme = useUITheme();
+  const { isTopLayer } = useKeyboardLayer();
 
   // Stable across ticks so the analysis effect does not restart every render.
-  const frames = useMemo(() => buildFrames(game.history), [game.history]);
+  const frames = useMemo(
+    () => buildFrames(source.history, source.startingFen),
+    [source.history, source.startingFen],
+  );
   const { analyses, done } = useGameAnalysis(frames);
+  const report = useGameReport(frames, analyses, source.history);
 
   const lastPly = frames.length - 1;
   const [ply, setPly] = useState(0);
-  const [flipped, setFlipped] = useState(game.yourColor === "b");
+  const [flipped, setFlipped] = useState(source.orientation === "b");
+  const [note, setNote] = useState<string | null>(null);
+
+  /** Step to the next mistake in `direction`, or say there isn't one. */
+  const jumpToMistake = useCallback(
+    (direction: 1 | -1) => {
+      const marks = mistakes(report);
+
+      if (marks.length === 0) {
+        setNote(
+          done < frames.length
+            ? "Still looking — no mistakes found yet"
+            : "No mistakes to jump to",
+        );
+        return;
+      }
+
+      const next =
+        direction === 1
+          ? marks.find((mark) => mark.ply > ply)
+          : [...marks].reverse().find((mark) => mark.ply < ply);
+
+      if (!next) {
+        setNote(direction === 1 ? "That was the last one" : "That was the first one");
+        return;
+      }
+
+      setNote(null);
+      setPly(next.ply);
+    },
+    [done, frames.length, ply, report],
+  );
+
+  const exportPgn = useCallback(async () => {
+    if (source.gameId === null) {
+      setNote("This game came from a file — it's already on disk");
+      return;
+    }
+
+    setNote("Exporting…");
+    try {
+      const { path } = await exportGamePgn(source.gameId);
+      setNote(`Saved to ${path}`);
+    } catch (cause) {
+      setNote(errorMessage(cause));
+    }
+  }, [source.gameId]);
 
   useKeyboard((key) => {
-    if (!isTopLayer()) {
+    if (!isTopLayer(BASE_LAYER_ID)) {
       return;
     }
 
@@ -493,6 +781,15 @@ function ReviewBoard({
       case "f":
         setFlipped((value) => !value);
         break;
+      case "n":
+        jumpToMistake(1);
+        break;
+      case "p":
+        jumpToMistake(-1);
+        break;
+      case "e":
+        void exportPgn();
+        break;
     }
   });
 
@@ -509,19 +806,17 @@ function ReviewBoard({
   // The quality of the move that reached this position, once both the position
   // before it and this one have been evaluated.
   const before = ply > 0 ? analyses[ply - 1] : null;
-  const moved = ply > 0 ? game.history[ply - 1] ?? null : null;
+  const moved = ply > 0 ? source.history[ply - 1] ?? null : null;
   let quality: { label: string; loss: number | null } | null = null;
   if (ply > 0 && before && analysis) {
     const mover = frames[ply - 1]!.position.turn;
     // Clamp mate scores onto the pawn axis before comparing: throwing away a
     // forced mate for a merely-winning position is a mistake, not the
     // hundred-pawn "blunder" the raw mate score would read as.
-    const clamp = (cp: number) =>
-      Math.max(-EVAL_CLAMP, Math.min(EVAL_CLAMP, cp));
     const loss = centipawnLoss(
       mover,
-      clamp(before.scoreCp),
-      clamp(analysis.scoreCp),
+      clampEval(before.scoreCp),
+      clampEval(analysis.scoreCp),
     );
     const mateInvolved = before.mateIn !== null || analysis.mateIn !== null;
     quality = {
@@ -538,7 +833,7 @@ function ReviewBoard({
   return (
     <GameScreen
       title={TITLE}
-      subtitle={subtitleFor(game)}
+      subtitle={source.subtitle}
       width={WIDTH}
       onEscape={() => {
         onBack();
@@ -548,8 +843,10 @@ function ReviewBoard({
         <>
           <span fg={theme.cream}>←→</span>
           <span fg={theme.faint}> step </span>
-          <span fg={theme.cream}>home/end</span>
-          <span fg={theme.faint}> jump </span>
+          <span fg={theme.cream}>n/p</span>
+          <span fg={theme.faint}> mistakes </span>
+          <span fg={theme.cream}>e</span>
+          <span fg={theme.faint}> export </span>
           <span fg={theme.cream}>f</span>
           <span fg={theme.faint}> flip </span>
         </>
@@ -569,6 +866,8 @@ function ReviewBoard({
       </box>
 
       <EvalBar analysis={analysis} />
+
+      <AccuracyRow report={report} />
 
       <box flexDirection="column" width={WIDTH - 6}>
         <text>
@@ -606,10 +905,44 @@ function ReviewBoard({
         </text>
       </box>
 
+      {note ? <text fg={theme.gold}>{note}</text> : null}
+
       {done < frames.length ? (
         <text fg={theme.faint}>{`Analyzing… ${done}/${frames.length}`}</text>
       ) : null}
     </GameScreen>
+  );
+}
+
+/**
+ * How each side played, over the whole game: an accuracy percentage and the
+ * count of what went wrong. This is the line a review opens with — the move by
+ * move detail is what you read after it has told you where to look.
+ */
+function AccuracyRow({ report }: { report: GameReport }) {
+  const theme = useUITheme();
+
+  const side = (label: string, stats: GameReport["white"]) => {
+    const bad =
+      stats.counts.inaccuracy + stats.counts.mistake + stats.counts.blunder;
+
+    return (
+      <text>
+        <span fg={theme.faint}>{`${label} `}</span>
+        <span fg={theme.cream}>{`${stats.accuracy.toFixed(0)}%`}</span>
+        <span fg={theme.faint}>{`  ${Math.round(stats.averageLoss)}cp`}</span>
+        {bad > 0 ? (
+          <span fg={theme.gold}>{`  ${stats.counts.blunder}?? ${stats.counts.mistake}? ${stats.counts.inaccuracy}!?`}</span>
+        ) : null}
+      </text>
+    );
+  };
+
+  return (
+    <box flexDirection="row" width={WIDTH - 6} justifyContent="space-between">
+      {side("White", report.white)}
+      {side("Black", report.black)}
+    </box>
   );
 }
 

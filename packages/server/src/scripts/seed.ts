@@ -2,9 +2,10 @@ import { db } from "@openchess/database/client";
 import type { Prisma } from "@openchess/database";
 
 import { invalidateCache } from "../lib/cache";
+import { PUZZLE_CATALOG } from "./puzzle-catalog";
 
 /**
- * Seed the achievement and title catalogs. Run with `bun run db:seed`.
+ * Seed the achievement, title and puzzle catalogs. Run with `bun run db:seed`.
  *
  * Everything is upserted by `code` — the stable key the unlock rules and the
  * store reference — so reruns rewrite copy, rewards and prices in place
@@ -105,6 +106,56 @@ const ACHIEVEMENTS: AchievementSeed[] = [
     secret: true,
   },
   {
+    code: "PUZZLE_FIRST",
+    name: "First Blood",
+    description: "Solve your first puzzle.",
+    xpReward: 25,
+    coinReward: 15,
+  },
+  {
+    code: "PUZZLE_TEN",
+    name: "Tactician in Training",
+    description: "Solve 10 puzzles.",
+    xpReward: 120,
+    coinReward: 60,
+  },
+  {
+    code: "PUZZLE_HUNDRED",
+    name: "Pattern Recognition",
+    description: "Solve 100 puzzles.",
+    xpReward: 800,
+    coinReward: 400,
+  },
+  {
+    code: "PUZZLE_STREAK_5",
+    name: "In the Zone",
+    description: "Solve 5 puzzles in a row.",
+    xpReward: 100,
+    coinReward: 50,
+  },
+  {
+    code: "PUZZLE_STREAK_20",
+    name: "Calculating Machine",
+    description: "Solve 20 puzzles in a row.",
+    xpReward: 600,
+    coinReward: 300,
+  },
+  {
+    code: "PUZZLE_HARD",
+    name: "Deep Water",
+    description: "Solve a puzzle rated 1800 or above.",
+    xpReward: 250,
+    coinReward: 125,
+    secret: true,
+  },
+  {
+    code: "DAILY_PUZZLE",
+    name: "Puzzle of the Day",
+    description: "Solve the daily puzzle.",
+    xpReward: 60,
+    coinReward: 30,
+  },
+  {
     code: "DAILY_STREAK_3",
     name: "Habit Forming",
     description: "Check in three days running.",
@@ -203,6 +254,14 @@ const TITLES: TitleSeed[] = [
     rarity: "EPIC",
     isPurchasable: false,
   },
+  {
+    code: "PUZZLE_MASTER",
+    label: "Puzzle Master",
+    description: "Awarded for solving 100 puzzles.",
+    price: 0,
+    rarity: "EPIC",
+    isPurchasable: false,
+  },
 ];
 
 for (const achievement of ACHIEVEMENTS) {
@@ -224,6 +283,20 @@ for (const title of TITLES) {
   });
 }
 console.log(`Seeded ${TITLES.length} titles.`);
+
+// Puzzles are upserted by `externalId` for the same reason: a rerun rewrites a
+// position or a rating in place, and the attempts players have already made
+// against it stay attached. `dailyOn` is deliberately never written here — the
+// day's puzzle is the service's to assign, and reseeding must not steal it.
+for (const puzzle of PUZZLE_CATALOG) {
+  const { externalId, ...rest } = puzzle;
+  await db.puzzle.upsert({
+    where: { externalId },
+    update: rest,
+    create: puzzle,
+  });
+}
+console.log(`Seeded ${PUZZLE_CATALOG.length} puzzles.`);
 
 // Both catalogs just changed under any running server; drop its cached copies.
 await Promise.all([

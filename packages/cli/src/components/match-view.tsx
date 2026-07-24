@@ -56,7 +56,13 @@ export function orientClocks(input: {
   return { top: rowFor(topColor), bottom: rowFor(bottomColor) };
 }
 
-function ClockLine({ row }: { row: ClockRow }) {
+/**
+ * One side's clock. Exported because the spectator screen draws the same two
+ * rows around a board that `MatchView` itself cannot render — that component is
+ * built around a player's cursor, selection and promotion prompt, none of which
+ * a watcher has.
+ */
+export function ClockLine({ row }: { row: ClockRow }) {
   const theme = useUITheme();
 
   const low = row.ticking && row.ms < LOW_TIME_MS;

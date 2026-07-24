@@ -40,11 +40,21 @@ export function useBoardCursor({
 
   const toggleFlipped = useCallback(() => setFlipped((value) => !value), []);
 
+  /** Jump the cursor somewhere specific — where a hint points, for instance. */
+  const placeCursor = useCallback((square: number) => setCursor(square), []);
+
   /** Back to the opening square, for a fresh game on the same screen. */
   const resetCursor = useCallback(
     () => setCursor(initialSquare),
     [initialSquare],
   );
 
-  return { cursor, flipped, moveCursor, toggleFlipped, resetCursor };
+  return {
+    cursor,
+    flipped,
+    moveCursor,
+    placeCursor,
+    toggleFlipped,
+    resetCursor,
+  };
 }

@@ -38,6 +38,10 @@ model User {
   gamesAsWhite Game[]            @relation("WhitePlayer")
   gamesAsBlack Game[]            @relation("BlackPlayer")
 
+  puzzleAttempts      PuzzleAttempt[]
+  challengesSent      Challenge[]     @relation("Challenger")
+  challengesReceived  Challenge[]     @relation("Challenged")
+
   @@index([level(sort: Desc), experience(sort: Desc)])
 }
 
@@ -69,10 +73,22 @@ model UserStats {
 
   rating Int @default(1200)
 
+  // The puzzle ladder, kept apart from `rating` on purpose: solving tactics and
+  // winning games are different skills, and one number for both would let a
+  // player farm either side of it into a rank they cannot hold.
+  puzzleRating Int @default(1000)
+
+  puzzlesSolved   Int @default(0)
+  puzzlesAttempted Int @default(0)
+
+  currentPuzzleStreak Int @default(0)
+  topPuzzleStreak     Int @default(0)
+
   updatedAt DateTime @updatedAt
 
   @@index([rating(sort: Desc)])
   @@index([wins(sort: Desc)])
+  @@index([puzzleRating(sort: Desc)])
 }
 
 enum GameMode {
@@ -144,8 +160,15 @@ model Game {
 
   transactions CoinTransaction[]
 
+  // The challenge this game was created from, when it was not created by the
+  // matchmaking queue. One game per challenge; see `Challenge.gameId`.
+  challenge Challenge?
+
   @@index([whitePlayerId, endedAt(sort: Desc)])
   @@index([blackPlayerId, endedAt(sort: Desc)])
+  // The spectator list: live PvP games, newest first. Partial on `mode` is not
+  // expressible here, so the index carries it as a leading column instead.
+  @@index([mode, endedAt, startedAt(sort: Desc)])
 }
 
 model Achievement {
@@ -234,6 +257,7 @@ enum CoinReason {
   PURCHASE
   ADMIN_GRANT
   DAILY_STREAK
+  PUZZLE
 }
 
 model CoinTransaction {
@@ -252,6 +276,146 @@ model CoinTransaction {
 
   // Postgres treats NULLs as distinct, so this only constrains rows that carry a
   // gameId: one GAME_REWARD per user per game, while purchases stay unbounded.
+  // Puzzle payouts carry no gameId and are guarded instead by the one-row-per
+  // -player-per-puzzle constraint on PuzzleAttempt, in the same transaction.
   @@unique([userId, gameId, reason])
   @@index([userId, createdAt(sort: Desc)])
+}
+
+/**
+ * A tactics puzzle: a position, and the line that refutes it.
+ *
+ * `moves` follows the Lichess convention the importer and @openchess/shared
+ * both speak — `fen` is the position *before* the mistake, `moves[0]` is the
+ * mistake, and the solver plays the odd indices from there. See
+ * `chess/puzzle.ts`.
+ */
+model Puzzle {
+  id String @id @default(cuid())
+
+  // The key in the corpus this row came from ("00sHx" for a Lichess puzzle), so
+  // a re-import rewrites a puzzle in place instead of duplicating it. Rows
+  // authored here carry their own stable key rather than a generated one.
+  externalId String @unique
+
+  fen   String
+  moves String[]
+
+  // On the same Elo scale players are rated on, which is what makes serving a
+  // puzzle "near your rating" mean anything.
+  rating Int
+
+  // Tactical motifs — "fork", "backRankMate", "mateIn2". Free-form, and only
+  // used for display and filtering.
+  themes String[]
+
+  /// Where the position came from, when the corpus records it.
+  sourceUrl String?
+
+  /// Counters for the catalog view. Neither is load-bearing.
+  plays  Int @default(0)
+  solves Int @default(0)
+
+  /// The UTC day this puzzle is the daily one for. At most one puzzle per day;
+  /// the unique index is what makes assigning it idempotent under a race.
+  dailyOn DateTime? @unique @db.Date
+
+  createdAt DateTime @default(now())
+
+  attempts PuzzleAttempt[]
+
+  // The serving query is "a puzzle near this rating I have not attempted".
+  @@index([rating])
+}
+
+model PuzzleAttempt {
+  id       String @id @default(cuid())
+  userId   String
+  puzzleId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  puzzle Puzzle @relation(fields: [puzzleId], references: [id], onDelete: Cascade)
+
+  solved   Boolean
+  hintUsed Boolean @default(false)
+
+  /// How long the solve took, when the client reports it.
+  msSpent Int?
+
+  ratingBefore Int
+  ratingAfter  Int
+
+  xpAwarded    Int @default(0)
+  coinsAwarded Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  // One scored attempt per player per puzzle. This is the idempotency key for
+  // the payout — a retried submission collides here rather than paying twice —
+  // and it is also what stops the same puzzle being farmed for coins. Replaying
+  // a puzzle you have already attempted is allowed; it just pays nothing.
+  @@unique([userId, puzzleId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+enum ChallengeStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum ChallengeColor {
+  WHITE
+  BLACK
+  RANDOM
+}
+
+/// The clock a challenge is played on, naming a preset in @openchess/shared.
+enum ClockPreset {
+  BULLET
+  BLITZ
+  RAPID
+}
+
+/**
+ * A direct invitation to play, as opposed to the anonymous pairing the
+ * matchmaking queue does. Either addressed to a named player, or open — anyone
+ * holding the `code` can accept it.
+ */
+model Challenge {
+  id String @id @default(cuid())
+
+  /// Short, human-typeable, unique: what one player reads out to another.
+  code String @unique
+
+  challengerId String
+  challenger   User   @relation("Challenger", fields: [challengerId], references: [id], onDelete: Cascade)
+
+  /// Null on an open challenge, which the code alone admits you to.
+  challengedId String?
+  challenged   User?   @relation("Challenged", fields: [challengedId], references: [id], onDelete: Cascade)
+
+  /// The side the challenger asked for. RANDOM is drawn when the game is made.
+  color ChallengeColor @default(RANDOM)
+
+  /// Null for an untimed game.
+  clock ClockPreset?
+
+  status ChallengeStatus @default(PENDING)
+
+  /// The game this became, once accepted. Unique: one challenge, one game.
+  gameId String? @unique
+  game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  /// After this the challenge is dead whatever its status says; the accept path
+  /// checks the clock rather than relying on a sweeper having run.
+  expiresAt   DateTime
+  respondedAt DateTime?
+
+  // The two list queries: what is waiting for me, and what am I waiting on.
+  @@index([challengedId, status, createdAt(sort: Desc)])
+  @@index([challengerId, status, createdAt(sort: Desc)])
 }

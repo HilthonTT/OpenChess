@@ -13,7 +13,8 @@ import type {
   TimeControlKey,
 } from "@openchess/shared";
 import { useKeyboard } from "@opentui/react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
+import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { MatchView, orientClocks } from "../components/match-view";
 import { describeStatus } from "../components/game-panels";
@@ -29,6 +30,7 @@ import {
   sendMove,
   type ServerGame,
 } from "../lib/games";
+import { offerRematch } from "../lib/challenges";
 import { subscribeToGame } from "../lib/game-events";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
@@ -91,11 +93,48 @@ function describeOnlineStatus(
 export function OnlineGame() {
   const auth = useAuth();
   const theme = useUITheme();
+  const location = useLocation();
   const [match, setMatch] = useState<ServerGame | null>(null);
   // `undefined` until the player picks a clock; `null` is an untimed queue.
   const [timeControl, setTimeControl] = useState<
     TimeControlKey | null | undefined
   >(undefined);
+
+  // A game handed to us by name rather than by the queue — an accepted
+  // challenge, or a rematch. The board opens straight on it, skipping both the
+  // clock picker and the search.
+  const openGameId =
+    (location.state as { gameId?: string } | null)?.gameId ?? null;
+  const [opening, setOpening] = useState(openGameId !== null);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (openGameId === null) {
+      return;
+    }
+
+    let cancelled = false;
+    setOpening(true);
+    setOpenError(null);
+
+    void fetchGame(openGameId)
+      .then((game) => {
+        if (!cancelled) {
+          setMatch(game);
+          setOpening(false);
+        }
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setOpenError(errorMessage(cause));
+          setOpening(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openGameId]);
 
   const onMatched = useCallback((game: ServerGame) => setMatch(game), []);
   // A rematch drops back into the same queue, keeping the chosen clock.
@@ -124,6 +163,22 @@ export function OnlineGame() {
 
   if (match) {
     return <OnlineMatch key={match.id} initial={match} onRequeue={onRequeue} />;
+  }
+
+  if (openError) {
+    return (
+      <GameScreen title={TITLE} subtitle={SUBTITLE}>
+        <ErrorNotice title="Couldn't open that game" message={openError} />
+      </GameScreen>
+    );
+  }
+
+  if (opening) {
+    return (
+      <GameScreen title={TITLE} subtitle={SUBTITLE}>
+        <text fg={theme.dim}>Opening the board…</text>
+      </GameScreen>
+    );
   }
 
   if (timeControl === undefined) {
@@ -504,6 +559,25 @@ function OnlineMatch({
     }
   }, [apply, server.id, server.ply, setMessage]);
 
+  /**
+   * Offer this opponent another game. It becomes an ordinary challenge in
+   * their list — there is nothing to wait on here, so the screen says it was
+   * sent and the game, if they take it, arrives from the challenge list.
+   */
+  const rematch = useCallback(async () => {
+    setPending(true);
+    setMessage(null);
+
+    try {
+      await offerRematch(server.id);
+      setMessage(`Rematch offered to ${opponentName} — check Challenges`);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setPending(false);
+    }
+  }, [opponentName, server.id, setMessage]);
+
   /** Take the win from an opponent who walked away. The server is the judge. */
   const claim = useCallback(async () => {
     setPending(true);
@@ -584,6 +658,13 @@ function OnlineMatch({
             void navigate("/analysis", { state: { gameId: server.id } });
           }
           break;
+        case "p":
+          // `r` already means "back to the queue"; a rematch is the other
+          // thing you might want from a finished game, so it gets its own key.
+          if (over && !pending && server.result !== "ABORTED") {
+            void rematch();
+          }
+          break;
       }
     },
   });
@@ -657,10 +738,16 @@ function OnlineMatch({
             <>
               <span fg={theme.cream}>a</span>
               <span fg={theme.faint}> analyze </span>
+              {server.result === "ABORTED" ? null : (
+                <>
+                  <span fg={theme.cream}>p</span>
+                  <span fg={theme.faint}> rematch </span>
+                </>
+              )}
             </>
           ) : null}
           <span fg={theme.cream}>r</span>
-          <span fg={theme.faint}> rematch </span>
+          <span fg={theme.faint}> new game </span>
           <span fg={theme.cream}>f</span>
           <span fg={theme.faint}> flip </span>
         </>

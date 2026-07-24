@@ -36,6 +36,33 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
   {
+    id: "puzzles",
+    title: "Puzzles",
+    icon: "◈",
+    description: "Train tactics, one position at a time",
+    action(ctx) {
+      ctx.navigate("/puzzles");
+    },
+  },
+  {
+    id: "challenges",
+    title: "Challenges",
+    icon: "⚔",
+    description: "Challenge a friend, or take one on",
+    action(ctx) {
+      ctx.navigate("/challenges");
+    },
+  },
+  {
+    id: "watch",
+    title: "Watch",
+    icon: "◉",
+    description: "Look in on a game in progress",
+    action(ctx) {
+      ctx.navigate("/watch");
+    },
+  },
+  {
     id: "leaderboard",
     title: "Leaderboard",
     icon: "♔",

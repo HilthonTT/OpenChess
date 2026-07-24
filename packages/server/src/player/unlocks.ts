@@ -23,6 +23,7 @@ const TITLE_BY_ACHIEVEMENT: Record<string, string> = {
   HUNDRED_WINS: "CENTURION",
   IRON_WALL: "THE_WALL",
   DAILY_STREAK_30: "THE_REGULAR",
+  PUZZLE_HUNDRED: "PUZZLE_MASTER",
 };
 
 /** A newly unlocked achievement, as the client is told about it. */

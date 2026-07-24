@@ -1,6 +1,7 @@
 import { clearAuth, getAuth } from "./auth";
 import { refreshAccessToken } from "./oauth";
 import type { ServerGame } from "./games";
+import type { SpectatorGame } from "./spectate";
 
 /**
  * The live feed for an online game, over Server-Sent Events.
@@ -26,9 +27,17 @@ const API_URL = process.env.API_URL ?? "http://localhost:3000/api";
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 10_000;
 
-export type GameStreamHandlers = {
+export type GameStreamHandlers<T = ServerGame> = {
   /** The authoritative game state, sent on connect and on every change. */
-  onState: (game: ServerGame) => void;
+  onState: (game: T) => void;
+};
+
+/** The two feeds a game publishes, and what each one is entitled to see. */
+type StreamKind = "player" | "spectator";
+
+const STREAM_PATH: Record<StreamKind, (gameId: string) => string> = {
+  player: (gameId) => `${API_URL}/games/${gameId}/events`,
+  spectator: (gameId) => `${API_URL}/games/${gameId}/watch/events`,
 };
 
 type ParsedEvent = { event: string; data: string };
@@ -102,7 +111,11 @@ async function consume(
   }
 }
 
-function open(gameId: string, signal: AbortSignal): Promise<Response> {
+function open(
+  kind: StreamKind,
+  gameId: string,
+  signal: AbortSignal,
+): Promise<Response> {
   const auth = getAuth();
 
   const headers: Record<string, string> = { Accept: "text/event-stream" };
@@ -110,7 +123,7 @@ function open(gameId: string, signal: AbortSignal): Promise<Response> {
     headers.Authorization = `Bearer ${auth.token}`;
   }
 
-  return fetch(`${API_URL}/games/${gameId}/events`, { headers, signal });
+  return fetch(STREAM_PATH[kind](gameId), { headers, signal });
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -136,9 +149,10 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
  * carries the result — so the loop stops on its own rather than reconnecting to
  * a game with nothing left to say.
  */
-export function subscribeToGame(
+function subscribe<T extends { result: string | null }>(
+  kind: StreamKind,
   gameId: string,
-  handlers: GameStreamHandlers,
+  handlers: GameStreamHandlers<T>,
 ): () => void {
   const controller = new AbortController();
   const { signal } = controller;
@@ -149,7 +163,7 @@ export function subscribeToGame(
 
     while (!signal.aborted && !finished) {
       try {
-        let response = await open(gameId, signal);
+        let response = await open(kind, gameId, signal);
 
         // The access token expired mid-game — an hour of play is entirely
         // normal. One refresh and one retry, matching the api-client's policy.
@@ -166,7 +180,7 @@ export function subscribeToGame(
             // Clerk unreachable; the token may still be good. Retry later.
             throw new Error("Not authorized to watch this game");
           }
-          response = await open(gameId, signal);
+          response = await open(kind, gameId, signal);
         }
 
         if (!response.ok || !response.body) {
@@ -183,7 +197,7 @@ export function subscribeToGame(
             return;
           }
 
-          const state = JSON.parse(frame.data) as ServerGame;
+          const state = JSON.parse(frame.data) as T;
           handlers.onState(state);
 
           // The server hangs up after this one. Recording it here means the
@@ -213,4 +227,24 @@ export function subscribeToGame(
   void run();
 
   return () => controller.abort();
+}
+
+/** The players' feed for a game you are in. */
+export function subscribeToGame(
+  gameId: string,
+  handlers: GameStreamHandlers<ServerGame>,
+): () => void {
+  return subscribe("player", gameId, handlers);
+}
+
+/**
+ * The spectators' feed. Same connection machinery, different endpoint and a
+ * narrower payload — a watcher gets the board and the clocks, and no legal
+ * moves to be tempted into offering.
+ */
+export function subscribeToSpectatorGame(
+  gameId: string,
+  handlers: GameStreamHandlers<SpectatorGame>,
+): () => void {
+  return subscribe("spectator", gameId, handlers);
 }

@@ -77,3 +77,45 @@ export function satisfiedStreakCodes(day: number): string[] {
     .filter(([, rule]) => rule(day))
     .map(([code]) => code);
 }
+
+export type PuzzleUnlockContext = {
+  solved: boolean;
+  /** The player's solve count *after* this attempt. */
+  puzzlesSolved: number;
+  /** The solve streak after this attempt. Zero on a failure. */
+  streak: number;
+  /** The puzzle's own rating. */
+  puzzleRating: number;
+  /** Whether this was the puzzle of the day. */
+  daily: boolean;
+};
+
+/**
+ * Puzzle unlock rules, here for the same reason the streak rules are: one file
+ * where every unlock condition in the product can be read, and one place to
+ * check the seed's invariant that every code has a catalog row.
+ *
+ * Every rule is gated on a solve. A failed attempt is still an attempt, and
+ * counting one toward a trophy would make the cheapest trophy a keystroke.
+ */
+const PUZZLE_RULES: Record<string, (context: PuzzleUnlockContext) => boolean> =
+  {
+    PUZZLE_FIRST: (c) => c.solved && c.puzzlesSolved === 1,
+    PUZZLE_TEN: (c) => c.solved && c.puzzlesSolved >= 10,
+    PUZZLE_HUNDRED: (c) => c.solved && c.puzzlesSolved >= 100,
+
+    PUZZLE_STREAK_5: (c) => c.solved && c.streak >= 5,
+    PUZZLE_STREAK_20: (c) => c.solved && c.streak >= 20,
+
+    // Solving well above the ladder's midpoint is worth marking on its own.
+    PUZZLE_HARD: (c) => c.solved && c.puzzleRating >= 1800,
+
+    DAILY_PUZZLE: (c) => c.solved && c.daily,
+  };
+
+/** The codes a settled puzzle attempt satisfies. */
+export function satisfiedPuzzleCodes(context: PuzzleUnlockContext): string[] {
+  return Object.entries(PUZZLE_RULES)
+    .filter(([, rule]) => rule(context))
+    .map(([code]) => code);
+}

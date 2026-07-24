@@ -150,6 +150,7 @@ const transactions = createRoute({
           "ACHIEVEMENT",
           "PURCHASE",
           "ADMIN_GRANT",
+          "PUZZLE",
           "DAILY_STREAK",
         ])
         .optional(),

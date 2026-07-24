@@ -32,6 +32,8 @@ export type Link = z.infer<typeof linkSchema>;
 export const API_PATHS = {
   root: "/api",
   games: "/api/games",
+  puzzles: "/api/puzzles",
+  challenges: "/api/challenges",
   me: "/api/me",
   titles: "/api/titles",
   achievements: "/api/achievements",
@@ -114,6 +116,103 @@ export function withGameSummaryLinks<T extends { id: string }>(
   summary: T,
 ): T & { _links: { self: Link } } {
   return { ...summary, _links: { self: get(`${API_PATHS.games}/${summary.id}`) } };
+}
+
+/**
+ * A row in the watch list points at the spectator view, not at `/games/{id}` —
+ * a watcher is not a player in it, and following the player link would earn
+ * them the 403 the game service is right to give.
+ */
+export function withLiveGameLinks<T extends { id: string }>(
+  summary: T,
+): T & { _links: { self: Link } } {
+  return {
+    ...summary,
+    _links: { self: get(`${API_PATHS.games}/${summary.id}/watch`) },
+  };
+}
+
+export const puzzleLinksSchema = z
+  .object({
+    self: linkSchema,
+    /** Where a solver's moves go. Absent once the puzzle has been attempted. */
+    moves: linkSchema.optional(),
+    hint: linkSchema.optional(),
+    reveal: linkSchema.optional(),
+  })
+  .openapi("PuzzleLinks");
+
+export type PuzzleLinks = z.infer<typeof puzzleLinksSchema>;
+
+/**
+ * A puzzle already attempted for credit can still be replayed for practice —
+ * the service allows it — but the actions that would settle it are dropped from
+ * the links, because there is nothing left for them to settle.
+ */
+export function withPuzzleLinks<T extends { id: string; attempted: boolean }>(
+  puzzle: T,
+): T & { _links: PuzzleLinks } {
+  const base = `${API_PATHS.puzzles}/${puzzle.id}`;
+
+  return {
+    ...puzzle,
+    _links: {
+      self: get(base),
+      ...(puzzle.attempted
+        ? {}
+        : {
+            moves: post(`${base}/moves`),
+            hint: post(`${base}/hint`),
+            reveal: post(`${base}/reveal`),
+          }),
+    },
+  };
+}
+
+export const challengeLinksSchema = z
+  .object({
+    self: linkSchema,
+    /** Present on a pending challenge addressed to you, or an open one. */
+    accept: linkSchema.optional(),
+    /** Present on a pending challenge addressed to you. */
+    decline: linkSchema.optional(),
+    /** Present on a pending challenge you sent. */
+    cancel: linkSchema.optional(),
+    /** The game it became, once accepted. */
+    game: linkSchema.optional(),
+  })
+  .openapi("ChallengeLinks");
+
+export type ChallengeLinks = z.infer<typeof challengeLinksSchema>;
+
+/** The slice of a challenge view the links are decided from. */
+type ChallengeState = {
+  id: string;
+  status: string;
+  /** Whether the caller is the one who sent it. */
+  outgoing: boolean;
+  gameId: string | null;
+};
+
+export function withChallengeLinks<T extends ChallengeState>(
+  challenge: T,
+): T & { _links: ChallengeLinks } {
+  const base = `${API_PATHS.challenges}/${challenge.id}`;
+  const pending = challenge.status === "PENDING";
+
+  return {
+    ...challenge,
+    _links: {
+      self: get(base),
+      ...(pending && !challenge.outgoing
+        ? { accept: post(`${base}/accept`), decline: post(`${base}/decline`) }
+        : {}),
+      ...(pending && challenge.outgoing ? { cancel: del(base) } : {}),
+      ...(challenge.gameId
+        ? { game: get(`${API_PATHS.games}/${challenge.gameId}`) }
+        : {}),
+    },
+  };
 }
 
 export const titleLinksSchema = z
@@ -281,9 +380,14 @@ export const rootLinksSchema = z
     docs: linkSchema,
     games: linkSchema,
     activeGames: linkSchema,
+    liveGames: linkSchema,
     createGame: linkSchema,
     joinQueue: linkSchema,
     leaveQueue: linkSchema,
+    challenges: linkSchema,
+    createChallenge: linkSchema,
+    nextPuzzle: linkSchema,
+    dailyPuzzle: linkSchema,
     profile: linkSchema,
     achievements: linkSchema,
     store: linkSchema,
@@ -301,9 +405,14 @@ export function rootLinks(): RootLinks {
     docs: get("/reference"),
     games: get(API_PATHS.games),
     activeGames: get(`${API_PATHS.games}/active`),
+    liveGames: get(`${API_PATHS.games}/live`),
     createGame: post(API_PATHS.games),
     joinQueue: post(`${API_PATHS.games}/pvp/queue`),
     leaveQueue: del(`${API_PATHS.games}/pvp/queue`),
+    challenges: get(API_PATHS.challenges),
+    createChallenge: post(API_PATHS.challenges),
+    nextPuzzle: get(`${API_PATHS.puzzles}/next`),
+    dailyPuzzle: get(`${API_PATHS.puzzles}/daily`),
     profile: get(API_PATHS.me),
     achievements: get(API_PATHS.achievements),
     store: get(API_PATHS.titles),

@@ -26,10 +26,19 @@ terminal.
 - **Online 1v1** — matched against the next player in the queue, with the
   opponent's moves pushed over a live stream; the only games that move your Elo
   rating, and they pay the biggest rewards
+- **Challenges** — play someone you picked instead of whoever is next: by name,
+  or by a short code anyone can take. A finished game offers a rematch, same
+  clock and colours swapped
+- **Puzzles** — a tactics trainer on its own Elo ladder, with a daily puzzle
+  everyone gets, a solve streak, and hints that cost you half the payout
+- **Watch** — look in on any game being played right now, fed by the same live
+  stream the players are on
 - **Time controls** — bullet, blitz and rapid clocks on server AI and online
   games; run out and you lose on time (the bot itself is never clocked)
 - **Analysis** — step through any finished game with the engine: an eval bar,
-  a move-quality verdict per ply, and the move it would have played
+  an accuracy score per side, a move-quality verdict per ply, and the move it
+  would have played. Jump between the mistakes, export the game as PGN, or
+  import someone else's
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
 - **Daily streaks** — check in each day for a growing XP and coin payout
@@ -101,11 +110,30 @@ cd packages/database
 bun run db:generate            # generate the Prisma client
 bunx prisma migrate dev        # apply migrations
 cd ../..
-bun run db:seed                # seed the achievement and title catalogs
+bun run db:seed                # seed the achievement, title and puzzle catalogs
 ```
 
-The seed is idempotent — it upserts by `code`, so rerunning it updates copy,
-rewards and prices in place without touching anything players have earned.
+The seed is idempotent — it upserts by `code` (and by `externalId` for puzzles),
+so rerunning it updates copy, rewards and prices in place without touching
+anything players have earned.
+
+The built-in puzzle catalog is a starter set of a dozen hand-authored positions,
+each one checked against the engine by `puzzle-catalog.test.ts` — an authoring
+slip would otherwise reach players as a puzzle they cannot solve. For a real
+corpus, import the [Lichess puzzle database](https://database.lichess.org/#puzzles),
+which is CC0 and already in the format this speaks:
+
+```sh
+curl -O https://database.lichess.org/lichess_db_puzzle.csv.zst
+zstd -d lichess_db_puzzle.csv.zst
+bun run db:import-puzzles lichess_db_puzzle.csv --limit 20000
+```
+
+Every row is replayed through the engine before it is written, and one that will
+not replay is counted and skipped rather than failing the import. Rows are
+upserted by `externalId`, so a rerun against a newer dump refreshes ratings in
+place and leaves players' attempts attached. `--min-rating` and `--max-rating`
+narrow the band; the default is 400–2400.
 
 ## Running
 
@@ -127,6 +155,12 @@ the JSON body of `GET /api/games/{id}`: one immediately on connect, one on every
 change, and then the server hangs up once the game is settled. It sits behind the
 same auth as every other game route and refuses a game you are not playing in.
 
+`GET /api/games/{id}/watch/events` is the spectators' feed, on the same loop and
+the same notifications, so a watcher is never a tick behind the players. Its
+payload is the narrower `GET /api/games/{id}/watch` body: both players, the
+position, the clocks and the move list, and no legal moves at all — there is
+nothing in it a watcher could act on.
+
 That is how the opponent's moves reach the CLI. They used to arrive by polling
 every two seconds, each poll paying for a token verification and a full game
 load; now a move made on the same instance is pushed the moment it commits. A
@@ -141,10 +175,12 @@ would not already ask for.
 
 ## Playing
 
-Pick a screen from the menu with `↑↓` and `enter`, or press `1`–`8`. `ctrl + .`
-opens the theme picker, `ctrl + l` signs you in or out, and `q` quits. Online
-features (leaderboard, achievements, stats, store) need an account; sign-in
-opens your browser and hands the token back to the CLI.
+Pick a screen from the menu with `↑↓` and `enter`, or press the number beside
+it. `ctrl + .` opens the theme picker, `ctrl + l` signs you in or out, and `q`
+quits. Online features (puzzles, challenges, watching, leaderboard,
+achievements, stats, store) need an account; sign-in opens your browser and
+hands the token back to the CLI. Reviewing a PGN file is the one exception — the
+file is the whole game and the engine runs locally, so it works signed out.
 
 At the board:
 
@@ -166,8 +202,22 @@ counting down for whoever is to move; a fallen flag ends the game on time.
 
 In the **Analysis** screen — reached from the menu or with `a` from a finished
 game — `←→` step through the moves, `home`/`end` jump to either end, and `f`
-flips the board. The eval bar and the move-quality verdict fill in as the engine
-works back through the game.
+flips the board. `n` and `p` jump to the next and previous mistake, which is the
+fast way through a long game. The eval bar, the accuracy line and the per-move
+verdict fill in as the engine works back through the game. `e` writes the game
+out as PGN (to `~/openchess`), and `i` from the game list reads one back in —
+including a game played somewhere else entirely.
+
+In **Puzzles**, play the move you think the position wants: `enter` picks a
+piece up and plays it, `t` asks for a hint (which names the square the piece
+stands on, and halves what the solve is worth), `s` gives up and plays the
+answer out, `n` fetches the next puzzle, and `d` switches between the rated
+queue and the daily puzzle.
+
+In **Challenges**, `←→` switch between what is waiting for you and what you
+sent, `enter` accepts, `d` declines, `x` withdraws one of yours, `n` writes a
+new one, and `c` joins by code. In **Watch**, `enter` opens the highlighted
+game and `f` flips the board.
 
 On the other screens: `↑↓` browse, `←→` page the leaderboard, `s` cycles its
 sort, and `r` refreshes. In the store, `enter` buys the highlighted title
@@ -181,6 +231,17 @@ draws some, and losses a consolation of XP only. Games shorter than ten plies
 pay nothing, so resign-farming is worthless. Payouts can unlock achievements,
 which grant one-time XP and coin bonuses on top; coins buy titles in the store,
 and the title you equip is shown next to your name on the leaderboard.
+
+**Puzzles** run on their own Elo ladder, kept apart from the game rating on
+purpose: solving tactics and winning games are different skills, and one number
+for both would let a player farm either side of it into a rank they cannot hold.
+A solve pays XP and coins scaled by how far above your own rating the puzzle sat
+— capped at both ends — and a failure pays nothing at all, because a puzzle can
+be failed deliberately in one keystroke. Each puzzle is scored once per player:
+the attempt row is the idempotency key, so a retried submission cannot pay
+twice and a solved puzzle can be replayed for practice without moving anything.
+Taking the hint halves both the payout and the rating swing, and the server
+records that you took it rather than asking the client to own up.
 
 Signing in also claims that day's **streak**. Consecutive days pay more, up to a
 cap on the seventh — worth about half a won online game, so showing up is a

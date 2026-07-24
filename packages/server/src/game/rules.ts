@@ -1,10 +1,11 @@
-import type { Difficulty, GameResult } from "@openchess/database";
+import type { ClockPreset, Difficulty, GameResult } from "@openchess/database";
 import {
   isDraw,
   levelFor,
   type Color,
   type Difficulty as EngineDifficulty,
   type GameStatus,
+  type TimeControlKey,
 } from "@openchess/shared";
 
 /**
@@ -24,6 +25,33 @@ const ENGINE_DIFFICULTY: Record<Difficulty, EngineDifficulty> = {
 
 export function toEngineDifficulty(difficulty: Difficulty): EngineDifficulty {
   return ENGINE_DIFFICULTY[difficulty];
+}
+
+/** The same bridge for clocks: the DB enum names @openchess/shared's presets. */
+const CLOCK_PRESET: Record<ClockPreset, TimeControlKey> = {
+  BULLET: "bullet",
+  BLITZ: "blitz",
+  RAPID: "rapid",
+};
+
+const STORED_CLOCK: Record<TimeControlKey, ClockPreset> = {
+  bullet: "BULLET",
+  blitz: "BLITZ",
+  rapid: "RAPID",
+};
+
+/** The preset a stored challenge names, or null for an untimed one. */
+export function toTimeControlKey(
+  clock: ClockPreset | null,
+): TimeControlKey | null {
+  return clock === null ? null : CLOCK_PRESET[clock];
+}
+
+/** The column value for a preset, or null for an untimed challenge. */
+export function toClockPreset(
+  timeControl: TimeControlKey | null | undefined,
+): ClockPreset | null {
+  return timeControl ? STORED_CLOCK[timeControl] : null;
 }
 
 export type Outcome = "win" | "loss" | "draw";

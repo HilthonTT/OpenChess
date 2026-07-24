@@ -1,8 +1,10 @@
 import { z } from "@hono/zod-openapi";
 
 import {
+  challengeLinksSchema,
   gameLinksSchema,
   profileLinksSchema,
+  puzzleLinksSchema,
   selfLinksSchema,
   titleLinksSchema,
   transactionLinksSchema,
@@ -151,6 +153,113 @@ export const gameSummarySchema = z
   })
   .openapi("GameSummary");
 
+const playerFaceSchema = z
+  .object({
+    username: z.string(),
+    /** The label of their equipped title, if any. */
+    title: z.string().nullable(),
+  })
+  .openapi("PlayerFace");
+
+/**
+ * A game as a watcher sees it. No `yourColor`, no `legalMoves` and no rewards:
+ * a spectator has none of those, and a shape that pretended otherwise would
+ * invite a client to offer actions the server refuses.
+ */
+export const spectatorGameSchema = z
+  .object({
+    id: z.string(),
+    white: playerFaceSchema.nullable(),
+    black: playerFaceSchema.nullable(),
+    fen: z.string(),
+    turn: colorSchema,
+    status: gameStatusSchema,
+    ply: z.number().int(),
+    history: z.array(z.string()).openapi({ example: ["e4", "e5"] }),
+    captured: z.object({
+      byWhite: z.array(z.string()),
+      byBlack: z.array(z.string()),
+    }),
+    materialBalance: z.number().int(),
+    result: gameResultSchema.nullable(),
+    timeControl: timeControlSchema.nullable(),
+    clock: clockSchema.nullable(),
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+  })
+  .openapi("SpectatorGame");
+
+export const liveGameSchema = z
+  .object({
+    id: z.string(),
+    white: playerFaceSchema.nullable(),
+    black: playerFaceSchema.nullable(),
+    whiteRating: z.number().int().nullable(),
+    blackRating: z.number().int().nullable(),
+    ply: z.number().int(),
+    timeControl: timeControlSchema.nullable(),
+    startedAt: z.string(),
+    _links: selfLinksSchema,
+  })
+  .openapi("LiveGame");
+
+export const challengeColorSchema = z
+  .enum(["WHITE", "BLACK", "RANDOM"])
+  .openapi({ example: "RANDOM" });
+
+export const challengeSchema = z
+  .object({
+    id: z.string(),
+    /** The short code that admits anyone to an open challenge. */
+    code: z.string().openapi({ example: "K7M2QP" }),
+    /** True when you are the one who sent it. */
+    outgoing: z.boolean(),
+    challenger: z.object({
+      username: z.string(),
+      rating: z.number().int(),
+      title: z.string().nullable(),
+    }),
+    /** Null on an open challenge, until someone takes it. */
+    challenged: z.object({ username: z.string() }).nullable(),
+    /** The colour the challenger asked for. */
+    color: challengeColorSchema,
+    timeControl: timeControlKeySchema.nullable(),
+    status: z.enum([
+      "PENDING",
+      "ACCEPTED",
+      "DECLINED",
+      "CANCELLED",
+      "EXPIRED",
+    ]),
+    /** The game it became, once accepted. */
+    gameId: z.string().nullable(),
+    createdAt: z.string(),
+    expiresAt: z.string(),
+    _links: challengeLinksSchema,
+  })
+  .openapi("Challenge");
+
+export const createChallengeSchema = z
+  .object({
+    /**
+     * Who to challenge. Omit for an open challenge, which anyone holding its
+     * `code` can accept.
+     */
+    opponent: z.string().min(3).max(32).nullish(),
+    color: challengeColorSchema.default("RANDOM"),
+    /** Omit or pass null for an untimed game. */
+    timeControl: timeControlKeySchema.nullish(),
+  })
+  .openapi("CreateChallenge");
+
+export const challengeCodeParamsSchema = z.object({
+  code: z
+    .string()
+    .min(4)
+    .max(12)
+    .openapi({ param: { name: "code", in: "path" }, example: "K7M2QP" }),
+});
+
 export const createGameSchema = z
   .object({
     difficulty: difficultySchema,
@@ -201,6 +310,107 @@ export const queueResultSchema = z
     game: gameSchema.nullable(),
   })
   .openapi("QueueResult");
+
+/**
+ * A puzzle as a solver may see it: the position, and the move that created the
+ * tactic. The rest of the line is the answer and never leaves the server until
+ * the puzzle is over.
+ */
+export const puzzleSchema = z
+  .object({
+    id: z.string(),
+    fen: z.string(),
+    /** The move that set the tactic up, already played on `fen`. UCI. */
+    openingMove: z.string().openapi({ example: "g2g4" }),
+    rating: z.number().int().openapi({ example: 1100 }),
+    themes: z.array(z.string()).openapi({ example: ["fork", "mateIn2"] }),
+    sourceUrl: z.string().nullable(),
+    /** How many moves the solver has to find. */
+    solverMoves: z.number().int().openapi({ example: 2 }),
+    /** True when you have already been scored on this puzzle. */
+    attempted: z.boolean(),
+    daily: z.boolean(),
+    _links: puzzleLinksSchema,
+  })
+  .openapi("Puzzle");
+
+export const nextPuzzleSchema = z
+  .object({
+    /** Null when the catalog has nothing left to serve you. */
+    puzzle: puzzleSchema.nullable(),
+    rating: z.number().int().openapi({ example: 1000 }),
+    streak: z.number().int().openapi({ example: 3 }),
+  })
+  .openapi("NextPuzzle");
+
+export const puzzleRewardSchema = z
+  .object({
+    xp: z.number().int(),
+    coins: z.number().int(),
+    levelBefore: z.number().int(),
+    levelAfter: z.number().int(),
+    ratingBefore: z.number().int(),
+    ratingAfter: z.number().int(),
+    streak: z.number().int(),
+    unlocked: z.array(unlockSchema),
+  })
+  .openapi("PuzzleReward");
+
+/** Every solver move played on this puzzle so far, in order, newest last. */
+const solverMovesSchema = z
+  .array(z.string().min(4).max(5))
+  .max(64)
+  .openapi({ example: ["d8h4"] });
+
+export const puzzleSubmitSchema = z
+  .object({
+    moves: solverMovesSchema.min(1),
+    /** Whether you took a hint. The server's own record is honoured too. */
+    hintUsed: z.boolean().optional(),
+    /** How long the solve took, for the record. */
+    msSpent: z.number().int().min(0).optional(),
+  })
+  .openapi("PuzzleSubmit");
+
+export const puzzleRevealSchema = z
+  .object({ moves: solverMovesSchema })
+  .openapi("PuzzleReveal");
+
+export const puzzleHintSchema = z
+  .object({
+    /** The square the piece to move stands on. */
+    square: z.string().regex(SQUARE).openapi({ example: "d8" }),
+  })
+  .openapi("PuzzleHint");
+
+export const puzzleMoveResultSchema = z
+  .object({
+    outcome: z.enum(["continue", "solved", "wrong"]),
+    /** The opponent's forced reply, when the line continues. UCI. */
+    reply: z.string().nullable(),
+    /** The move that was wanted. Only ever sent once the puzzle is lost. */
+    expected: z.string().nullable(),
+    /** The solver's moves in SAN. Only sent once the puzzle is over. */
+    solution: z.array(z.string()).nullable(),
+    /** Null unless this request settled a puzzle that had not been attempted. */
+    rewards: puzzleRewardSchema.nullable(),
+  })
+  .openapi("PuzzleMoveResult");
+
+export const puzzleAttemptSchema = z
+  .object({
+    puzzleId: z.string(),
+    rating: z.number().int(),
+    themes: z.array(z.string()),
+    solved: z.boolean(),
+    hintUsed: z.boolean(),
+    ratingBefore: z.number().int(),
+    ratingAfter: z.number().int(),
+    xpAwarded: z.number().int(),
+    coinsAwarded: z.number().int(),
+    createdAt: z.string(),
+  })
+  .openapi("PuzzleAttempt");
 
 /** A cuid in the `{id}` path segment. Shared by every by-id route. */
 export const idParamsSchema = z.object({
@@ -322,6 +532,7 @@ export const transactionSchema = z
       "ACHIEVEMENT",
       "PURCHASE",
       "ADMIN_GRANT",
+      "PUZZLE",
       "DAILY_STREAK",
     ]),
     gameId: z.string().nullable(),

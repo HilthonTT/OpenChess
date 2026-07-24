@@ -2,7 +2,9 @@ import createApp from "./lib/create-app";
 import configureOpenAPI from "./lib/configure-open-api";
 import achievements from "./routes/achievements";
 import auth from "./routes/auth";
+import challenges from "./routes/challenges";
 import game from "./routes/game";
+import puzzles from "./routes/puzzles";
 import leaderboard from "./routes/leaderboard";
 import me from "./routes/me";
 import store from "./routes/store";
@@ -21,6 +23,8 @@ const api = createRouter()
   .route("/", root)
   .route("/auth", auth)
   .route("/games", game)
+  .route("/puzzles", puzzles)
+  .route("/challenges", challenges)
   .route("/me", me)
   .route("/titles", store)
   .route("/achievements", achievements)
