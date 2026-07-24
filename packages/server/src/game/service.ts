@@ -1091,6 +1091,12 @@ export async function playMove(input: {
     }
   }
 
+  // The next turn starts when this request's last move was produced: at
+  // arrival for a PvP move, but only after the search when the bot replied —
+  // dating it from arrival would fold the bot's think time into the human's
+  // next turn, and on a hard difficulty that bleeds their clock dry.
+  const nextTurnStartedAt = aiMove !== null ? new Date() : new Date(now);
+
   const result = await serializable(async (tx) => {
     // The pre-transaction read is stale by definition. Re-run the
     // compare-and-set against the live row: a request that landed meanwhile
@@ -1177,7 +1183,7 @@ export async function playMove(input: {
       clockCommit = {
         whiteTimeMs: advanced.whiteTimeMs,
         blackTimeMs: advanced.blackTimeMs,
-        turnStartedAt: new Date(now),
+        turnStartedAt: nextTurnStartedAt,
       };
     }
 

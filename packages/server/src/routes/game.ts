@@ -345,6 +345,13 @@ base.get("/:id/events", (c) => {
     let knownVersion = await gameVersion(gameId);
     let quietSince = Date.now();
 
+    const keepaliveIfQuiet = async () => {
+      if (Date.now() - quietSince >= KEEPALIVE_MS) {
+        await stream.write(": keepalive\n\n");
+        quietSince = Date.now();
+      }
+    };
+
     while (!stream.aborted && !stream.closed) {
       const state = await getGame(gameId, user);
 
@@ -360,6 +367,10 @@ base.get("/:id/events", (c) => {
           event: "state",
           data: JSON.stringify(withGameLinks(state)),
         });
+      } else {
+        // Reached on every tick when Redis is absent (nothing to compare, so
+        // each one reloads), and idle proxies still need bytes to flow.
+        await keepaliveIfQuiet();
       }
 
       // A finished game has nothing left to say.
@@ -367,29 +378,29 @@ base.get("/:id/events", (c) => {
         break;
       }
 
-      const reason = await waitForChange(gameId, c.req.raw.signal);
+      // Sit out quiet ticks here, without touching the database: only a moved
+      // counter — or one we cannot read, where stale is the greater risk — is
+      // worth paying for a reload.
+      while (!stream.aborted && !stream.closed) {
+        const reason = await waitForChange(gameId, c.req.raw.signal);
 
-      if (stream.aborted || stream.closed) {
-        break;
-      }
-
-      if (reason === "tick") {
-        // Nothing local happened. Ask Redis whether another instance moved the
-        // game before paying for a database read; a null means we cannot tell,
-        // so reload rather than risk sitting on a stale board.
-        const version = await gameVersion(gameId);
-
-        if (version !== null && version === knownVersion) {
-          if (Date.now() - quietSince >= KEEPALIVE_MS) {
-            await stream.write(": keepalive\n\n");
-            quietSince = Date.now();
-          }
-          continue;
+        if (stream.aborted || stream.closed) {
+          break;
         }
 
-        knownVersion = version;
-      } else {
-        knownVersion = await gameVersion(gameId);
+        if (reason === "changed") {
+          knownVersion = await gameVersion(gameId);
+          break;
+        }
+
+        const version = await gameVersion(gameId);
+
+        if (version === null || version !== knownVersion) {
+          knownVersion = version;
+          break;
+        }
+
+        await keepaliveIfQuiet();
       }
     }
   });

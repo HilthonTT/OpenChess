@@ -131,13 +131,15 @@ function History({ onOpen }: { onOpen: (gameId: string) => void }) {
         setIndex((value) => Math.max(0, value - 1));
         break;
       case "down":
-      case "j":
-        setIndex((value) => Math.min(games.length - 1, value + 1));
+      case "j": {
+        const next = Math.min(games.length - 1, index + 1);
+        setIndex(next);
         // Fetch the next page as the selection nears the end of the list.
-        if (index >= games.length - 2) {
+        if (next >= games.length - 2) {
           loadMore();
         }
         break;
+      }
       case "return":
       case "space": {
         const game = games[index];
