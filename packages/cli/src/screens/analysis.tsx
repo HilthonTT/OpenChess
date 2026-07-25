@@ -476,7 +476,10 @@ function useGameAnalysis(frames: Game[]): {
 
     let cancelled = false;
     let next = 0;
-    const BATCH = 2;
+    // One position per tick. The search behind `analyzePosition` runs to a node
+    // budget rather than a fixed depth, and a whole budget is about as long as the
+    // terminal can be held for without the next keystroke feeling late.
+    const BATCH = 1;
 
     const step = () => {
       if (cancelled) {

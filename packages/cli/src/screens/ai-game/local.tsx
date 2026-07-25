@@ -77,7 +77,13 @@ function Match({
     }
 
     const timer = setTimeout(() => {
-      const move = findBestMove(game.position, difficulty);
+      // The positions already played, so the engine can tell a repetition from a
+      // fresh position rather than shuffling a won game into a draw.
+      const move = findBestMove(
+        game.position,
+        difficulty,
+        game.history.map((entry) => entry.before),
+      );
       if (move) {
         setGame((current) => (current === game ? play(game, move) : current));
         clearSelection();

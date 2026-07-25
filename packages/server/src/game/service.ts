@@ -1085,6 +1085,10 @@ export async function playMove(input: {
     const reply = findBestMove(
       game.position,
       toEngineDifficulty(row.difficulty ?? "MEDIUM"),
+      // The positions already played. Without them the bot cannot see a
+      // repetition, and will shuffle a won game into a draw believing it is
+      // still winning.
+      game.history.map((entry) => entry.before),
     );
 
     if (reply) {

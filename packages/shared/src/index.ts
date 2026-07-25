@@ -6,6 +6,7 @@ export * from "./chess/game";
 export * from "./chess/pgn";
 export * from "./chess/pgn-text";
 export * from "./chess/pgn-parse";
+export * from "./chess/search";
 export * from "./chess/ai";
 export * from "./chess/accuracy";
 export * from "./chess/puzzle";

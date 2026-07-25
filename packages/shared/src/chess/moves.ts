@@ -19,12 +19,19 @@ import type {
   Piece,
   Position,
   PromotionPiece,
+  SquareContent,
 } from "./types";
 import { EMPTY } from "./types";
 
-type Delta = readonly [number, number];
+/**
+ * A step across the board as `[files, ranks]`. Exported along with the delta
+ * sets below so the search can walk the same geometry — an engine that decides
+ * exchanges by its own copy of the knight's moves is one bad edit from
+ * disagreeing with the rules.
+ */
+export type Delta = readonly [number, number];
 
-const KNIGHT_DELTAS: readonly Delta[] = [
+export const KNIGHT_DELTAS: readonly Delta[] = [
   [1, 2],
   [2, 1],
   [2, -1],
@@ -35,7 +42,7 @@ const KNIGHT_DELTAS: readonly Delta[] = [
   [-1, 2],
 ];
 
-const KING_DELTAS: readonly Delta[] = [
+export const KING_DELTAS: readonly Delta[] = [
   [0, 1],
   [1, 1],
   [1, 0],
@@ -46,14 +53,14 @@ const KING_DELTAS: readonly Delta[] = [
   [-1, 1],
 ];
 
-const ROOK_DIRECTIONS: readonly Delta[] = [
+export const ROOK_DIRECTIONS: readonly Delta[] = [
   [0, 1],
   [1, 0],
   [0, -1],
   [-1, 0],
 ];
 
-const BISHOP_DIRECTIONS: readonly Delta[] = [
+export const BISHOP_DIRECTIONS: readonly Delta[] = [
   [1, 1],
   [1, -1],
   [-1, -1],
@@ -69,14 +76,23 @@ function pawnRanks(color: Color): { start: number; last: number; dir: number } {
     : { start: 6, last: 0, dir: -1 };
 }
 
+/**
+ * Every field written out in a fixed order rather than spread over defaults.
+ * Spreading a partial gives each call site's shape its own layout, and the search
+ * then reads `captured` and `promotion` off half a dozen different shapes a
+ * million times a move; naming the fields here means every `Move` in the program
+ * has one layout and those reads stay cheap.
+ */
 function move(partial: Partial<Move> & Pick<Move, "from" | "to" | "piece">): Move {
   return {
-    captured: null,
-    promotion: null,
-    isEnPassant: false,
-    isCastle: null,
-    isDoublePawnPush: false,
-    ...partial,
+    from: partial.from,
+    to: partial.to,
+    piece: partial.piece,
+    captured: partial.captured ?? null,
+    promotion: partial.promotion ?? null,
+    isEnPassant: partial.isEnPassant ?? false,
+    isCastle: partial.isCastle ?? null,
+    isDoublePawnPush: partial.isDoublePawnPush ?? false,
   };
 }
 
@@ -414,23 +430,109 @@ export function generatePseudoLegalMoves(position: Position): Move[] {
 /**
  * Whether `candidate` leaves the side that played it with a safe king — the one
  * condition that separates a pseudo-legal move from a legal one. It covers pins,
- * check evasions, and the rare en-passant discovered check for free, because
- * `applyMove` really does lift both pawns off the board.
+ * check evasions, and the rare en-passant discovered check for free, because the
+ * pawn taken en passant really is lifted off the board below.
  *
- * This is the expensive half of move generation: a board copy and a ray scan per
- * candidate. Everything below is arranged to run it on as few moves as possible.
+ * This is the expensive half of move generation, and it runs on every candidate:
+ * around thirty times per position, and the search asks for a position's moves
+ * hundreds of thousands of times a move. That is why it plays `candidate` onto
+ * the board in place and takes it back off again rather than building the
+ * position that follows — a `Position` is immutable everywhere else, and this is
+ * the one place that would rather have the array back than a copy of it.
+ *
+ * Nothing can observe the board mid-move: the mutation and its undo sit in one
+ * synchronous stretch with no allocation, no callback and no throw between them,
+ * and the two helpers in between only read.
  */
-function leavesKingSafe(position: Position, candidate: Move): boolean {
+function leavesKingSafe(
+  position: Position,
+  candidate: Move,
+  kingSquare: number,
+): boolean {
+  const board = position.board;
   const color = position.turn;
-  const next = applyMove(position, candidate);
-  return !isInCheck({ ...next, turn: color }, color);
+  const { from, to } = candidate;
+
+  const moved = board[from];
+  const replaced = board[to];
+
+  board[from] = EMPTY;
+  board[to] =
+    candidate.promotion !== null
+      ? toPiece(candidate.promotion, color)
+      : (moved as Piece);
+
+  // The pawn taken en passant stands beside the starting square, not on the
+  // target — which is exactly why a discovered check along that rank is a real
+  // possibility and has to be tested on a board with the pawn gone.
+  let enPassantSquare = -1;
+  let enPassantPawn: SquareContent = EMPTY;
+  if (candidate.isEnPassant) {
+    enPassantSquare = squareAt(fileOf(to), rankOf(from));
+    enPassantPawn = board[enPassantSquare] as SquareContent;
+    board[enPassantSquare] = EMPTY;
+  }
+
+  // Castling puts a rook down as well. It cannot legalise a move that would
+  // otherwise fail — the king's path is checked separately — but the rook can
+  // block a check on the back rank, so the board has to show it.
+  let rookFrom = -1;
+  let rookTo = -1;
+  if (candidate.isCastle !== null) {
+    const homeRank = color === "w" ? 0 : 7;
+    [rookFrom, rookTo] =
+      candidate.isCastle === "king"
+        ? [squareAt(7, homeRank), squareAt(5, homeRank)]
+        : [squareAt(0, homeRank), squareAt(3, homeRank)];
+
+    board[rookFrom] = EMPTY;
+    board[rookTo] = toPiece("r", color);
+  }
+
+  // A king that just moved is on the square it moved to; every other move leaves
+  // it where the caller already found it.
+  const king = candidate.piece.toLowerCase() === "k" ? to : kingSquare;
+  const safe = king < 0 || !isSquareAttacked(board, king, opposite(color));
+
+  if (rookFrom !== -1) {
+    board[rookTo] = EMPTY;
+    board[rookFrom] = toPiece("r", color);
+  }
+  if (enPassantSquare !== -1) {
+    board[enPassantSquare] = enPassantPawn;
+  }
+  board[to] = replaced as SquareContent;
+  board[from] = moved as SquareContent;
+
+  return safe;
+}
+
+/**
+ * Where the side to move's king stands, or -1 when the position has no king —
+ * which a hand-written test FEN is allowed to do.
+ *
+ * Found once and handed to every legality check, rather than rediscovered inside
+ * each of them: the king only moves on a king move, and scanning the board for it
+ * thirty-odd times per position was a fifth of the cost of generating them.
+ */
+function kingSquareOf(position: Position): number {
+  return findKing(position.board, position.turn) ?? -1;
 }
 
 /** The legal moves for the side to move. */
 export function generateLegalMoves(position: Position): Move[] {
-  return generatePseudoLegalMoves(position).filter((candidate) =>
-    leavesKingSafe(position, candidate),
-  );
+  const candidates = generatePseudoLegalMoves(position);
+  const king = kingSquareOf(position);
+  const legal: Move[] = [];
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index]!;
+    if (leavesKingSafe(position, candidate, king)) {
+      legal.push(candidate);
+    }
+  }
+
+  return legal;
 }
 
 /**
@@ -443,9 +545,21 @@ export function generateLegalMoves(position: Position): Move[] {
  * copies to keep two; this pays for two.
  */
 export function generateLegalCaptures(position: Position): Move[] {
-  return generatePseudoLegalMoves(position)
-    .filter((move) => move.captured !== null || move.promotion !== null)
-    .filter((candidate) => leavesKingSafe(position, candidate));
+  const candidates = generatePseudoLegalMoves(position);
+  const king = kingSquareOf(position);
+  const captures: Move[] = [];
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index]!;
+    if (candidate.captured === null && candidate.promotion === null) {
+      continue;
+    }
+    if (leavesKingSafe(position, candidate, king)) {
+      captures.push(candidate);
+    }
+  }
+
+  return captures;
 }
 
 /**
@@ -455,9 +569,16 @@ export function generateLegalCaptures(position: Position): Move[] {
  * a position with moves it almost always returns on the first candidate.
  */
 export function hasLegalMove(position: Position): boolean {
-  return generatePseudoLegalMoves(position).some((candidate) =>
-    leavesKingSafe(position, candidate),
-  );
+  const candidates = generatePseudoLegalMoves(position);
+  const king = kingSquareOf(position);
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (leavesKingSafe(position, candidates[index]!, king)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /** The legal moves that start from `square`. */
