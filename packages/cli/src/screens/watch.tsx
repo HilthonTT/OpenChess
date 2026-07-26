@@ -263,10 +263,14 @@ function SpectatorBoard({
     return subscribeToSpectatorGame(gameId, {
       onState: (state) => {
         const current = latest.current;
+        // A draw offer moves neither the ply nor the result, so it is named here
+        // as well — otherwise the one change that is pure negotiation is filtered
+        // out as "nothing new" and the watcher never sees it.
         if (
           !current ||
           state.ply !== current.ply ||
-          state.result !== current.result
+          state.result !== current.result ||
+          state.drawOfferFrom !== current.drawOfferFrom
         ) {
           setGame(state);
         }
@@ -348,11 +352,22 @@ function SpectatorBoard({
     if (game.result === "ABORTED") {
       return "The game was aborted";
     }
+    // A draw on a live-looking position was agreed rather than played out —
+    // checked ahead of the decisive case below, which has no winner to name.
+    if (game.result === "DRAW" && board.status === "playing") {
+      return "Draw agreed";
+    }
     if (game.result !== null && board.status === "playing") {
       // A result on a live-looking position: someone resigned, ran out of time
       // or walked away.
       const winner = game.result === "WHITE_WIN" ? game.white : game.black;
       return `${faceName(winner)} wins`;
+    }
+    // Part of what is happening on the board, like the clock: a watcher who
+    // cannot see the offer cannot read the next move.
+    if (game.drawOfferFrom !== null) {
+      const offerer = game.drawOfferFrom === "w" ? game.white : game.black;
+      return `${faceName(offerer)} has offered a draw`;
     }
     return describeStatus(board.status, board.position.turn);
   };

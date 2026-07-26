@@ -172,6 +172,45 @@ export async function claimVictory(id: string): Promise<ServerGame> {
   return response.json();
 }
 
+/**
+ * Offer a draw. Online games only — a 409 means the bot was asked to negotiate.
+ *
+ * If the opponent's offer is already standing this agrees to it and the game
+ * comes back settled, which is what makes both players offering at the same
+ * instant resolve instead of deadlocking.
+ */
+export async function offerDraw(id: string): Promise<ServerGame> {
+  const response = await byId.draw.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+/** Take the draw the opponent offered. A 409 means it is no longer there. */
+export async function acceptDraw(id: string): Promise<ServerGame> {
+  const response = await byId.draw.accept.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+/** Clear the standing offer — declining theirs, or withdrawing your own. */
+export async function declineDraw(id: string): Promise<ServerGame> {
+  const response = await byId.draw.$delete({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
 export async function abortGame(id: string): Promise<ServerGame> {
   const response = await byId.abort.$post({ param: { id } });
 

@@ -21,11 +21,14 @@ import { describeStatus } from "../components/game-panels";
 import {
   GameConflictError,
   abortGame,
+  acceptDraw,
   claimVictory,
+  declineDraw,
   fetchGame,
   flagGame,
   joinPvpQueue,
   leavePvpQueue,
+  offerDraw,
   resignGame,
   sendMove,
   type ServerGame,
@@ -362,9 +365,16 @@ function OnlineMatch({
     initialSquare: homeSquare(human),
     initiallyFlipped: human === "b",
   });
-  /** A request is on the wire; the board is read-only until it answers. */
-  const [pending, setPending] = useState(false);
+  /**
+   * A request is on the wire; the board is read-only until it answers. The value
+   * is the status line to show while it is — not every action here is a move, and
+   * a draw offer announcing itself as one would be a lie the player can see.
+   */
+  const [pending, setPending] = useState<string | null>(null);
+  const busy = pending !== null;
   const [confirmingResign, setConfirmingResign] = useState(false);
+  /** A draw offer is one keypress from being sent; `d` again confirms it. */
+  const [confirmingDraw, setConfirmingDraw] = useState(false);
   /** The opponent has been on the clock long enough to claim the win. */
   const [claimAvailable, setClaimAvailable] = useState(false);
 
@@ -372,13 +382,18 @@ function OnlineMatch({
   const { position, status } = game;
   const over = server.result !== null || isGameOver(status);
 
+  /** Whose draw offer is standing, if either side's. */
+  const theirDrawOffer =
+    server.drawOfferFrom !== null && server.drawOfferFrom !== human;
+  const myDrawOffer = server.drawOfferFrom === human;
+
   const selection = useMoveSelection({
     game,
     cursor: cursor.cursor,
     over,
     overMessage: "The game is over — press r to find another",
     you: { color: human, waitMessage: `Waiting for ${opponentName}…` },
-    locked: pending,
+    locked: busy,
   });
   const { beginCommit, clearSelection, setMessage } = selection;
 
@@ -422,13 +437,17 @@ function OnlineMatch({
   const latest = useRef(server);
   latest.current = server;
 
-  // The opponent's moves and resignations arrive pushed, not polled. Only a
-  // changed board is applied — `apply` clears the current selection, and having
-  // a square picked up must survive an event that says nothing new.
+  // The opponent's moves, resignations and draw offers arrive pushed, not polled.
+  // Only a changed board is applied — `apply` clears the current selection, and
+  // having a square picked up must survive an event that says nothing new.
   //
   // That same guard is what protects the rewards breakdown: our own move's POST
   // response carries it and the stream's copy never does, so the echo of our
   // move arriving a moment later matches on ply and result and is ignored.
+  //
+  // A draw offer moves neither the ply nor the result, so it has to be named here
+  // too or the one board change that is pure negotiation would be filtered out as
+  // "nothing new" — and an offer nobody is told about is not an offer.
   useEffect(() => {
     if (over) {
       return;
@@ -437,7 +456,11 @@ function OnlineMatch({
     return subscribeToGame(server.id, {
       onState: (state) => {
         const current = latest.current;
-        if (state.ply !== current.ply || state.result !== current.result) {
+        if (
+          state.ply !== current.ply ||
+          state.result !== current.result ||
+          state.drawOfferFrom !== current.drawOfferFrom
+        ) {
           apply(state);
         }
       },
@@ -474,10 +497,10 @@ function OnlineMatch({
    * (a lagging tick) comes back a conflict and we just resync.
    */
   const flag = useCallback(async () => {
-    if (pending || over) {
+    if (busy || over) {
       return;
     }
-    setPending(true);
+    setPending("Settling on time…");
     setMessage(null);
 
     try {
@@ -489,9 +512,9 @@ function OnlineMatch({
         setMessage(errorMessage(error));
       }
     } finally {
-      setPending(false);
+      setPending(null);
     }
-  }, [apply, over, pending, resync, server.id, setMessage]);
+  }, [apply, busy, over, resync, server.id, setMessage]);
 
   const live = useClock({
     clock: server.clock,
@@ -513,7 +536,7 @@ function OnlineMatch({
         return;
       }
 
-      setPending(true);
+      setPending("Sending your move…");
 
       try {
         const result = await sendMove(server.id, {
@@ -530,7 +553,7 @@ function OnlineMatch({
           setMessage(errorMessage(error));
         }
       } finally {
-        setPending(false);
+        setPending(null);
       }
     },
     [apply, beginCommit, resync, server.id, server.ply, setMessage],
@@ -543,7 +566,7 @@ function OnlineMatch({
    */
   const concede = useCallback(async () => {
     setConfirmingResign(false);
-    setPending(true);
+    setPending(server.ply === 0 ? "Aborting…" : "Resigning…");
     setMessage(null);
 
     try {
@@ -555,9 +578,67 @@ function OnlineMatch({
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
-      setPending(false);
+      setPending(null);
     }
   }, [apply, server.id, server.ply, setMessage]);
+
+  /**
+   * Offer a draw — or, when the opponent's offer is already standing, agree to
+   * it. The server makes that call, so the two cases are one request here: it is
+   * the same keypress either way, and treating a simultaneous exchange of offers
+   * as agreement is the server's business, not the board's.
+   */
+  const proposeDraw = useCallback(async () => {
+    setConfirmingDraw(false);
+    setPending("Offering a draw…");
+    setMessage(null);
+
+    try {
+      apply(await offerDraw(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        await resync();
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(null);
+    }
+  }, [apply, resync, server.id, setMessage]);
+
+  /** Take the draw they offered. A conflict means it is no longer on the table. */
+  const takeDraw = useCallback(async () => {
+    setPending("Accepting the draw…");
+    setMessage(null);
+
+    try {
+      apply(await acceptDraw(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        await resync();
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(null);
+    }
+  }, [apply, resync, server.id, setMessage]);
+
+  /** Clear the offer on the board: theirs declined, or ours withdrawn. */
+  const refuseDraw = useCallback(async () => {
+    const mine = myDrawOffer;
+    setPending(mine ? "Withdrawing your offer…" : "Declining the draw…");
+    setMessage(null);
+
+    try {
+      apply(await declineDraw(server.id));
+      setMessage(mine ? "Draw offer withdrawn" : "Draw declined");
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setPending(null);
+    }
+  }, [apply, myDrawOffer, server.id, setMessage]);
 
   /**
    * Offer this opponent another game. It becomes an ordinary challenge in
@@ -565,7 +646,7 @@ function OnlineMatch({
    * sent and the game, if they take it, arrives from the challenge list.
    */
   const rematch = useCallback(async () => {
-    setPending(true);
+    setPending("Offering a rematch…");
     setMessage(null);
 
     try {
@@ -574,13 +655,13 @@ function OnlineMatch({
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
-      setPending(false);
+      setPending(null);
     }
   }, [opponentName, server.id, setMessage]);
 
   /** Take the win from an opponent who walked away. The server is the judge. */
   const claim = useCallback(async () => {
-    setPending(true);
+    setPending("Claiming the win…");
     setMessage(null);
 
     try {
@@ -593,13 +674,13 @@ function OnlineMatch({
         setMessage(errorMessage(error));
       }
     } finally {
-      setPending(false);
+      setPending(null);
     }
   }, [apply, resync, server.id, setMessage]);
 
-  // Escape's extra step here: a pending resign confirmation. Leaving mid-game
-  // is fine — the game stays active, and the queue hands it straight back the
-  // next time this screen opens.
+  // Escape's extra steps here: a pending resign or draw confirmation. Leaving
+  // mid-game is fine — the game stays active, and the queue hands it straight
+  // back the next time this screen opens.
   const handleEscape = useCallback(
     () =>
       selection.handleEscape(() => {
@@ -607,19 +688,26 @@ function OnlineMatch({
           setConfirmingResign(false);
           return true;
         }
+        if (confirmingDraw) {
+          setConfirmingDraw(false);
+          return true;
+        }
         return false;
       }),
-    [confirmingResign, selection.handleEscape],
+    [confirmingDraw, confirmingResign, selection.handleEscape],
   );
 
   useGameKeys({
     selection,
     cursor,
     commit,
-    // A pending resign is called off by any key that isn't its own confirm.
+    // A pending confirmation is called off by any key that isn't its own confirm.
     before: (name) => {
       if (confirmingResign && name !== "x") {
         setConfirmingResign(false);
+      }
+      if (confirmingDraw && name !== "d") {
+        setConfirmingDraw(false);
       }
     },
     onKey: (name) => {
@@ -628,7 +716,7 @@ function OnlineMatch({
           setMessage("There's no undo in a rated game");
           break;
         case "r":
-          if (pending) {
+          if (busy) {
             break;
           }
           if (over) {
@@ -638,7 +726,7 @@ function OnlineMatch({
           }
           break;
         case "x":
-          if (pending || over) {
+          if (busy || over) {
             break;
           }
           if (confirmingResign) {
@@ -647,8 +735,35 @@ function OnlineMatch({
             setConfirmingResign(true);
           }
           break;
+        case "d":
+          // The draw key, in all three of its readings. Answering an offer needs
+          // no confirmation — the player is replying to a question already on the
+          // screen — but starting one does, so half a game is not given away by a
+          // stray keypress.
+          if (busy || over) {
+            break;
+          }
+          if (theirDrawOffer) {
+            void takeDraw();
+          } else if (myDrawOffer) {
+            setMessage(
+              `Your draw offer is with ${opponentName} — n withdraws it`,
+            );
+          } else if (confirmingDraw) {
+            void proposeDraw();
+          } else {
+            setConfirmingDraw(true);
+          }
+          break;
+        case "n":
+          // Only ever means "no draw": declining theirs or withdrawing ours.
+          if (busy || over || server.drawOfferFrom === null) {
+            break;
+          }
+          void refuseDraw();
+          break;
         case "c":
-          if (claimAvailable && !pending && !over) {
+          if (claimAvailable && !busy && !over) {
             void claim();
           }
           break;
@@ -661,7 +776,7 @@ function OnlineMatch({
         case "p":
           // `r` already means "back to the queue"; a rematch is the other
           // thing you might want from a finished game, so it gets its own key.
-          if (over && !pending && server.result !== "ABORTED") {
+          if (over && !busy && server.result !== "ABORTED") {
             void rematch();
           }
           break;
@@ -670,14 +785,18 @@ function OnlineMatch({
   });
 
   const statusText = (): string => {
-    if (pending) {
-      return "Sending your move…";
+    if (pending !== null) {
+      return pending;
     }
 
     if (confirmingResign) {
       return server.ply === 0
         ? "Abort this game? Press x again to confirm"
         : "Resign this game? Press x again to confirm";
+    }
+
+    if (confirmingDraw) {
+      return "Offer a draw? Press d again to confirm";
     }
 
     if (selection.message) {
@@ -688,16 +807,30 @@ function OnlineMatch({
       return "Game aborted — press r to search again";
     }
 
-    // A result on a position that isn't terminal can only be a resignation.
+    // A result on a position that isn't terminal was agreed rather than played
+    // out: a draw both sides signed, or a resignation.
     if (server.result !== null && !isGameOver(status)) {
+      if (server.result === "DRAW") {
+        return "Draw agreed — press r to search again";
+      }
       const won = (server.result === "WHITE_WIN") === (human === "w");
       return won
         ? `${opponentName} resigned — you win!`
         : `You resigned — ${opponentName} wins`;
     }
 
+    // An offer on the table outranks the position: it is a question addressed to
+    // this player, and the turn indicator will still be there once it is answered.
+    if (theirDrawOffer) {
+      return `${opponentName} offers a draw — d accepts, n declines`;
+    }
+
     if (claimAvailable) {
       return `${opponentName} has gone quiet — press c to claim the win`;
+    }
+
+    if (myDrawOffer) {
+      return `Draw offered — waiting on ${opponentName}`;
     }
 
     return describeOnlineStatus(status, position.turn, human, opponentName);
@@ -728,6 +861,26 @@ function OnlineMatch({
           <span fg={theme.faint}> select </span>
           <span fg={theme.cream}>x</span>
           <span fg={theme.faint}> resign </span>
+          {/* The draw keys read as whatever they currently do: accept/decline
+              while an offer is on the table, and plain "draw" otherwise. */}
+          {over ? null : theirDrawOffer ? (
+            <>
+              <span fg={theme.cream}>d</span>
+              <span fg={theme.faint}> accept draw </span>
+              <span fg={theme.cream}>n</span>
+              <span fg={theme.faint}> decline </span>
+            </>
+          ) : myDrawOffer ? (
+            <>
+              <span fg={theme.cream}>n</span>
+              <span fg={theme.faint}> withdraw draw </span>
+            </>
+          ) : (
+            <>
+              <span fg={theme.cream}>d</span>
+              <span fg={theme.faint}> draw </span>
+            </>
+          )}
           {claimAvailable ? (
             <>
               <span fg={theme.cream}>c</span>

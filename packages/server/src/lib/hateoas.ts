@@ -66,6 +66,13 @@ export const gameLinksSchema = z
     /** Present while a timed game is live; whether a flag has actually
      * fallen is still the server's call. */
     flag: linkSchema.optional(),
+    /** Present in a live PvP game with no offer of yours already standing. */
+    offerDraw: linkSchema.optional(),
+    /** Present only while the opponent's draw offer is yours to take. */
+    acceptDraw: linkSchema.optional(),
+    /** Present whenever an offer stands, from either side: yours to withdraw,
+     * or theirs to decline. */
+    declineDraw: linkSchema.optional(),
   })
   .openapi("GameLinks");
 
@@ -80,6 +87,8 @@ type GameState = {
   ply: number;
   result: string | null;
   clock: object | null;
+  /** The side with a draw offer standing, or null when none is. */
+  drawOfferFrom: "w" | "b" | null;
 };
 
 export function gameLinks(game: GameState): GameLinks {
@@ -103,6 +112,22 @@ export function gameLinks(game: GameState): GameLinks {
       ? { claim: post(`${base}/claim`) }
       : {}),
     ...(live && game.clock !== null ? { flag: post(`${base}/flag`) } : {}),
+    // Draws are agreed, so all three are PvP-only. Offering is pointless while
+    // your own offer already stands, and accepting only means something when the
+    // offer on the table is the opponent's — so each link is present exactly
+    // when there is something for it to do.
+    ...(live && game.mode === "PVP" && game.drawOfferFrom !== game.yourColor
+      ? { offerDraw: post(`${base}/draw`) }
+      : {}),
+    ...(live &&
+    game.mode === "PVP" &&
+    game.drawOfferFrom !== null &&
+    game.drawOfferFrom !== game.yourColor
+      ? { acceptDraw: post(`${base}/draw/accept`) }
+      : {}),
+    ...(live && game.mode === "PVP" && game.drawOfferFrom !== null
+      ? { declineDraw: del(`${base}/draw`) }
+      : {}),
   };
 }
 

@@ -88,6 +88,64 @@ export async function getStats(user: User) {
 }
 
 /**
+ * How many points a rating-history request returns when it does not say. Enough
+ * to show the shape of a run of play without turning a sparkline into a smear.
+ */
+const RATING_HISTORY_LIMIT = 30;
+
+/**
+ * The player's rating curve: the most recent `limit` changes, oldest first.
+ *
+ * A window, not a page. There is no cursor because there is nothing to page
+ * back through — a chart wants the recent shape of the curve, and a client that
+ * wants the whole thing can ask for a bigger window. `peak` deliberately
+ * ignores the window and aggregates over all of history, because a personal
+ * best that expired out of the last thirty games is still the personal best.
+ */
+export async function getRatingHistory(
+  user: User,
+  limit: number = RATING_HISTORY_LIMIT,
+) {
+  const [stats, newest, peak] = await Promise.all([
+    db.userStats.findUniqueOrThrow({
+      where: { userId: user.id },
+      select: { rating: true },
+    }),
+    // Newest first is the indexed direction; the reverse below is what the
+    // caller actually wants. Taking the *newest* N and then reversing is not the
+    // same as taking the oldest N — the tail of the curve is the useful end.
+    db.ratingSnapshot.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { rating: true, delta: true, gameId: true, createdAt: true },
+    }),
+    db.ratingSnapshot.aggregate({
+      where: { userId: user.id },
+      _max: { rating: true },
+    }),
+  ]);
+
+  const history = newest.reverse();
+  const oldest = history[0];
+
+  return {
+    history: history.map((point) => ({
+      rating: point.rating,
+      delta: point.delta,
+      gameId: point.gameId,
+      createdAt: point.createdAt.toISOString(),
+    })),
+    // Undoing the oldest point's own change is what the curve stood at before
+    // the window opened — the left-hand anchor a chart needs. With no history at
+    // all there is no curve, and the current rating is the whole story.
+    startingRating: oldest ? oldest.rating - oldest.delta : stats.rating,
+    current: stats.rating,
+    peak: peak._max.rating,
+  };
+}
+
+/**
  * The achievement catalog, with the caller's unlock state on each row.
  *
  * A secret achievement is withheld until it is earned — that is the entire

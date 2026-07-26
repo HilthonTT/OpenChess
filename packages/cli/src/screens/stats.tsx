@@ -5,10 +5,13 @@ import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
 import {
   fetchProfile,
+  fetchRatingHistory,
   fetchStats,
   type PlayerStats,
   type Profile,
+  type RatingHistory,
 } from "../lib/profile";
+import { sparkline } from "../lib/sparkline";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
@@ -19,8 +22,14 @@ const WIDTH = 52;
 const LABEL_W = 14;
 /** Cells in the XP progress bar. */
 const BAR_W = 20;
+/**
+ * Changes in the rating sparkline. One less than the XP bar's width because the
+ * line also plots the rating *before* the first change, so `BAR_W - 1` changes
+ * draw `BAR_W` bars and the two rows come out the same length.
+ */
+const CURVE_POINTS = BAR_W - 1;
 
-type Data = { profile: Profile; stats: PlayerStats };
+type Data = { profile: Profile; stats: PlayerStats; curve: RatingHistory };
 
 export function Stats() {
   const auth = useAuth();
@@ -40,10 +49,14 @@ export function Stats() {
     let cancelled = false;
     setError(null);
 
-    void Promise.all([fetchProfile(), fetchStats()])
-      .then(([profile, stats]) => {
+    void Promise.all([
+      fetchProfile(),
+      fetchStats(),
+      fetchRatingHistory(CURVE_POINTS),
+    ])
+      .then(([profile, stats, curve]) => {
         if (!cancelled) {
-          setData({ profile, stats });
+          setData({ profile, stats, curve });
         }
       })
       .catch((cause) => {
@@ -93,10 +106,21 @@ function Notice({ text }: { text: string }) {
 
 function Card({ data }: { data: Data }) {
   const theme = useUITheme();
-  const { profile, stats } = data;
+  const { profile, stats, curve } = data;
 
   const games = stats.wins + stats.losses + stats.draws;
   const winRate = games > 0 ? Math.round((stats.wins / games) * 100) : null;
+
+  // The curve is plotted from where the window opened, so the first bar is the
+  // rating *before* its first change rather than after it — otherwise the line
+  // would draw a rise that happened off its left edge as if it were flat.
+  const ratings = [
+    curve.startingRating,
+    ...curve.history.map((point) => point.rating),
+  ];
+  // One point is a straight line, not a curve: nothing has changed yet.
+  const line = curve.history.length > 0 ? sparkline(ratings) : null;
+  const swing = curve.current - curve.startingRating;
 
   // xpIntoLevel + xpToNextLevel spans the whole level band, so this fraction
   // is in [0, 1) by construction.
@@ -121,7 +145,23 @@ function Card({ data }: { data: Data }) {
         </Row>
         <Row label="Rating">
           <span fg={theme.cream}>{String(stats.rating)}</span>
+          {curve.peak !== null && curve.peak > stats.rating ? (
+            <span fg={theme.dim}>{`  peak ${curve.peak}`}</span>
+          ) : null}
         </Row>
+        {line === null ? null : (
+          // "Trend", not "last N games": a point is a rating *change*, and a
+          // draw between equals moves Elo by zero, so the bars would undercount
+          // games played. Bar heights are relative to this window's own range —
+          // see `sparkline` — which is why the signed swing is printed beside
+          // them, making the line readable as a quantity and not only a shape.
+          <Row label="Trend">
+            <span fg={theme.gold}>{line}</span>
+            <span fg={theme.dim}>
+              {`  ${swing >= 0 ? "+" : ""}${swing}`}
+            </span>
+          </Row>
+        )}
         <Row label="Coins">
           <span fg={theme.gold}>{String(profile.coins)}</span>
         </Row>

@@ -17,7 +17,13 @@ function freshGame() {
     ply: 0,
     result: null,
     clock: null,
+    drawOfferFrom: null as "w" | "b" | null,
   };
+}
+
+/** The same, as an online game — where the draw links live. */
+function freshPvpGame() {
+  return { ...freshGame(), mode: "PVP" as const };
 }
 
 describe("gameLinks", () => {
@@ -100,6 +106,61 @@ describe("gameLinks", () => {
     expect(
       gameLinks({ ...freshGame(), clock, result: "DRAW" }).flag,
     ).toBeUndefined();
+  });
+
+  test("a live PvP game with no offer on it can only offer one", () => {
+    const links = gameLinks(freshPvpGame());
+
+    expect(links.offerDraw).toEqual({
+      href: "/api/games/game1/draw",
+      method: "POST",
+    });
+    expect(links.acceptDraw).toBeUndefined();
+    expect(links.declineDraw).toBeUndefined();
+  });
+
+  test("your own standing offer can be withdrawn but not re-offered", () => {
+    const links = gameLinks({ ...freshPvpGame(), drawOfferFrom: "w" });
+
+    expect(links.offerDraw).toBeUndefined();
+    expect(links.acceptDraw).toBeUndefined();
+    expect(links.declineDraw).toEqual({
+      href: "/api/games/game1/draw",
+      method: "DELETE",
+    });
+  });
+
+  test("the opponent's offer can be accepted or declined", () => {
+    const links = gameLinks({ ...freshPvpGame(), drawOfferFrom: "b" });
+
+    expect(links.acceptDraw).toEqual({
+      href: "/api/games/game1/draw/accept",
+      method: "POST",
+    });
+    expect(links.declineDraw).toEqual({
+      href: "/api/games/game1/draw",
+      method: "DELETE",
+    });
+    // Still offerable: offering into their offer is how agreement is reached.
+    expect(links.offerDraw).toBeDefined();
+  });
+
+  test("an AI game offers no draw links at all", () => {
+    const links = gameLinks(freshGame());
+
+    expect(links.offerDraw).toBeUndefined();
+    expect(links.acceptDraw).toBeUndefined();
+    expect(links.declineDraw).toBeUndefined();
+  });
+
+  test("a settled PvP game offers no draw links", () => {
+    const links = gameLinks({
+      ...freshPvpGame(),
+      result: "DRAW",
+      drawOfferFrom: "b",
+    });
+
+    expect(links).toEqual({ self: { href: "/api/games/game1", method: "GET" } });
   });
 });
 

@@ -56,7 +56,9 @@ import {
   MIN_REWARDED_PLIES,
   statsAfter,
   timeOf,
+  toDrawOfferSide,
   toEngineDifficulty,
+  toOfferColor,
   type ClockState,
   type Outcome,
   type Reward,
@@ -142,6 +144,12 @@ export type GameView = {
   timeControl: TimeControlView | null;
   /** Live clock readings, or null when the game is untimed. */
   clock: ClockView | null;
+  /**
+   * The side with a draw offer standing, or null when none is. Compare it with
+   * `yourColor`: your own offer is waiting on them, theirs is yours to answer.
+   * Always null on a settled game — ending one clears any offer with it.
+   */
+  drawOfferFrom: Color | null;
   startedAt: string;
   endedAt: string | null;
   /** Populated only on the response that ends the game. */
@@ -263,6 +271,7 @@ function view(
     result: row.result,
     timeControl: timeControlView(row),
     clock: clockView(row, game),
+    drawOfferFrom: toOfferColor(row.drawOfferedBy),
     startedAt: row.startedAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,
     rewards,
@@ -373,6 +382,10 @@ async function claimGame(
       finalFen,
       currentFen: finalFen,
       moves: gameMoves(input.game),
+      // A draw offer outlives nothing: whatever ended the game — agreement,
+      // mate, a fallen flag — answered it. Cleared here rather than in each
+      // caller because this is the one write every settlement goes through.
+      drawOfferedBy: null,
       ...(input.clock
         ? {
             whiteTimeMs: input.clock.whiteTimeMs,
@@ -409,23 +422,43 @@ async function payoutPlayer(
 
   // The reward floor zeroes the *base* payout for a game too short to be a
   // game, but wins, rating and achievements are minted here — so a sub-floor
-  // decisive result still moved the leaderboard and unlocked win-count trophies
-  // for free. That is the win-trading farm: two accounts queue, the loser
-  // resigns at move one, and the winner banks a win, a rating bump and
-  // achievement coins at no cost. Settle such a game as a no-contest — like an
-  // abort, nobody's record moves. A genuine fast win is a checkmate
-  // (fool's/scholar's mate) and is exempt, matching how the ply floor already
-  // reasons about "not really a game".
-  if (
-    (outcome === "win" || outcome === "loss") &&
-    input.plies < MIN_REWARDED_PLIES &&
-    !input.byCheckmate
-  ) {
+  // result still moved the leaderboard and unlocked count-based trophies for
+  // free. That is the win-trading farm: two accounts queue, the loser resigns at
+  // move one, and the winner banks a win, a rating bump and achievement coins at
+  // no cost. Settle such a game as a no-contest — like an abort, nobody's record
+  // moves. A genuine fast win is a checkmate (fool's/scholar's mate) and is
+  // exempt, matching how the ply floor already reasons about "not really a game".
+  //
+  // Draws are held to the same bar, which costs nothing and closes the same farm
+  // in agreement's clothing: two accounts queue and shake hands at move one,
+  // banking a `draws` apiece forever. No legitimate draw is caught by this —
+  // stalemate, repetition and insufficient material are all unreachable inside
+  // ten plies, so a sub-floor draw can only be one that was agreed.
+  if (input.plies < MIN_REWARDED_PLIES && !input.byCheckmate) {
     return nothingEarned(user, stats.rating);
   }
 
   const after = statsAfter(stats, outcome, input.newRating);
   await tx.userStats.update({ where: { userId: user.id }, data: after });
+
+  // The rating curve, written beside the scalar it is the history of, so a point
+  // can never exist for a rating that was not banked.
+  //
+  // Only when the rating actually moved. An unrated AI game and a draw between
+  // equals both land here having changed nothing, and a row for either would put
+  // a flat point on the chart that reports a game rather than a change — which
+  // is not what the series is for. That the settle path runs once per game per
+  // player (`claimGame`) is what makes this exactly-once.
+  if (after.rating !== stats.rating) {
+    await tx.ratingSnapshot.create({
+      data: {
+        userId: user.id,
+        rating: after.rating,
+        delta: after.rating - stats.rating,
+        gameId: input.gameId,
+      },
+    });
+  }
 
   // Unlock only achievements that both have a rule and exist in the table, and
   // that this player does not already hold.
@@ -1225,11 +1258,20 @@ export async function playMove(input: {
       };
     }
 
+    // A move by the side that did *not* offer is the decline. The offerer's own
+    // move leaves their offer standing — a player who offers and then moves, as
+    // players do, has not changed their mind. (The terminal paths above go
+    // through `claimGame`, which clears the offer along with everything else.)
+    const declinesOffer =
+      fresh.drawOfferedBy !== null &&
+      toOfferColor(fresh.drawOfferedBy) !== color;
+
     const updated = await tx.game.update({
       where: { id: row.id },
       data: {
         moves: gameMoves(game),
         currentFen: toFen(game.position),
+        ...(declinesOffer ? { drawOfferedBy: null } : {}),
         ...(clockCommit ?? {}),
       },
     });
@@ -1299,6 +1341,243 @@ export async function resignGame(
   // A resignation is a loss: rating and record moved, so the board is stale.
   if (result.rewards !== null) {
     await invalidateCache("leaderboard");
+  }
+
+  return result;
+}
+
+/**
+ * Draws by agreement.
+ *
+ * Only in a PvP game: agreeing a draw takes two players, and the bot is not a
+ * negotiating party — asking it to accept would need a policy for when it says
+ * yes, which is a strength setting masquerading as a rule. Against the bot the
+ * position still draws itself by stalemate, repetition, the fifty-move rule or
+ * insufficient material, all of which the engine already settles.
+ *
+ * One offer stands at a time, held in `Game.drawOfferedBy`. It is cleared by a
+ * move from the side that did *not* offer — that move is the decline — and by
+ * whatever ends the game. The offerer's own move leaves it standing, so the
+ * ordinary habit of offering and then moving does not withdraw the offer a
+ * moment later.
+ */
+const DRAW_IS_PVP_ONLY =
+  "Only an online game can be drawn by agreement. The bot does not negotiate — play the position out, or resign.";
+
+/** The half of a draw request every one of the three shares. */
+async function loadForDraw(
+  tx: Prisma.TransactionClient,
+  gameId: string,
+  user: User,
+): Promise<{
+  row: GameRow;
+  game: Game;
+  color: Color;
+  opponent: OpponentView | null;
+  /** The colour whose offer is standing, or null when none is. */
+  offer: Color | null;
+}> {
+  const loaded = await loadFor(tx, gameId, user.id);
+
+  return { ...loaded, offer: toOfferColor(loaded.row.drawOfferedBy) };
+}
+
+/** Settle a live PvP game as a draw both sides have now agreed to. */
+async function agreeDraw(
+  tx: Prisma.TransactionClient,
+  input: {
+    row: GameRow;
+    game: Game;
+    user: User;
+    color: Color;
+    opponent: OpponentView | null;
+  },
+): Promise<GameView> {
+  const { row, game, color, opponent } = input;
+
+  const rewards = await settlePvp(tx, {
+    row,
+    game,
+    mover: input.user,
+    result: "DRAW",
+  });
+
+  const settled = await tx.game.findUniqueOrThrow({ where: { id: row.id } });
+  return view(settled, game, color, rewards, opponent);
+}
+
+/**
+ * Offer a draw — or, when the opponent has already offered one, take it.
+ *
+ * That second case is not a shortcut so much as the only honest reading of two
+ * players who both asked for a draw: it makes a simultaneous exchange of offers
+ * settle instead of deadlocking on two clients each waiting for the other to
+ * accept. Re-offering your own standing offer is a no-op, so a retried request
+ * is safe.
+ */
+export async function offerDraw(
+  gameId: string,
+  user: User,
+): Promise<GameView> {
+  const { result, changed } = await serializable(async (tx) => {
+    const { row, game, color, opponent, offer } = await loadForDraw(
+      tx,
+      gameId,
+      user,
+    );
+
+    // Idempotent like resign: an already-settled game comes back as it stands.
+    if (row.endedAt !== null) {
+      return { result: view(row, game, color, null, opponent), changed: false };
+    }
+
+    if (row.mode !== "PVP") {
+      throwProblem(HttpStatusCodes.CONFLICT, DRAW_IS_PVP_ONLY);
+    }
+
+    // They asked first; this is agreement, not a competing offer.
+    if (offer !== null && offer !== color) {
+      return {
+        result: await agreeDraw(tx, { row, game, user, color, opponent }),
+        changed: true,
+      };
+    }
+
+    // Ours is already standing — nothing to do, and nothing to complain about.
+    if (offer === color) {
+      return { result: view(row, game, color, null, opponent), changed: false };
+    }
+
+    const updated = await tx.game.update({
+      where: { id: row.id },
+      data: { drawOfferedBy: toDrawOfferSide(color) },
+    });
+
+    return {
+      result: view(updated, game, color, null, opponent),
+      changed: true,
+    };
+  });
+
+  // The opponent is on a stream: an offer they are never told about is an offer
+  // that does not exist. Their client learns of it the same way it learns of a
+  // move, which is why this is published on a change that moves no piece.
+  //
+  // Only when something actually moved, unlike the settle paths: re-offering a
+  // draw you have already offered is an ordinary keypress rather than a rare
+  // retry, and waking every stream to say nothing has changed would make a held
+  // key a broadcast. `changed` implies PvP — the other two exits cannot set it.
+  if (changed) {
+    publishGameChanged(gameId);
+  }
+
+  if (result.endedAt !== null) {
+    lastMoveAt.delete(gameId);
+  }
+
+  // An agreed draw is a rated result on both sides, so the board is stale.
+  if (result.rewards !== null) {
+    await invalidateCache("leaderboard");
+  }
+
+  return result;
+}
+
+/** Accept the draw the opponent has offered. */
+export async function acceptDraw(
+  gameId: string,
+  user: User,
+): Promise<GameView> {
+  const result = await serializable(async (tx) => {
+    const { row, game, color, opponent, offer } = await loadForDraw(
+      tx,
+      gameId,
+      user,
+    );
+
+    // A retried accept whose response was lost gets the settled game back,
+    // rather than a complaint that the offer it accepted is gone.
+    if (row.endedAt !== null) {
+      return view(row, game, color, null, opponent);
+    }
+
+    if (row.mode !== "PVP") {
+      throwProblem(HttpStatusCodes.CONFLICT, DRAW_IS_PVP_ONLY);
+    }
+
+    if (offer === null) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "There is no draw offer to accept. Your opponent's last move declined it, if they had made one.",
+      );
+    }
+
+    if (offer === color) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "That is your own draw offer — it is your opponent's to accept.",
+      );
+    }
+
+    return agreeDraw(tx, { row, game, user, color, opponent });
+  });
+
+  lastMoveAt.delete(gameId);
+
+  if (result.mode === "PVP") {
+    publishGameChanged(gameId);
+  }
+
+  if (result.rewards !== null) {
+    await invalidateCache("leaderboard");
+  }
+
+  return result;
+}
+
+/**
+ * Clear the standing draw offer: the offerer withdrawing theirs, or the
+ * opponent declining it. One route for both, because the game holds one offer
+ * and either player is entitled to end it — which is also why this needs no
+ * argument saying which of the two it was.
+ *
+ * Idempotent: no offer standing means there is nothing to clear, and the game
+ * comes back as it is rather than as an error.
+ */
+export async function declineDraw(
+  gameId: string,
+  user: User,
+): Promise<GameView> {
+  const { result, cleared } = await serializable(async (tx) => {
+    const { row, game, color, opponent, offer } = await loadForDraw(
+      tx,
+      gameId,
+      user,
+    );
+
+    if (row.endedAt !== null || offer === null) {
+      return {
+        result: view(row, game, color, null, opponent),
+        cleared: false,
+      };
+    }
+
+    const updated = await tx.game.update({
+      where: { id: row.id },
+      data: { drawOfferedBy: null },
+    });
+
+    return {
+      result: view(updated, game, color, null, opponent),
+      cleared: true,
+    };
+  });
+
+  // Only when something actually changed: an offer withdrawn is news to the
+  // opponent's board, but a no-op decline would wake every stream for nothing.
+  // An offer can only ever stand on a PvP game, so `cleared` implies the mode.
+  if (cleared) {
+    publishGameChanged(gameId);
   }
 
   return result;
@@ -1684,6 +1963,13 @@ export type SpectatorView = {
   result: GameResult | null;
   timeControl: TimeControlView | null;
   clock: ClockView | null;
+  /**
+   * The side with a draw offer standing, or null when none is. A watcher can see
+   * one for the same reason they can see the clock: it is part of what is
+   * happening on a public board, and "Black has offered a draw" is half the story
+   * of the next move. There is still nothing here to act on.
+   */
+  drawOfferFrom: Color | null;
   startedAt: string;
   endedAt: string | null;
 };
@@ -1739,6 +2025,7 @@ function spectatorView(
     result: row.result,
     timeControl: timeControlView(row),
     clock: clockView(row, game),
+    drawOfferFrom: toOfferColor(row.drawOfferedBy),
     startedAt: row.startedAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,
   };

@@ -25,7 +25,8 @@ terminal.
 - **Play vs AI** — three difficulties; server games pay out XP and coins
 - **Online 1v1** — matched against the next player in the queue, with the
   opponent's moves pushed over a live stream; the only games that move your Elo
-  rating, and they pay the biggest rewards
+  rating, and they pay the biggest rewards. Offer a draw and they can take it,
+  decline it, or answer with a move
 - **Challenges** — play someone you picked instead of whoever is next: by name,
   or by a short code anyone can take. A finished game offers a rematch, same
   clock and colours swapped
@@ -42,12 +43,16 @@ terminal.
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
 - **Daily streaks** — check in each day for a growing XP and coin payout
-- **Stats** — your record, streaks, rating and level progress
+- **Stats** — your record, streaks, level progress, and your rating as a curve
+  rather than a number: where it has been over your recent rated games, and the
+  best it has ever been
 - **Store** — buy titles with coins and wear one on the leaderboard
 - **30+ themes** — the whole UI and board repaint from one picker
 
 All the chess rules are enforced: castling, en passant, promotion, checkmate,
 stalemate, the fifty-move rule, threefold repetition, and insufficient material.
+Online games can also be drawn the way most games between humans actually end —
+by agreement.
 
 ## Layout
 
@@ -155,6 +160,11 @@ the JSON body of `GET /api/games/{id}`: one immediately on connect, one on every
 change, and then the server hangs up once the game is settled. It sits behind the
 same auth as every other game route and refuses a game you are not playing in.
 
+Not every change is a move. A draw offer moves neither the ply nor the result, so
+a client that decides "is this new?" by comparing those two alone will filter the
+one board change that is pure negotiation straight out — compare `drawOfferFrom`
+as well, as both CLI screens do.
+
 `GET /api/games/{id}/watch/events` is the spectators' feed, on the same loop and
 the same notifications, so a watcher is never a tick behind the players. Its
 payload is the narrower `GET /api/games/{id}/watch` body: both players, the
@@ -200,6 +210,13 @@ may capture. Promotions prompt for `Q`, `R`, `B`, or `N`.
 On a clocked game each side's remaining time shows above and below the board,
 counting down for whoever is to move; a fallen flag ends the game on time.
 
+In an **online** game `d` is the draw key and `n` is the refusal. With no offer
+on the board, `d` twice offers one (twice, like `x`, so half a game is not given
+away by a stray keypress); while your own offer stands, `n` withdraws it; and
+when the offer is your opponent's, `d` accepts and `n` declines. The footer and
+the status line say which of those the keys currently mean, and an offer reaches
+the other player over the same live stream their moves do.
+
 In the **Analysis** screen — reached from the menu or with `a` from a finished
 game — `←→` step through the moves, `home`/`end` jump to either end, and `f`
 flips the board. `n` and `p` jump to the next and previous mistake, which is the
@@ -224,6 +241,35 @@ sort, and `r` refreshes. In the store, `enter` buys the highlighted title
 (pressed twice, so a stray keypress can't spend your coins), equips one you
 own, or unequips the one you're wearing.
 
+## Draws by agreement
+
+Online games only. Agreeing a draw takes two players, and the bot is not one of
+them — asking it to accept would need a policy for when it says yes, which is a
+strength setting dressed up as a rule. Against the bot the position still draws
+itself by stalemate, repetition, the fifty-move rule or insufficient material.
+
+One offer stands at a time, and what clears it is the part worth stating:
+
+- **The opponent's move declines it.** Playing on instead of accepting is the
+  answer, exactly as it is over a board.
+- **Your own move does not.** Offering and then moving is the ordinary habit, and
+  an offer that withdrew itself a moment later would be useless.
+- **Whatever ends the game clears it**, so a settled game never carries one.
+- Either player may clear it outright: the offerer withdraws, the opponent
+  declines. It is one request, because the game holds one offer.
+
+Both players offering at the same instant settles the game rather than
+deadlocking two clients each waiting on the other — two players who both asked
+for a draw have agreed, whatever order the requests landed in.
+
+An agreed draw is rated and paid exactly like a drawn position: half a point
+each, Elo against the opponent's pre-game rating, XP but no coins. It is also
+held to the same ten-ply floor as every other result, which closes win-trading's
+cousin — two accounts queueing and shaking hands at move one to farm a `draws`
+column apiece. Nothing legitimate is caught by that floor: stalemate, repetition
+and insufficient material are all out of reach inside ten plies, so a draw that
+early can only have been agreed.
+
 ## Progression
 
 Finished server games pay XP and coins scaled by difficulty — wins pay most,
@@ -242,6 +288,17 @@ the attempt row is the idempotency key, so a retried submission cannot pay
 twice and a solved puzzle can be replayed for practice without moving anything.
 Taking the hint halves both the payout and the rating swing, and the server
 records that you took it rather than asking the client to own up.
+
+Your **rating** is kept as a curve as well as a number. Every settle that
+actually moves it writes a point — the new rating and the change that produced
+it — in the same transaction that banks the rating itself, so the history can
+never disagree with the scalar the leaderboard sorts on. Only real movement is
+recorded: an unrated game against the bot and a draw between equals both move
+Elo by exactly zero, and a point for either would report a game rather than a
+change. That makes the series shorter than your game count on purpose, which is
+why the Stats screen labels it a trend and not a game list. `peak` is read over
+all of history rather than the window, because a personal best that scrolled out
+of the last twenty games is still the personal best.
 
 Signing in also claims that day's **streak**. Consecutive days pay more, up to a
 cap on the seventh — worth about half a won online game, so showing up is a

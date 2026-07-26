@@ -1,4 +1,9 @@
-import type { ClockPreset, Difficulty, GameResult } from "@openchess/database";
+import type {
+  ClockPreset,
+  Difficulty,
+  DrawOfferSide,
+  GameResult,
+} from "@openchess/database";
 import {
   isDraw,
   levelFor,
@@ -52,6 +57,20 @@ export function toClockPreset(
   timeControl: TimeControlKey | null | undefined,
 ): ClockPreset | null {
   return timeControl ? STORED_CLOCK[timeControl] : null;
+}
+
+/** The same bridge once more, for the side a draw offer came from. */
+const OFFER_SIDE: Record<Color, DrawOfferSide> = { w: "WHITE", b: "BLACK" };
+
+const OFFER_COLOR: Record<DrawOfferSide, Color> = { WHITE: "w", BLACK: "b" };
+
+export function toDrawOfferSide(color: Color): DrawOfferSide {
+  return OFFER_SIDE[color];
+}
+
+/** The colour a stored offer belongs to, or null when none is standing. */
+export function toOfferColor(side: DrawOfferSide | null): Color | null {
+  return side === null ? null : OFFER_COLOR[side];
 }
 
 export type Outcome = "win" | "loss" | "draw";

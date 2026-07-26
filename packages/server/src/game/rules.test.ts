@@ -15,6 +15,8 @@ import {
   rewardForPvp,
   statsAfter,
   timeOf,
+  toDrawOfferSide,
+  toOfferColor,
 } from "./rules";
 
 const LONG_ENOUGH = MIN_REWARDED_PLIES + 2;
@@ -228,10 +230,40 @@ describe("rewardForPvp", () => {
     ).toEqual({ xp: 0, coins: 0 });
   });
 
+  // The farm this closes is agreement's version of win-trading: two accounts
+  // queue and shake hands at move one. No legitimate draw is caught by it —
+  // stalemate, repetition and insufficient material are all out of reach inside
+  // ten plies, so a sub-floor draw can only have been agreed.
+  test("the floor catches an instantly agreed draw", () => {
+    expect(
+      rewardForPvp({
+        result: "DRAW",
+        color: "w",
+        plies: MIN_REWARDED_PLIES - 1,
+      }),
+    ).toEqual({ xp: 0, coins: 0 });
+  });
+
   test("an abort pays nothing", () => {
     expect(
       rewardForPvp({ result: "ABORTED", color: "w", plies: LONG_ENOUGH }),
     ).toEqual({ xp: 0, coins: 0 });
+  });
+});
+
+describe("draw offer sides", () => {
+  test("a colour survives the round trip through the column", () => {
+    expect(toOfferColor(toDrawOfferSide("w"))).toBe("w");
+    expect(toOfferColor(toDrawOfferSide("b"))).toBe("b");
+  });
+
+  test("no stored offer is no colour, not a default one", () => {
+    expect(toOfferColor(null)).toBeNull();
+  });
+
+  test("the column spells the sides out", () => {
+    expect(toDrawOfferSide("w")).toBe("WHITE");
+    expect(toDrawOfferSide("b")).toBe("BLACK");
   });
 });
 

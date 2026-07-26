@@ -18,6 +18,7 @@ import { requireUser } from "../middlewares/require-user";
 import {
   equipTitle,
   getProfile,
+  getRatingHistory,
   getStats,
   listAchievements,
   listOwnedTitles,
@@ -31,6 +32,7 @@ import {
   equipTitleSchema,
   paginationQuerySchema,
   profileSchema,
+  ratingHistorySchema,
   statsSchema,
   titleSchema,
   transactionSchema,
@@ -61,6 +63,27 @@ const stats = createRoute({
   summary: "Your record, streaks and rating",
   responses: {
     [HttpStatusCodes.OK]: jsonContent(statsSchema, "Your stats"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const ratingHistory = createRoute({
+  tags: [TAGS.ME],
+  method: "get",
+  path: "/rating-history",
+  summary: "How your rating got where it is",
+  description:
+    "The most recent changes to your rating, oldest first so the array plots left to right. A point is written only when the rating actually moved, so this is not a game list: unrated games against the bot and draws between equals — which move Elo by exactly zero — are simply not on it. `startingRating` anchors the left edge and `peak` is your best ever, over all of history rather than the window.",
+  request: {
+    query: z.object({
+      limit: z.coerce.number().int().min(1).max(200).default(30),
+    }),
+  },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      ratingHistorySchema,
+      "Your rating curve, oldest first",
+    ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
   },
 });
@@ -181,6 +204,14 @@ const router = base
   })
   .openapi(stats, async (c) => {
     return c.json(await getStats(c.get("user")), HttpStatusCodes.OK);
+  })
+  .openapi(ratingHistory, async (c) => {
+    const { limit } = c.req.valid("query");
+
+    return c.json(
+      await getRatingHistory(c.get("user"), limit),
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(checkInRoute, async (c) => {
     return c.json(await checkIn(c.get("user")), HttpStatusCodes.OK);

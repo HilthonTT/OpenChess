@@ -130,6 +130,12 @@ export const gameSchema = z
     timeControl: timeControlSchema.nullable().openapi({ example: null }),
     /** Live clock readings, or null when the game is untimed. */
     clock: clockSchema.nullable().openapi({ example: null }),
+    /**
+     * The side with a draw offer standing, or null when none is. Compare it with
+     * `yourColor`: your own offer is waiting on them, theirs is yours to answer.
+     * Always null on a settled game.
+     */
+    drawOfferFrom: colorSchema.nullable().openapi({ example: null }),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     /** Present only on the response that ends the game. */
@@ -184,6 +190,8 @@ export const spectatorGameSchema = z
     result: gameResultSchema.nullable(),
     timeControl: timeControlSchema.nullable(),
     clock: clockSchema.nullable(),
+    /** The side with a draw offer standing, or null when none is. */
+    drawOfferFrom: colorSchema.nullable().openapi({ example: null }),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
   })
@@ -487,6 +495,42 @@ export const statsSchema = z
     rating: z.number().int(),
   })
   .openapi("Stats");
+
+export const ratingPointSchema = z
+  .object({
+    /** The rating after that game settled. */
+    rating: z.number().int().openapi({ example: 1214 }),
+    /** The change that produced it. Never zero — a point is a change. */
+    delta: z.number().int().openapi({ example: 14 }),
+    /** The game that moved it, or null if it has since been deleted. */
+    gameId: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi("RatingPoint");
+
+export const ratingHistorySchema = z
+  .object({
+    /**
+     * Oldest first, so the array plots left to right. This is a window onto the
+     * most recent `limit` changes and not a paginated list: a chart wants the
+     * recent shape of the curve, and there is nothing to page back through.
+     */
+    history: z.array(ratingPointSchema),
+    /**
+     * Where the window opens — the rating before its first point, which is what
+     * a chart needs to anchor its left edge. Equal to `current` when the history
+     * is empty.
+     */
+    startingRating: z.number().int().openapi({ example: 1200 }),
+    /** The rating now, straight off the stats row. */
+    current: z.number().int().openapi({ example: 1214 }),
+    /**
+     * The highest rating ever reached, over all history rather than the window.
+     * Null for a player who has never played a rated game.
+     */
+    peak: z.number().int().nullable(),
+  })
+  .openapi("RatingHistory");
 
 export const checkInSchema = z
   .object({

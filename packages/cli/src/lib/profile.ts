@@ -17,6 +17,10 @@ export type CheckIn = InferResponseType<
   (typeof apiClient.me)["check-in"]["$post"],
   200
 >;
+export type RatingHistory = InferResponseType<
+  (typeof apiClient.me)["rating-history"]["$get"],
+  200
+>;
 
 export async function fetchProfile(): Promise<Profile> {
   const response = await apiClient.me.$get();
@@ -30,6 +34,24 @@ export async function fetchProfile(): Promise<Profile> {
 
 export async function fetchStats(): Promise<PlayerStats> {
   const response = await apiClient.me.stats.$get();
+
+  if (response.status !== 200) {
+    throw await responseError(response);
+  }
+
+  return response.json();
+}
+
+/**
+ * The rating curve, oldest point first. Only rated games that actually moved the
+ * number are on it, so the points are changes rather than games.
+ */
+export async function fetchRatingHistory(
+  limit?: number,
+): Promise<RatingHistory> {
+  const response = await apiClient.me["rating-history"].$get({
+    query: limit === undefined ? {} : { limit: String(limit) },
+  });
 
   if (response.status !== 200) {
     throw await responseError(response);

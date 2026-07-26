@@ -9,8 +9,10 @@ import { createRematch } from "../game/challenges";
 import { gameVersion, subscribeToGame } from "../game/events";
 import {
   abortGame,
+  acceptDraw,
   claimVictory,
   createAiGame,
+  declineDraw,
   flagGame,
   getGame,
   getGamePgn,
@@ -19,6 +21,7 @@ import {
   listActiveGames,
   listGames,
   listLiveGames,
+  offerDraw,
   playMove,
   resignGame,
   watchGame,
@@ -217,6 +220,66 @@ const resign = createRoute({
   request: { params: idParamsSchema },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(gameSchema, "The settled game"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+  },
+});
+
+const drawNotAvailable = problemDetailsContent(
+  "Not drawable by agreement: an AI game, or no offer of your opponent's to take",
+);
+
+const offerDrawRoute = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/draw",
+  summary: "Offer a draw",
+  description:
+    "Puts a draw offer on the game for your opponent to answer. Online games only — the bot does not negotiate. One offer stands at a time: re-offering your own is a no-op, and offering while your *opponent's* offer stands is agreement, which settles the game as a draw there and then. That is what makes two players pressing it at the same instant come out as a draw rather than as a deadlock. An offer survives your own next move and is declined by theirs.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      gameSchema,
+      "The game, with your offer standing — or settled, if that agreed a draw",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: drawNotAvailable,
+  },
+});
+
+const acceptDrawRoute = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/draw/accept",
+  summary: "Accept a draw offer",
+  description:
+    "Takes the draw your opponent offered and settles the game. Both sides are paid and rated as a draw, exactly as if the position had drawn itself. Accepting an already-finished game returns it unchanged, so a retry is safe; accepting your own offer, or one that no longer stands, is a conflict.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(gameSchema, "The drawn game"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: drawNotAvailable,
+  },
+});
+
+const declineDrawRoute = createRoute({
+  tags: [TAGS.GAMES],
+  method: "delete",
+  path: "/{id}/draw",
+  summary: "Decline or withdraw a draw offer",
+  description:
+    "Clears the standing offer. One route for both readings because the game holds one offer and either player may end it: the offerer withdraws theirs, the opponent declines it. Idempotent — with no offer standing there is nothing to clear, and the game comes back as it is.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      gameSchema,
+      "The game, with no offer on it",
+    ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
     [HttpStatusCodes.FORBIDDEN]: forbidden,
     [HttpStatusCodes.NOT_FOUND]: notFound,
@@ -648,6 +711,27 @@ const router = base
     const { id } = c.req.valid("param");
 
     const game = await resignGame(id, c.get("user"));
+
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
+  })
+  .openapi(offerDrawRoute, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await offerDraw(id, c.get("user"));
+
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
+  })
+  .openapi(acceptDrawRoute, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await acceptDraw(id, c.get("user"));
+
+    return c.json(withGameLinks(game), HttpStatusCodes.OK);
+  })
+  .openapi(declineDrawRoute, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await declineDraw(id, c.get("user"));
 
     return c.json(withGameLinks(game), HttpStatusCodes.OK);
   })

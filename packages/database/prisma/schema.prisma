@@ -38,9 +38,10 @@ model User {
   gamesAsWhite Game[]            @relation("WhitePlayer")
   gamesAsBlack Game[]            @relation("BlackPlayer")
 
-  puzzleAttempts      PuzzleAttempt[]
-  challengesSent      Challenge[]     @relation("Challenger")
-  challengesReceived  Challenge[]     @relation("Challenged")
+  puzzleAttempts     PuzzleAttempt[]
+  ratingSnapshots    RatingSnapshot[]
+  challengesSent     Challenge[]      @relation("Challenger")
+  challengesReceived Challenge[]      @relation("Challenged")
 
   @@index([level(sort: Desc), experience(sort: Desc)])
 }
@@ -78,7 +79,7 @@ model UserStats {
   // player farm either side of it into a rank they cannot hold.
   puzzleRating Int @default(1000)
 
-  puzzlesSolved   Int @default(0)
+  puzzlesSolved    Int @default(0)
   puzzlesAttempted Int @default(0)
 
   currentPuzzleStreak Int @default(0)
@@ -109,6 +110,17 @@ enum Difficulty {
   HARD
 }
 
+/**
+ * Which side a standing draw offer came from. Two values, mirroring the
+ * engine's "w"/"b": an offer belongs to a player, so there is no third value
+ * for it to hold and no invalid state to guard against. `ChallengeColor` is not
+ * reused here precisely because its RANDOM would be one.
+ */
+enum DrawOfferSide {
+  WHITE
+  BLACK
+}
+
 model Game {
   id   String   @id @default(cuid())
   mode GameMode
@@ -117,7 +129,7 @@ model Game {
   // @openchess/shared replays. Replaying is what reconstructs the repetition map
   // and the fifty-move clock; a FEN alone cannot carry position history, so
   // `draw-repetition` would never fire if this were the cache and not the record.
-  moves      String[]
+  moves String[]
 
   // Denormalized cache of the position after the last ply. Lets a
   // read hit the board without replaying; never the source of truth.
@@ -135,6 +147,18 @@ model Game {
   result   GameResult?
   pgn      String?
   finalFen String?
+
+  // The side with a draw offer standing, or null when there is none. Only one
+  // offer can be outstanding at a time, which is the whole reason this is a
+  // single column rather than a table: the second offer to arrive is either the
+  // same player repeating themselves or the opponent agreeing, and both of
+  // those are answers to the offer already here.
+  //
+  // Cleared by a move from the side that did *not* offer — the opponent's move
+  // is the decline. The offerer's own move leaves it standing, so offering
+  // before you move (as a player naturally does) does not withdraw it a moment
+  // later.
+  drawOfferedBy DrawOfferSide?
 
   // Time control. Null on an untimed game — the current default — and both set
   // together otherwise, naming a preset in @openchess/shared by its numbers.
@@ -158,7 +182,8 @@ model Game {
   // Guards against paying a game out twice if the finish request is retried.
   rewardsGranted Boolean @default(false)
 
-  transactions CoinTransaction[]
+  transactions    CoinTransaction[]
+  ratingSnapshots RatingSnapshot[]
 
   // The challenge this game was created from, when it was not created by the
   // matchmaking queue. One game per challenge; see `Challenge.gameId`.
@@ -283,8 +308,47 @@ model CoinTransaction {
 }
 
 /**
+ * One point on a player's rating curve: what their rating became, and the game
+ * that moved it.
+ * `UserStats.rating` is a single scalar and stays the source of truth for
+ * "what am I rated now" — this table is the history behind it, written beside
+ * that scalar in the same transaction so a point can never exist for a rating
+ * that was never banked.
+ * A row is written only when the rating actually moved, which is what keeps the
+ * series meaningful: unrated AI games and the draws between equals that move
+ * Elo by exactly zero would otherwise fill it with flat points that say
+ * nothing. That also means the series is not one-row-per-game, and a client
+ * must not treat it as a game list.
+ */
+model RatingSnapshot {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The rating after this game settled.
+  rating Int
+
+  /// The change that produced it, so a reader need not diff adjacent rows —
+  /// and so the oldest row still knows where the curve started (`rating - delta`).
+  delta Int
+
+  /// The game that moved it. Nullable for the same reason the ledger's is: a
+  /// deleted game must not take the rating history down with it.
+  gameId String?
+  game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  // At most one snapshot per player per game: the settle path is already
+  // idempotent via `Game.rewardsGranted`, and this is the constraint that says
+  // so in the schema rather than only in the code.
+  @@unique([userId, gameId])
+  // The only query: this player's curve, newest first, windowed.
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/**
  * A tactics puzzle: a position, and the line that refutes it.
- *
  * `moves` follows the Lichess convention the importer and @openchess/shared
  * both speak — `fen` is the position *before* the mistake, `moves[0]` is the
  * mistake, and the solver plays the odd indices from there. See
