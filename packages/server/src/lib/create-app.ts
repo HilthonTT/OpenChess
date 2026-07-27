@@ -2,6 +2,7 @@ import type { Schema } from "hono";
 import { OpenAPIHono, type Hook } from "@hono/zod-openapi";
 import { requestId } from "hono/request-id";
 import { compress } from "hono/compress";
+import { prettyJSON } from "hono/pretty-json";
 import { createMiddleware } from "hono/factory";
 import { timeout } from "hono/timeout";
 import { sentry } from "@sentry/hono/bun";
@@ -94,6 +95,7 @@ export default function createApp() {
   }
 
   app
+    .use(prettyJSON())
     .use(requestId())
     .use(pinoLogger())
     .use(securityHeadersMiddleware())

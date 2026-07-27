@@ -296,6 +296,12 @@ model CoinTransaction {
   gameId String?
   game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
 
+  /// Names the recurring period a scheduled payout belongs to, e.g. `2026-W31`
+  /// for the weekly premium stipend. Null on everything that is not one — a
+  /// game reward, a purchase, a manual grant — which leaves those unconstrained
+  /// by the unique index below, exactly as `gameId` does for the per-game one.
+  periodKey String?
+
   balanceAfter Int
   createdAt    DateTime @default(now())
 
@@ -304,6 +310,12 @@ model CoinTransaction {
   // Puzzle payouts carry no gameId and are guarded instead by the one-row-per
   // -player-per-puzzle constraint on PuzzleAttempt, in the same transaction.
   @@unique([userId, gameId, reason])
+  // The same trick for payouts a scheduler repeats: one row per user per reason
+  // per period. This is what makes the premium stipend exactly-once — an Inngest
+  // step is retried whenever its result fails to get back to Inngest, including
+  // after the transaction it ran has already committed, so the ledger insert has
+  // to be the claim rather than a record of one.
+  @@unique([userId, reason, periodKey])
   @@index([userId, createdAt(sort: Desc)])
 }
 
