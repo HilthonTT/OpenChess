@@ -7,6 +7,8 @@ export * from "./chess/pgn";
 export * from "./chess/pgn-text";
 export * from "./chess/pgn-parse";
 export * from "./chess/search";
+export * from "./chess/opening-lines";
+export * from "./chess/opening-book";
 export * from "./chess/ai";
 export * from "./chess/accuracy";
 export * from "./chess/puzzle";

@@ -1,5 +1,11 @@
 import { evaluate } from "./evaluate";
-import { generateLegalMoves, isInCheck, isInsufficientMaterial } from "./moves";
+import {
+  findMove,
+  generateLegalMoves,
+  isInCheck,
+  isInsufficientMaterial,
+} from "./moves";
+import { chooseBookMove } from "./opening-book";
 import { MATE_SCORE, MATE_THRESHOLD, search } from "./search";
 import type { SearchLimits } from "./search";
 import type { Color, Move, Position } from "./types";
@@ -45,6 +51,15 @@ const SEARCH_LIMITS: Record<Difficulty, SearchLimits> = {
   hard: { timeMs: 600, randomize: true },
 };
 
+export type FindMoveOptions = {
+  /**
+   * Consult the opening book before searching. On by default; turn it off to
+   * measure the search itself, which is the one caller that wants the engine's
+   * own answer to a position theory has already answered.
+   */
+  book?: boolean;
+};
+
 /**
  * Pick a move for the side to move. Returns null when there is no legal move.
  *
@@ -52,11 +67,23 @@ const SEARCH_LIMITS: Record<Difficulty, SearchLimits> = {
  * engine can tell a repetition from a fresh position: without it a bot in a won
  * game will happily check the same king back and forth until the fifty-move rule
  * takes the win off it.
+ *
+ * The opening book comes first, while the game is still in it. That is worth
+ * more than the plies it saves: a search on an opening budget picks the move that
+ * looks best three moves out, which in the opening is how an engine talks itself
+ * into the same slightly-off line every game. Book moves are also instant, so the
+ * bot's clock — and the server's event loop — only starts paying once the
+ * position is genuinely its own problem.
+ *
+ * `easy` skips the book along with the search. It plays at random, which is the
+ * point of it; a beginner's opponent that opens with ten plies of the Najdorf and
+ * then hangs its queen is a worse teacher than one that is bad throughout.
  */
 export function findBestMove(
   position: Position,
   difficulty: Difficulty,
   history: readonly Position[] = [],
+  options: FindMoveOptions = {},
 ): Move | null {
   const moves = generateLegalMoves(position);
   if (moves.length === 0) {
@@ -65,6 +92,20 @@ export function findBestMove(
 
   if (difficulty === "easy") {
     return moves[Math.floor(Math.random() * moves.length)] ?? null;
+  }
+
+  if (options.book ?? true) {
+    const fromBook = chooseBookMove(position);
+    if (fromBook) {
+      return (
+        findMove(
+          moves,
+          fromBook.from,
+          fromBook.to,
+          fromBook.promotion ?? undefined,
+        ) ?? fromBook
+      );
+    }
   }
 
   return search(position, SEARCH_LIMITS[difficulty], history).bestMove;

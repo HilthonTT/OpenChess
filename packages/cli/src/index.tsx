@@ -11,6 +11,7 @@ import { Achievements } from "./screens/achievements";
 import { Stats } from "./screens/stats";
 import { Store } from "./screens/store";
 import { Analysis } from "./screens/analysis";
+import { Explorer } from "./screens/explorer";
 import { Puzzles } from "./screens/puzzles";
 import { Watch } from "./screens/watch";
 import { Challenges } from "./screens/challenges";
@@ -29,6 +30,7 @@ const router = createMemoryRouter([
       { path: "/stats", element: <Stats /> },
       { path: "/store", element: <Store /> },
       { path: "/analysis", element: <Analysis /> },
+      { path: "/explorer", element: <Explorer /> },
       { path: "/puzzles", element: <Puzzles /> },
       { path: "/watch", element: <Watch /> },
       { path: "/challenges", element: <Challenges /> },

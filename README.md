@@ -37,9 +37,12 @@ terminal.
 - **Time controls** — bullet, blitz and rapid clocks on server AI and online
   games; run out and you lose on time (the bot itself is never clocked)
 - **Analysis** — step through any finished game with the engine: an eval bar,
-  an accuracy score per side, a move-quality verdict per ply, and the move it
-  would have played. Jump between the mistakes, export the game as PGN, or
-  import someone else's
+  an accuracy score per side, a move-quality verdict per ply, the opening as it
+  gets named, and the move it would have played. Jump between the mistakes,
+  export the game as PGN, or import someone else's
+- **Openings** — an explorer over the same book the engine plays from: what
+  theory does from here, how much of the book goes each way, and what each
+  continuation is called. Search it by name or ECO code
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
 - **Daily streaks** — check in each day for a growing XP and coin payout
@@ -231,6 +234,13 @@ stands on, and halves what the solve is worth), `s` gives up and plays the
 answer out, `n` fetches the next puzzle, and `d` switches between the rated
 queue and the daily puzzle.
 
+In **Openings** — the explorer, reached from the menu — `↑↓` pick a
+continuation and `enter` plays it, `←` takes one back, `r` starts again, and
+`f` flips the board. `/` searches the book by name or ECO code and jumps
+straight to the line. Only book moves can be played, so there is no wandering
+off: a line either continues or ends, and the screen says which. It needs no
+account, since the book is compiled into the client.
+
 In **Challenges**, `←→` switch between what is waiting for you and what you
 sent, `enter` accepts, `d` declines, `x` withdraws one of yours, `n` writes a
 new one, and `c` joins by code. In **Watch**, `enter` opens the highlighted
@@ -375,6 +385,42 @@ fixed horizon. That last part is what stops the engine trusting a score taken
 mid-exchange: without it a depth-3 search that stops right after `RxN` counts the
 knight and never sees the pawn recapture, so it walks into losing trades and
 believes they were winning ones. The same search backs the Analysis screen.
+
+## The opening book
+
+Before the search runs at all, the engine looks the position up. The book is a
+starter set of about a hundred named lines in `chess/opening-lines.ts` — the
+openings a club player actually meets, written as the move list that reaches
+them — which `chess/opening-book.ts` folds into a trie of one node per position.
+Every line is replayed through the engine by its test, so an authoring slip
+cannot ship as a bot with no move to make.
+
+Positions are keyed the way threefold repetition keys them, which makes the book
+transposition-aware without being asked: `1.e4 e5 2.Nf3 Nc6 3.Bc4` and
+`1.e4 e5 2.Bc4 Nc6 3.Nf3` are one key, so both are the Italian and both offer
+the Italian's continuations. Keying on the move list would have made them two
+different openings — obvious on a board, invisible in a trie.
+
+The choice among continuations is weighted rather than always-the-mainline, so
+the bot does not play out the same eight moves every game. A line's weight is
+added to every move along it rather than to its last, which means a branch's
+pull is the sum of what runs through it: a first move twenty lines deep outranks
+one played by two without either needing a weight set by hand. The explicit
+weights in the file are only for the top of the tree, where the number of lines
+below a move is a fact about how much theory got written down rather than about
+how often it is played. That also makes the percentages the explorer shows a
+reading of *this book*, not of a database of master games.
+
+`easy` skips the book along with the search. It plays at random, which is the
+point of it — a beginner's opponent that opens with ten plies of the Najdorf and
+then hangs its queen is a worse teacher than one that is bad throughout.
+
+Naming runs the other way out of the same trie. A game is called after the
+deepest opening it passed through, not after its current position, because a
+game leaves the book long before it stops being a Sicilian. That name is what
+the Analysis screen shows as you step, and what `[ECO]` and `[Opening]` carry
+into an exported PGN — written only when the book recognises the game, since an
+`[Opening "?"]` claims the opening is unknown rather than unasked.
 
 ## License
 

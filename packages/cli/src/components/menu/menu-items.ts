@@ -99,6 +99,15 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
   {
+    id: "explorer",
+    title: "Openings",
+    icon: "❖",
+    description: "Walk the book, by name or by move",
+    action(ctx) {
+      ctx.navigate("/explorer");
+    },
+  },
+  {
     id: "store",
     title: "Store",
     icon: "¤",

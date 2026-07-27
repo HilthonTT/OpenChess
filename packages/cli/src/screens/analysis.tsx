@@ -11,6 +11,7 @@ import {
   createGame,
   findKing,
   mistakes,
+  openingOf,
   playSan,
   STARTING_FEN,
   toSan,
@@ -833,6 +834,11 @@ function ReviewBoard({
       ? toSan(position, analysis.bestMove, frame.legalMoves)
       : null;
 
+  // Named off the frame rather than the whole game, so stepping through the
+  // opening shows it being named a move at a time — and a game that transposed
+  // reports what it transposed into at the point it did.
+  const opening = openingOf(frame);
+
   return (
     <GameScreen
       title={TITLE}
@@ -904,6 +910,18 @@ function ReviewBoard({
             <span fg={theme.walnut}>{bestSan}</span>
           ) : (
             <span fg={theme.faint}>{analysis ? "—" : "…"}</span>
+          )}
+        </text>
+
+        <text>
+          <span fg={theme.faint}>Opening: </span>
+          {opening ? (
+            <>
+              <span fg={theme.gold}>{opening.name}</span>
+              <span fg={theme.faint}>{` (${opening.eco})`}</span>
+            </>
+          ) : (
+            <span fg={theme.faint}>—</span>
           )}
         </text>
       </box>

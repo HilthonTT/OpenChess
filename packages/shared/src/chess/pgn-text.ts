@@ -1,5 +1,6 @@
 import { STARTING_FEN } from "./board";
 import { movePairs, type Game } from "./game";
+import { openingOf } from "./opening-book";
 import { startingFen } from "./pgn";
 
 /**
@@ -107,6 +108,18 @@ export function toPgn(
   const start = startingFen(game);
   if (start !== STARTING_FEN) {
     lines.push(`[SetUp "1"]`, `[FEN "${start}"]`);
+  }
+
+  // `ECO` and `Opening` are supplemental tags, so they follow the seven. Written
+  // only when the book recognises the game: a position it never saw gets no tag
+  // at all, which is the honest answer and the one a reader expects — an
+  // `[Opening "?"]` is a claim that the opening is unknown rather than unasked.
+  const opening = openingOf(game);
+  if (opening) {
+    lines.push(
+      `[ECO "${escapeTagValue(opening.eco)}"]`,
+      `[Opening "${escapeTagValue(opening.name)}"]`,
+    );
   }
 
   const movetext = toMovetext(game);
