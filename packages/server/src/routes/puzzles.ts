@@ -4,17 +4,26 @@ import jsonContent from "stoker/openapi/helpers/json-content";
 import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 
 import { createPlayerRouter } from "../lib/create-app";
-import { withPuzzleLinks } from "../lib/hateoas";
+import { withPuzzleLinks, withRushPuzzleLinks } from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
 import { rateLimit } from "../middlewares/rate-limit";
 import { requireAuth } from "../middlewares/require-auth";
 import { requireUser } from "../middlewares/require-user";
+import {
+  endRush,
+  getRush,
+  playRushMoves,
+  rushBests,
+  rushLeaderboard,
+  startRush,
+} from "../puzzle/rush";
 import {
   dailyPuzzle,
   getPuzzle,
   listPuzzleAttempts,
   nextPuzzle,
   playPuzzleMoves,
+  puzzleThemeSummary,
   revealPuzzleSolution,
   takePuzzleHint,
 } from "../puzzle/service";
@@ -27,6 +36,14 @@ import {
   puzzleRevealSchema,
   puzzleSchema,
   puzzleSubmitSchema,
+  puzzleThemeKeySchema,
+  puzzleThemeSchema,
+  rushBestSchema,
+  rushLeaderboardEntrySchema,
+  rushModeSchema,
+  rushMoveResultSchema,
+  rushRunSchema,
+  rushStartSchema,
 } from "./schemas";
 import { TAGS } from "./tags";
 
@@ -46,7 +63,10 @@ const next = createRoute({
   path: "/next",
   summary: "The next puzzle to solve",
   description:
-    "A puzzle near your puzzle rating that you have not been scored on, plus your current rating and solve streak. The response carries the position and the move that created the tactic — never the solution.",
+    "A puzzle near your puzzle rating that you have not been scored on, plus your current rating and solve streak. The response carries the position and the move that created the tactic — never the solution. Pass `theme` to train one motif: the rating band still applies, so a themed puzzle is one you could have met anyway.",
+  request: {
+    query: z.object({ theme: puzzleThemeKeySchema.optional() }),
+  },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(
       nextPuzzleSchema,
@@ -86,6 +106,129 @@ const history = createRoute({
     [HttpStatusCodes.OK]: jsonContent(
       z.object({ attempts: z.array(puzzleAttemptSchema) }),
       "Attempts, newest first",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const themes = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "get",
+  path: "/themes",
+  summary: "The themes, and your record at each",
+  description:
+    "Every theme the catalog names, how many puzzles in the corpus carry it, and how many of those you have been scored on. A theme the corpus tags but the catalog has never heard of is listed too, so a fresh import is never half-hidden. `trainable` marks the ones worth filtering by — `middlegame` describes a puzzle rather than naming something to practise.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ themes: z.array(puzzleThemeSchema) }),
+      "The themes",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+/* -------------------------------------------------------------------------- */
+/* Puzzle Rush                                                                */
+/* -------------------------------------------------------------------------- */
+
+const noSuchRun = problemDetailsContent("No such run");
+
+const rushStart = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "post",
+  path: "/rush",
+  summary: "Start a Puzzle Rush run",
+  description:
+    "As many puzzles as you can solve before the clock or your third mistake stops you. The run is timed by the server, gets harder as your score climbs, and is kept off the puzzle ladder entirely — it writes no attempt, moves no rating, and spends none of the puzzles the rated queue is saving for you. Starting one closes any run you left open.",
+  request: { body: jsonContentRequired(rushStartSchema, "The mode to run") },
+  responses: {
+    [HttpStatusCodes.CREATED]: jsonContent(rushRunSchema, "The run, and its first puzzle"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent("There are no puzzles to rush"),
+  },
+});
+
+const rushRead = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "get",
+  path: "/rush/{id}",
+  summary: "A run in progress",
+  description:
+    "Reading a run whose clock has run out settles it, so an abandoned tab does not leave one open forever.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(rushRunSchema, "The run"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.NOT_FOUND]: noSuchRun,
+  },
+});
+
+const rushMove = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "post",
+  path: "/rush/{id}/moves",
+  summary: "Play a move in a run",
+  description:
+    "`moves` is every move you have played on the run's *current* puzzle, in order — the same stateless replay the rated queue uses. A right move that does not finish the puzzle comes back with the forced reply and the same puzzle still open; anything that ends it moves the run on to the next one, or settles the run.",
+  request: {
+    params: idParamsSchema,
+    body: jsonContentRequired(puzzleSubmitSchema, "The moves played so far"),
+  },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(rushMoveResultSchema, "What the move did"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.NOT_FOUND]: noSuchRun,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "The puzzle is already over, or another request settled the run",
+    ),
+    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: problemDetailsContent("No move was sent"),
+  },
+});
+
+const rushEnd = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "post",
+  path: "/rush/{id}/end",
+  summary: "Stop a run where it stands",
+  description: "Settles it and pays for the score it reached. Idempotent.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(rushRunSchema, "The settled run"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.NOT_FOUND]: noSuchRun,
+  },
+});
+
+const rushBoard = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "get",
+  path: "/rush/leaderboard",
+  summary: "The best runs at a mode",
+  description: "One row per player — their best — rather than one per run.",
+  request: {
+    query: z.object({
+      mode: rushModeSchema.default("THREE_MINUTE"),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+    }),
+  },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ entries: z.array(rushLeaderboardEntrySchema) }),
+      "The board, best first",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const rushMine = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "get",
+  path: "/rush/bests",
+  summary: "Your best at each mode",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ bests: z.array(rushBestSchema) }),
+      "One row per mode",
     ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
   },
@@ -178,7 +321,9 @@ const reveal = createRoute({
 
 const router = base
   .openapi(next, async (c) => {
-    const result = await nextPuzzle(c.get("user"));
+    const { theme } = c.req.valid("query");
+
+    const result = await nextPuzzle(c.get("user"), theme ?? null);
 
     return c.json(
       {
@@ -205,6 +350,62 @@ const router = base
     const attempts = await listPuzzleAttempts({ user: c.get("user"), limit });
 
     return c.json({ attempts }, HttpStatusCodes.OK);
+  })
+  .openapi(themes, async (c) => {
+    const list = await puzzleThemeSummary(c.get("user"));
+
+    return c.json({ themes: list }, HttpStatusCodes.OK);
+  })
+  // Every fixed `/rush/...` path is registered before `/rush/{id}` and before
+  // `/{id}`, since the parameterised ones would otherwise match "leaderboard"
+  // and hand it to a lookup by id.
+  .openapi(rushBoard, async (c) => {
+    const { mode, limit } = c.req.valid("query");
+
+    const entries = await rushLeaderboard({ mode, limit });
+
+    return c.json({ entries }, HttpStatusCodes.OK);
+  })
+  .openapi(rushMine, async (c) => {
+    const bests = await rushBests(c.get("user"));
+
+    return c.json({ bests }, HttpStatusCodes.OK);
+  })
+  .openapi(rushStart, async (c) => {
+    const { mode } = c.req.valid("json");
+
+    const run = await startRush({ user: c.get("user"), mode });
+
+    return c.json(withRushPuzzleLinks(run), HttpStatusCodes.CREATED);
+  })
+  .openapi(rushMove, async (c) => {
+    const { id } = c.req.valid("param");
+    const { moves } = c.req.valid("json");
+
+    const result = await playRushMoves({
+      user: c.get("user"),
+      runId: id,
+      moves,
+    });
+
+    return c.json(
+      { ...withRushPuzzleLinks(result), outcome: result.outcome, reply: result.reply, solution: result.solution },
+      HttpStatusCodes.OK,
+    );
+  })
+  .openapi(rushEnd, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const run = await endRush(c.get("user"), id);
+
+    return c.json(withRushPuzzleLinks(run), HttpStatusCodes.OK);
+  })
+  .openapi(rushRead, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const run = await getRush(c.get("user"), id);
+
+    return c.json(withRushPuzzleLinks(run), HttpStatusCodes.OK);
   })
   .openapi(read, async (c) => {
     const { id } = c.req.valid("param");

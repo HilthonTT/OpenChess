@@ -167,12 +167,13 @@ const router = base
     );
   })
   .openapi(create, async (c) => {
-    const { opponent, color, timeControl } = c.req.valid("json");
+    const { opponent, color, timeControl, variant } = c.req.valid("json");
 
     const challenge = await createChallenge({
       user: c.get("user"),
       opponentUsername: opponent ?? null,
       color,
+      variant,
       timeControl: timeControl ?? null,
     });
 

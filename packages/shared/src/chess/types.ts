@@ -39,11 +39,42 @@ export type CastlingRights = {
   blackQueenSide: boolean;
 };
 
+/**
+ * The files the king and each rook began the game on, 0 for the a-file.
+ *
+ * Standard chess is 4/0/7 and the rest of the engine could have hard-coded it —
+ * which is exactly what made Chess960 a rewrite everywhere instead of a setting.
+ * Castling is the only rule that cares where a piece *started*, so this is the
+ * one fact a position has to carry that a board cannot show: by the time the
+ * king has moved once, "which rook was the h-rook" is no longer readable off
+ * the squares.
+ *
+ * Held per colour even though every legal position has the two armies mirrored,
+ * because a hand-written FEN need not: a puzzle may hand us castling rights for
+ * one side and put the other side's king in the middle of the board. Reading
+ * one side's files off the other's would then invent a castling move nobody has.
+ */
+export type CastlingFiles = {
+  king: number;
+  /** The rook that starts left of the king — the one `O-O-O` uses. */
+  queenRook: number;
+  /** The rook that starts right of the king — the one `O-O` uses. */
+  kingRook: number;
+};
+
+/** `CastlingFiles` for each side. */
+export type CastlingSetup = Record<Color, CastlingFiles>;
+
 /** A complete, self-contained chess position — everything a FEN encodes. */
 export type Position = {
   board: Board;
   turn: Color;
   castling: CastlingRights;
+  /**
+   * Where castling starts from, per colour. Standard chess for anything parsed
+   * from an ordinary FEN; see `CastlingFiles`.
+   */
+  castlingFiles: CastlingSetup;
   /**
    * The square a pawn just skipped over on a double push (the square a capturing
    * pawn would land on), or null. Set whenever a double push happens, matching

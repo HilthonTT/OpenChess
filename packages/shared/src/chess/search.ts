@@ -6,7 +6,12 @@ import {
   squareAt,
   toPiece,
 } from "./board";
-import { evaluate, hasNonPawnMaterial } from "./evaluate";
+import {
+  DEFAULT_EVAL_WEIGHTS,
+  evaluate,
+  hasNonPawnMaterial,
+  type EvalWeights,
+} from "./evaluate";
 import {
   BISHOP_DIRECTIONS,
   KING_DELTAS,
@@ -111,6 +116,23 @@ export type SearchLimits = {
    * every time.
    */
   randomize?: boolean;
+  /**
+   * What this engine values, if not the house default. See `EvalWeights`.
+   */
+  weights?: EvalWeights;
+  /**
+   * Centipawns a draw is worth *less* than nothing to the searching side. Zero
+   * scores a draw dead level, which is the truth; a positive value makes the
+   * engine play on in positions it could shake hands in, and a negative one
+   * makes it take the half point when it is offered.
+   *
+   * Applied by whose turn it is rather than by ply count. Those are the same
+   * thing — the side to move alternates with every ply — but saying it in terms
+   * of the side makes it obvious that a given position always gets the same
+   * draw score, which is what keeps contempt out of the transposition table's
+   * hair: an entry can never be read back at the opposite parity.
+   */
+  contempt?: number;
 };
 
 export type SearchResult = {
@@ -486,7 +508,25 @@ type SearchState = {
   killers: Int32Array;
   /** How often a quiet move has caused a cutoff anywhere, indexed `from * 64 + to`. */
   history: Int32Array;
+  /** What this search values; see `EvalWeights`. */
+  weights: EvalWeights;
+  /** The side the search is being run for — whose draw `contempt` is aimed at. */
+  rootTurn: Color;
+  /** Centipawns a draw is worth less than nothing to `rootTurn`. */
+  contempt: number;
 };
+
+/**
+ * What a draw is worth here. Dead level unless the engine has been told to
+ * dislike them, in which case it is worth less to the side the search is for
+ * and correspondingly more to the other — the same number, read from two ends.
+ */
+function drawScore(state: SearchState, position: Position): number {
+  if (state.contempt === 0) {
+    return DRAW_SCORE;
+  }
+  return position.turn === state.rootTurn ? -state.contempt : state.contempt;
+}
 
 function packMove(move: Move): number {
   return move.from | (move.to << 6);
@@ -667,7 +707,7 @@ function quiescence(
   }
 
   if (ply >= MAX_PLY) {
-    return evaluate(position);
+    return evaluate(position, state.weights);
   }
 
   const inCheck = isInCheck(position, position.turn);
@@ -691,12 +731,12 @@ function quiescence(
     // position as a rout is the one error this search could make that a deeper
     // search would not correct.
     if (!hasLegalMove(position)) {
-      return DRAW_SCORE;
+      return drawScore(state, position);
     }
   }
 
   if (position.halfmoveClock >= 100 || isInsufficientMaterial(position)) {
-    return DRAW_SCORE;
+    return drawScore(state, position);
   }
 
   let best: number;
@@ -706,14 +746,14 @@ function quiescence(
     // the search starts from nothing and tries every reply. With no budget left
     // to do that, the static score is all that remains.
     if (depth === 0) {
-      return evaluate(position);
+      return evaluate(position, state.weights);
     }
     best = -Infinity;
   } else {
     // Standing pat. Outside of check the side to move is never *obliged* to
     // capture, so declining to is a floor under every capture beneath it — and
     // it is the answer outright once there is no budget left to search them.
-    best = evaluate(position);
+    best = evaluate(position, state.weights);
 
     if (best >= beta || depth === 0) {
       return best;
@@ -793,7 +833,7 @@ function negamax(
   }
 
   if (ply >= MAX_PLY) {
-    return evaluate(position);
+    return evaluate(position, state.weights);
   }
 
   const key = hashPosition(position);
@@ -805,7 +845,7 @@ function negamax(
   // The fifty-move rule is not: it can fall on the very move that mates, so it
   // waits until the move list proves there is a legal reply.
   if (isRepetition(state, key, ply) || isInsufficientMaterial(position)) {
-    return DRAW_SCORE;
+    return drawScore(state, position);
   }
 
   // Mate distance pruning. Nothing from here can mate sooner than the next move,
@@ -893,11 +933,11 @@ function negamax(
 
   if (moves.length === 0) {
     // Prefer faster mates (and slower losses) by counting plies from the root.
-    return inCheck ? -(MATE_SCORE - ply) : DRAW_SCORE;
+    return inCheck ? -(MATE_SCORE - ply) : drawScore(state, position);
   }
 
   if (position.halfmoveClock >= 100) {
-    return DRAW_SCORE;
+    return drawScore(state, position);
   }
 
   const scores = moves.map((move) =>
@@ -1121,6 +1161,9 @@ export function search(
     before,
     killers: new Int32Array(MAX_PLY * 2).fill(-1),
     history: new Int32Array(64 * 64),
+    weights: limits.weights ?? DEFAULT_EVAL_WEIGHTS,
+    rootTurn: position.turn,
+    contempt: limits.contempt ?? 0,
   };
 
   const moves = generateLegalMoves(position);

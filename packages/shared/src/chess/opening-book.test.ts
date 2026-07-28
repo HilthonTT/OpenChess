@@ -221,12 +221,12 @@ describe("chooseBookMove", () => {
 
     // A ticket at the very bottom of the range lands on the heaviest move,
     // which is the one `bookMoves` sorted to the front.
-    const first = chooseBookMove(position, () => 0);
+    const first = chooseBookMove(position, { random: () => 0 });
     expect(first?.from).toBe(moves[0]!.move.from);
     expect(first?.to).toBe(moves[0]!.move.to);
 
     // And one at the top lands on the lightest.
-    const last = chooseBookMove(position, () => 0.999999);
+    const last = chooseBookMove(position, { random: () => 0.999999 });
     const lightest = moves[moves.length - 1]!;
     expect(last?.from).toBe(lightest.move.from);
     expect(last?.to).toBe(lightest.move.to);

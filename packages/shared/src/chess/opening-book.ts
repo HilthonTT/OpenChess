@@ -2,7 +2,7 @@ import { repetitionKey } from "./board";
 import { createGame, play } from "./game";
 import type { Game } from "./game";
 import { findMove, generateLegalMoves } from "./moves";
-import { OPENING_LINES } from "./opening-lines";
+import { OPENING_LINES, type OpeningStyle } from "./opening-lines";
 import { toSan } from "./san";
 import type { Move, Position } from "./types";
 
@@ -54,6 +54,13 @@ type BookEdge = {
   weight: number;
   /** Key of the position this move reaches, for naming without replaying. */
   to: string;
+  /**
+   * How much of this move's weight came from lines of each temperament. Kept
+   * beside the total rather than replacing it, so asking for gambits tilts the
+   * book without throwing away everything that is not one — a bot with a taste
+   * still has to have an answer to every position.
+   */
+  styles: Partial<Record<OpeningStyle, number>>;
 };
 
 type BookNode = {
@@ -137,10 +144,15 @@ function buildBook(): Book {
 
       const node = nodeAt(key);
       const existing = node.edges.find((edge) => edge.san === wanted);
-      if (existing) {
-        existing.weight += weight;
-      } else {
-        node.edges.push({ san: wanted, move, weight, to });
+      const edge =
+        existing ?? { san: wanted, move, weight: 0, to, styles: {} };
+      if (!existing) {
+        node.edges.push(edge);
+      }
+
+      edge.weight += weight;
+      if (line.style) {
+        edge.styles[line.style] = (edge.styles[line.style] ?? 0) + weight;
       }
       node.totalWeight += weight;
 
@@ -209,6 +221,32 @@ export function bookMoves(position: Position): BookMove[] {
   }));
 }
 
+export type BookChoice = {
+  /**
+   * Injectable so a test can pin the choice; it must return a value in [0, 1)
+   * the way `Math.random` does.
+   */
+  random?: () => number;
+  /** Lean towards lines of this temperament. Null or absent plays the book straight. */
+  style?: OpeningStyle | null;
+  /**
+   * How hard to lean, as a multiplier on the style's share of a move's weight.
+   * At the default of 3 a line that is entirely of the asked-for temperament
+   * pulls four times as hard as an untagged sibling of equal weight — enough to
+   * make the taste obvious over a handful of games, and not so much that the
+   * bot has only one game in it.
+   */
+  bias?: number;
+};
+
+/** A move's pull once `choice`'s taste is taken into account. */
+function edgeWeight(edge: BookEdge, choice: BookChoice): number {
+  if (!choice.style) {
+    return edge.weight;
+  }
+  return edge.weight + (choice.bias ?? 3) * (edge.styles[choice.style] ?? 0);
+}
+
 /**
  * Pick a book move for `position`, weighted by how much of the book runs through
  * each one, or null when the position is not in the book.
@@ -216,13 +254,10 @@ export function bookMoves(position: Position): BookMove[] {
  * Weighted rather than always-the-mainline so the bot does not play out the same
  * eight moves every game: a book that answers 1.e4 with 1...c5 every single time
  * is a book you have finished reading after two games.
- *
- * `random` is injectable so a test can pin the choice; it must return a value in
- * [0, 1) the way `Math.random` does.
  */
 export function chooseBookMove(
   position: Position,
-  random: () => number = Math.random,
+  choice: BookChoice = {},
 ): Move | null {
   const node = getBook().nodes.get(repetitionKey(position));
 
@@ -230,9 +265,15 @@ export function chooseBookMove(
     return null;
   }
 
-  let ticket = random() * node.totalWeight;
+  const random = choice.random ?? Math.random;
+  const total = node.edges.reduce(
+    (sum, edge) => sum + edgeWeight(edge, choice),
+    0,
+  );
+
+  let ticket = random() * total;
   for (const edge of node.edges) {
-    ticket -= edge.weight;
+    ticket -= edgeWeight(edge, choice);
     if (ticket < 0) {
       // Resolve against this position's own legal moves rather than handing back
       // the shared move the book was built with. They describe the same move —

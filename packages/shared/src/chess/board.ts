@@ -1,6 +1,8 @@
 import type {
   Board,
+  CastlingFiles,
   CastlingRights,
+  CastlingSetup,
   Color,
   Piece,
   Position,
@@ -108,6 +110,191 @@ export function noCastlingRights(): CastlingRights {
   };
 }
 
+/** Where castling starts from in standard chess: king e, rooks a and h. */
+export const STANDARD_CASTLING_FILES: CastlingFiles = {
+  king: 4,
+  queenRook: 0,
+  kingRook: 7,
+};
+
+export function standardCastlingSetup(): CastlingSetup {
+  return {
+    w: { ...STANDARD_CASTLING_FILES },
+    b: { ...STANDARD_CASTLING_FILES },
+  };
+}
+
+export function isStandardCastlingFiles(files: CastlingFiles): boolean {
+  return (
+    files.king === STANDARD_CASTLING_FILES.king &&
+    files.queenRook === STANDARD_CASTLING_FILES.queenRook &&
+    files.kingRook === STANDARD_CASTLING_FILES.kingRook
+  );
+}
+
+/**
+ * Whether both sides castle from the standard squares — i.e. this is an
+ * ordinary game rather than a shuffled one. What decides whether a FEN writes
+ * `KQkq` or names the rooks' files, and whether a castling move is written in
+ * UCI as the king's two squares or as king-takes-rook.
+ */
+export function isStandardCastlingSetup(setup: CastlingSetup): boolean {
+  return isStandardCastlingFiles(setup.w) && isStandardCastlingFiles(setup.b);
+}
+
+export function homeRankOf(color: Color): number {
+  return color === "w" ? 0 : 7;
+}
+
+/** The file `color`'s king stands on, if it is on its own back rank. */
+function kingFileOnHomeRank(board: Board, color: Color): number | null {
+  const king: Piece = color === "w" ? "K" : "k";
+  const rank = homeRankOf(color);
+
+  for (let file = 0; file < 8; file += 1) {
+    if (pieceAt(board, squareAt(file, rank)) === king) {
+      return file;
+    }
+  }
+
+  return null;
+}
+
+/** The files `color`'s rooks stand on, on its own back rank, ascending. */
+function rookFilesOnHomeRank(board: Board, color: Color): number[] {
+  const rook: Piece = color === "w" ? "R" : "r";
+  const rank = homeRankOf(color);
+  const files: number[] = [];
+
+  for (let file = 0; file < 8; file += 1) {
+    if (pieceAt(board, squareAt(file, rank)) === rook) {
+      files.push(file);
+    }
+  }
+
+  return files;
+}
+
+/**
+ * Read the castling field of a FEN into rights and the files they castle from.
+ *
+ * Two spellings are accepted, and the difference is only in how the rook is
+ * named. `KQkq` is the ordinary one, where the rook is "the outermost one on
+ * that side of the king" — which is the a- and h-rooks in a normal game and
+ * still perfectly well defined in a shuffled one. Shredder-FEN instead names
+ * the rook's file outright (`HAha`), which is what this writes back out for a
+ * shuffled position, since `KQkq` there would be read differently by anything
+ * that assumed a normal array.
+ *
+ * A flag whose rook cannot be located falls back to the standard file rather
+ * than being dropped. That keeps a hand-written FEN round-tripping through
+ * `toFen` unchanged, and costs nothing: `addCastlingMoves` checks that the king
+ * and rook are actually on those squares before it offers the move.
+ */
+function readCastlingField(
+  board: Board,
+  field: string,
+): { rights: CastlingRights; files: CastlingSetup } {
+  const rights = noCastlingRights();
+  const files = standardCastlingSetup();
+
+  if (field === "-") {
+    return { rights, files };
+  }
+
+  for (const color of ["w", "b"] as const) {
+    const white = color === "w";
+    const kingFile = kingFileOnHomeRank(board, color);
+    const rooks = rookFilesOnHomeRank(board, color);
+    const side = files[color];
+
+    if (kingFile !== null) {
+      side.king = kingFile;
+    }
+
+    const outermost = (kingSide: boolean): number | null => {
+      if (kingFile === null) {
+        return null;
+      }
+      const candidates = rooks.filter((file) =>
+        kingSide ? file > kingFile : file < kingFile,
+      );
+      if (candidates.length === 0) {
+        return null;
+      }
+      return kingSide
+        ? candidates[candidates.length - 1]!
+        : candidates[0]!;
+    };
+
+    for (const char of field) {
+      const isOurs = white ? char === char.toUpperCase() : char === char.toLowerCase();
+      if (!isOurs) {
+        continue;
+      }
+
+      const upper = char.toUpperCase();
+
+      if (upper === "K") {
+        rights[white ? "whiteKingSide" : "blackKingSide"] = true;
+        side.kingRook = outermost(true) ?? STANDARD_CASTLING_FILES.kingRook;
+        continue;
+      }
+
+      if (upper === "Q") {
+        rights[white ? "whiteQueenSide" : "blackQueenSide"] = true;
+        side.queenRook = outermost(false) ?? STANDARD_CASTLING_FILES.queenRook;
+        continue;
+      }
+
+      // Shredder-FEN: the letter is the rook's file, and which side it is
+      // depends only on whether it stands right or left of the king.
+      const rookFile = FILES.indexOf(char.toLowerCase());
+      if (rookFile < 0) {
+        continue;
+      }
+
+      // With no king on the back rank there is no "left" or "right" to sort it
+      // into, and the flag is unusable either way.
+      if (kingFile === null) {
+        continue;
+      }
+
+      if (rookFile > kingFile) {
+        rights[white ? "whiteKingSide" : "blackKingSide"] = true;
+        side.kingRook = rookFile;
+      } else if (rookFile < kingFile) {
+        rights[white ? "whiteQueenSide" : "blackQueenSide"] = true;
+        side.queenRook = rookFile;
+      }
+    }
+  }
+
+  return { rights, files };
+}
+
+/** The castling field of a FEN, `KQkq` or Shredder-FEN's file letters. */
+function writeCastlingField(position: Position): string {
+  const standard = isStandardCastlingSetup(position.castlingFiles);
+
+  const letters = CASTLING_ORDER.filter(([key]) => position.castling[key]).map(
+    ([key, flag]) => {
+      if (standard) {
+        return flag;
+      }
+
+      const white = key.startsWith("white");
+      const files = position.castlingFiles[white ? "w" : "b"];
+      const file = key.endsWith("KingSide") ? files.kingRook : files.queenRook;
+      const letter = FILES[file] ?? "";
+
+      return white ? letter.toUpperCase() : letter;
+    },
+  );
+
+  return letters.join("") || "-";
+}
+
 export function parseFen(fen: string): Position {
   const parts = fen.trim().split(/\s+/);
   const [placement, turn, castling, enPassant, halfmove, fullmove] = parts;
@@ -151,12 +338,7 @@ export function parseFen(fen: string): Position {
     throw new Error(`Invalid FEN: bad side to move "${turn}"`);
   }
 
-  const rights = noCastlingRights();
-  for (const [key, flag] of CASTLING_ORDER) {
-    if (castling.includes(flag)) {
-      rights[key] = true;
-    }
-  }
+  const { rights, files } = readCastlingField(board, castling);
 
   const enPassantSquare = enPassant === "-" ? null : fromAlgebraic(enPassant);
   if (enPassant !== "-" && enPassantSquare === null) {
@@ -202,6 +384,7 @@ export function parseFen(fen: string): Position {
     board,
     turn,
     castling: rights,
+    castlingFiles: files,
     enPassant: enPassantSquare,
     halfmoveClock,
     fullmoveNumber,
@@ -234,10 +417,7 @@ export function toFen(position: Position): string {
     rows.push(row);
   }
 
-  const castling =
-    CASTLING_ORDER.filter(([key]) => position.castling[key])
-      .map(([, flag]) => flag)
-      .join("") || "-";
+  const castling = writeCastlingField(position);
 
   const enPassant =
     position.enPassant === null ? "-" : toAlgebraic(position.enPassant);

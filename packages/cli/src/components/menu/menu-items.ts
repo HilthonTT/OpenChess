@@ -45,6 +45,15 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
   {
+    id: "rush",
+    title: "Puzzle Rush",
+    icon: "⏱",
+    description: "Race the clock, three mistakes",
+    action(ctx) {
+      ctx.navigate("/rush");
+    },
+  },
+  {
     id: "challenges",
     title: "Challenges",
     icon: "⚔",

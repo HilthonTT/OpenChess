@@ -194,6 +194,44 @@ const DRIVE_TO_EDGE = 12;
 const DRIVE_KINGS_TOGETHER = 6;
 
 /**
+ * What one engine cares about relative to another.
+ *
+ * Every weight is a multiplier on the constants above, and the default is all
+ * ones — which is to say the evaluation as it was before any of this existed.
+ * They are what separates one bot from another: a `material` under 1 alongside
+ * a `pieceSquares` over it produces an engine that will give up a pawn for
+ * activity without being told what a gambit is, and the same trick in reverse
+ * produces one that hoards.
+ *
+ * Only *ratios* matter. Scaling every weight by the same factor scales the
+ * whole score and changes no decision, which is worth knowing when tuning one:
+ * raising a term does nothing unless something else stays where it was.
+ */
+export type EvalWeights = {
+  /** Raw piece values — how much the engine minds being down material. */
+  material: number;
+  /** The piece-square tables: how much it minds where its pieces stand. */
+  pieceSquares: number;
+  /** Doubled and isolated pawns. */
+  pawnStructure: number;
+  passedPawns: number;
+  bishopPair: number;
+  rookFiles: number;
+  /** The pawn shield in front of a king that has castled. */
+  kingSafety: number;
+};
+
+export const DEFAULT_EVAL_WEIGHTS: EvalWeights = Object.freeze({
+  material: 1,
+  pieceSquares: 1,
+  pawnStructure: 1,
+  passedPawns: 1,
+  bishopPair: 1,
+  rookFiles: 1,
+  kingSafety: 1,
+});
+
+/**
  * Pawn structure, gathered in one pass so the scoring pass can ask about a file
  * without rescanning the board.
  *
@@ -315,7 +353,10 @@ function kingShield(position: Position, square: number, white: boolean): number 
  * Static evaluation in centipawns from the side-to-move's point of view, as
  * negamax expects.
  */
-export function evaluate(position: Position): number {
+export function evaluate(
+  position: Position,
+  weights: EvalWeights = DEFAULT_EVAL_WEIGHTS,
+): number {
   gatherPawns(position);
 
   let midgame = 0;
@@ -348,8 +389,11 @@ export function evaluate(position: Position): number {
     phase += PHASE_WEIGHTS[type];
 
     const material = MATERIAL[type];
-    midgame += sign * (material + MIDGAME_TABLES[type][tableSquare]!);
-    endgame += sign * (material + ENDGAME_TABLES[type][tableSquare]!);
+    const scaled = material * weights.material;
+    midgame +=
+      sign * (scaled + MIDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
+    endgame +=
+      sign * (scaled + ENDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
 
     if (white) {
       whiteMaterial += material;
@@ -366,13 +410,13 @@ export function evaluate(position: Position): number {
         const onFile = white ? WHITE_PAWNS_ON_FILE : BLACK_PAWNS_ON_FILE;
 
         if (onFile[file]! > 1) {
-          midgame += sign * DOUBLED_PAWN_MIDGAME;
-          endgame += sign * DOUBLED_PAWN_ENDGAME;
+          midgame += sign * DOUBLED_PAWN_MIDGAME * weights.pawnStructure;
+          endgame += sign * DOUBLED_PAWN_ENDGAME * weights.pawnStructure;
         }
 
         if (isIsolated(onFile, file)) {
-          midgame += sign * ISOLATED_PAWN_MIDGAME;
-          endgame += sign * ISOLATED_PAWN_ENDGAME;
+          midgame += sign * ISOLATED_PAWN_MIDGAME * weights.pawnStructure;
+          endgame += sign * ISOLATED_PAWN_ENDGAME * weights.pawnStructure;
         }
 
         const passed = white
@@ -382,8 +426,8 @@ export function evaluate(position: Position): number {
         if (passed) {
           // How far the pawn has come, from its own side of the board.
           const advance = white ? rank : 7 - rank;
-          midgame += sign * PASSED_PAWN_MIDGAME[advance]!;
-          endgame += sign * PASSED_PAWN_ENDGAME[advance]!;
+          midgame += sign * PASSED_PAWN_MIDGAME[advance]! * weights.passedPawns;
+          endgame += sign * PASSED_PAWN_ENDGAME[advance]! * weights.passedPawns;
         }
         break;
       }
@@ -403,15 +447,21 @@ export function evaluate(position: Position): number {
         const enemy = white ? BLACK_PAWNS_ON_FILE : WHITE_PAWNS_ON_FILE;
 
         if (own[file] === 0) {
-          const bonus = enemy[file] === 0 ? ROOK_OPEN_FILE : ROOK_SEMI_OPEN_FILE;
+          const bonus =
+            (enemy[file] === 0 ? ROOK_OPEN_FILE : ROOK_SEMI_OPEN_FILE) *
+            weights.rookFiles;
           midgame += sign * bonus;
-          endgame += sign * Math.round(bonus / 2);
+          endgame += sign * (bonus / 2);
         }
         break;
       }
 
       case "k":
-        midgame += sign * kingShield(position, square, white) * SHIELD_HOLE;
+        midgame +=
+          sign *
+          kingShield(position, square, white) *
+          SHIELD_HOLE *
+          weights.kingSafety;
         if (white) {
           whiteKing = square;
         } else {
@@ -425,12 +475,12 @@ export function evaluate(position: Position): number {
   }
 
   if (whiteBishops >= 2) {
-    midgame += BISHOP_PAIR_MIDGAME;
-    endgame += BISHOP_PAIR_ENDGAME;
+    midgame += BISHOP_PAIR_MIDGAME * weights.bishopPair;
+    endgame += BISHOP_PAIR_ENDGAME * weights.bishopPair;
   }
   if (blackBishops >= 2) {
-    midgame -= BISHOP_PAIR_MIDGAME;
-    endgame -= BISHOP_PAIR_ENDGAME;
+    midgame -= BISHOP_PAIR_MIDGAME * weights.bishopPair;
+    endgame -= BISHOP_PAIR_ENDGAME * weights.bishopPair;
   }
 
   // The mating drive. With pawns on the board a material lead plays itself — push

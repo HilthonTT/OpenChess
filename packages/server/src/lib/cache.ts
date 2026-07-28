@@ -20,7 +20,11 @@ import { redis } from "./upstash";
  * may turn a cache problem into a request failure.
  */
 
-export type CacheNamespace = "leaderboard" | "titles" | "achievements";
+export type CacheNamespace =
+  | "leaderboard"
+  | "titles"
+  | "achievements"
+  | "puzzle-themes";
 
 function versionKey(namespace: CacheNamespace): string {
   return `cache:${namespace}:version`;

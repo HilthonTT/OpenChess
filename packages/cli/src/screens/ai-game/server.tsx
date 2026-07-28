@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useNavigate } from "react-router";
-import { isGameOver, timeControlFor, toAlgebraic } from "@openchess/shared";
+import {
+  isGameOver,
+  PERSONALITIES,
+  timeControlFor,
+  toAlgebraic,
+} from "@openchess/shared";
 import type { Color, PromotionPiece } from "@openchess/shared";
 import { ErrorNotice } from "../../components/error-notice";
 import { GameScreen } from "../../components/game-screen";
@@ -15,8 +20,6 @@ import {
   flagGame,
   resignGame,
   sendMove,
-  toEngineDifficulty,
-  toServerDifficulty,
   type ServerGame,
 } from "../../lib/games";
 import { useAuth } from "../../providers/auth";
@@ -31,12 +34,7 @@ import { useClock } from "../../hooks/use-clock";
 import { useGameKeys } from "../../hooks/use-game-keys";
 import { useMoveSelection } from "../../hooks/use-move-selection";
 import { useReplayedGame } from "../../hooks/use-replayed-game";
-import {
-  DIFFICULTY_LABELS,
-  Setup,
-  describeAiStatus,
-  type SetupChoice,
-} from "./setup";
+import { Setup, describeAiStatus, type SetupChoice } from "./setup";
 import { LocalAIGame } from "./local";
 import { errorMessage } from "../../lib/utils";
 
@@ -99,9 +97,10 @@ export function ServerAIGame() {
     setPhase({ kind: "creating" });
 
     void createAiGame({
-      difficulty: toServerDifficulty(choice.difficulty),
+      personality: choice.personality,
       color: choice.color === "w" ? "white" : "black",
       timeControl: choice.timeControl,
+      variant: choice.variant,
     })
       .then((game) => setPhase({ kind: "playing", game }))
       .catch((error) =>
@@ -204,7 +203,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   const [pending, setPending] = useState(false);
   const [confirmingResign, setConfirmingResign] = useState(false);
 
-  const game = useReplayedGame(server.history);
+  const game = useReplayedGame(server.history, server.startFen);
   const { position, status } = game;
   const over = server.result !== null || isGameOver(status);
 
@@ -338,10 +337,13 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
           )
         : null;
 
+      // A new game keeps the opponent, the clock and the rules that were just
+      // played — including a shuffled one, which the server redeals.
       const created = await createAiGame({
-        difficulty: server.difficulty ?? "MEDIUM",
+        personality: server.personality ?? "maestro",
         color: human === "w" ? "white" : "black",
         timeControl: preset?.key ?? null,
+        variant: server.variant,
       });
       setServer(created);
       cursor.resetCursor();
@@ -472,8 +474,10 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   return (
     <GameScreen
       title={`Play vs AI · ${
-        DIFFICULTY_LABELS[toEngineDifficulty(server.difficulty)]
-      }`}
+        server.personality
+          ? PERSONALITIES[server.personality].name
+          : "Engine"
+      }${server.variant === "CHESS960" ? " · Chess960" : ""}`}
       width={58}
       onEscape={handleEscape}
       footer={

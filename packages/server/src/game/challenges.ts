@@ -2,11 +2,13 @@ import {
   Prisma,
   type Challenge as ChallengeRow,
   type ChallengeColor,
+  type GameVariant,
   type User,
 } from "@openchess/database";
 import { db } from "@openchess/database/client";
 import {
   createGame,
+  randomChess960Fen,
   timeControlFor,
   toFen,
   type TimeControlKey,
@@ -75,6 +77,7 @@ export type ChallengeView = {
   challenged: { username: string } | null;
   /** The colour the challenger asked for. */
   color: ChallengeColor;
+  variant: GameVariant;
   timeControl: TimeControlKey | null;
   status: ChallengeRow["status"];
   gameId: string | null;
@@ -114,6 +117,7 @@ function view(row: ChallengeWithPeople, userId: string): ChallengeView {
     },
     challenged: row.challenged ? { username: row.challenged.username } : null,
     color: row.color,
+    variant: row.variant,
     timeControl: toTimeControlKey(row.clock),
     status: row.status,
     gameId: row.gameId,
@@ -132,6 +136,7 @@ export async function createChallenge(input: {
   user: User;
   opponentUsername?: string | null;
   color?: ChallengeColor;
+  variant?: GameVariant;
   timeControl?: TimeControlKey | null;
 }): Promise<ChallengeView> {
   let challengedId: string | null = null;
@@ -203,6 +208,7 @@ export async function createChallenge(input: {
           challengerId: input.user.id,
           challengedId,
           color: input.color ?? "RANDOM",
+          variant: input.variant ?? "STANDARD",
           clock: toClockPreset(input.timeControl),
           expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
         },
@@ -302,6 +308,9 @@ export async function createRematch(input: {
     opponentUsername: opponent.username,
     // Swapped: whoever had black asks for white.
     color: yourColor === "w" ? "BLACK" : "WHITE",
+    // A rematch of a shuffled game is a shuffled game — and a fresh array, not
+    // the one just played.
+    variant: game.variant,
     timeControl,
   });
 }
@@ -460,13 +469,21 @@ export async function acceptChallenge(input: {
 
         const timeControl = toTimeControlKey(row.clock);
 
+        // The array is drawn here rather than when the challenge was sent, so
+        // a challenge that sat in an inbox overnight cannot have been studied
+        // by the player who sent it.
+        const startFen =
+          row.variant === "CHESS960" ? randomChess960Fen() : null;
+
         const game = await tx.game.create({
           data: {
             mode: "PVP",
+            variant: row.variant,
+            startFen,
             whitePlayerId: challengerIsWhite ? row.challengerId : input.user.id,
             blackPlayerId: challengerIsWhite ? input.user.id : row.challengerId,
             moves: [],
-            currentFen: toFen(createGame().position),
+            currentFen: toFen(createGame(startFen ?? undefined).position),
             ...initialClockData(timeControl),
           },
         });

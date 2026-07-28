@@ -29,6 +29,18 @@
  * whole family shares one — so they are here to sort and label, not to identify.
  */
 
+/**
+ * The kind of game a line is asking for, which is what lets one bot open like
+ * another. Coarse on purpose — these are four temperaments, not a taxonomy —
+ * and optional, since most lines are simply normal.
+ *
+ * - `gambit` offers material for time or the initiative.
+ * - `sharp` keeps the position unbalanced and the kings uncomfortable.
+ * - `solid` trades sharpness away for a structure that is hard to break.
+ * - `classical` occupies the centre and develops at it, the main-line answer.
+ */
+export type OpeningStyle = "gambit" | "sharp" | "solid" | "classical";
+
 export type OpeningLine = {
   /** ECO code, e.g. `C50`. */
   eco: string;
@@ -38,6 +50,13 @@ export type OpeningLine = {
   moves: string[];
   /** Relative pull along the whole line; defaults to 1. */
   weight?: number;
+  /**
+   * The temperament this line serves, when it has a clear one. Like `weight`,
+   * it is credited to every move along the line rather than to the last, so a
+   * bot asked for gambits is pulled towards `f4` from the very first move
+   * rather than only once it is already in the King's Gambit.
+   */
+  style?: OpeningStyle;
 };
 
 export const OPENING_LINES: readonly OpeningLine[] = [
@@ -63,42 +82,49 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C60",
     name: "Ruy López",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bb5"],
     weight: 4,
   },
   {
     eco: "C65",
     name: "Ruy López: Berlin Defence",
+    style: "solid",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6"],
     weight: 3,
   },
   {
     eco: "C67",
     name: "Ruy López: Berlin Defence, Open Variation",
+    style: "solid",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6", "O-O", "Nxe4"],
     weight: 2,
   },
   {
     eco: "C70",
     name: "Ruy López: Morphy Defence",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4"],
     weight: 3,
   },
   {
     eco: "C68",
     name: "Ruy López: Exchange Variation",
+    style: "solid",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Bxc6", "dxc6"],
     weight: 2,
   },
   {
     eco: "C84",
     name: "Ruy López: Closed Defence",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6", "O-O", "Be7"],
     weight: 2,
   },
   {
     eco: "C89",
     name: "Ruy López: Marshall Attack",
+    style: "gambit",
     moves: [
       "e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6",
       "O-O", "Be7", "Re1", "b5", "Bb3", "O-O", "c3", "d5",
@@ -109,35 +135,41 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C50",
     name: "Italian Game",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4"],
     weight: 4,
   },
   {
     eco: "C50",
     name: "Italian Game: Giuoco Piano",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5"],
     weight: 3,
   },
   {
     eco: "C53",
     name: "Italian Game: Giuoco Piano, Main Line",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "c3"],
     weight: 2,
   },
   {
     eco: "C51",
     name: "Italian Game: Evans Gambit",
+    style: "gambit",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "b4"],
   },
   {
     eco: "C55",
     name: "Italian Game: Two Knights Defence",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6"],
     weight: 3,
   },
   {
     eco: "C57",
     name: "Two Knights Defence: Fried Liver Attack",
+    style: "gambit",
     moves: [
       "e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6",
       "Ng5", "d5", "exd5", "Nxd5", "Nxf7",
@@ -146,11 +178,13 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C58",
     name: "Two Knights Defence: Polerio Defence",
+    style: "sharp",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6", "Ng5", "d5", "exd5", "Na5"],
   },
   {
     eco: "C50",
     name: "Italian Game: Hungarian Defence",
+    style: "solid",
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Be7"],
   },
 
@@ -158,23 +192,27 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C44",
     name: "Scotch Game",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "d4"],
     weight: 3,
   },
   {
     eco: "C45",
     name: "Scotch Game: Classical Variation",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "d4", "exd4", "Nxd4", "Bc5"],
     weight: 2,
   },
   {
     eco: "C44",
     name: "Scotch Gambit",
+    style: "gambit",
     moves: ["e4", "e5", "Nf3", "Nc6", "d4", "exd4", "Bc4"],
   },
   {
     eco: "C44",
     name: "Ponziani Opening",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "c3"],
   },
 
@@ -182,22 +220,26 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C46",
     name: "Three Knights Opening",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Nc3"],
   },
   {
     eco: "C47",
     name: "Four Knights Game",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Nc3", "Nf6"],
     weight: 2,
   },
   {
     eco: "C48",
     name: "Four Knights Game: Spanish Variation",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Nc3", "Nf6", "Bb5"],
   },
   {
     eco: "C49",
     name: "Four Knights Game: Double Spanish",
+    style: "classical",
     moves: ["e4", "e5", "Nf3", "Nc6", "Nc3", "Nf6", "Bb5", "Bb4"],
   },
 
@@ -205,46 +247,53 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C42",
     name: "Petrov's Defence",
+    style: "solid",
     moves: ["e4", "e5", "Nf3", "Nf6"],
     weight: 2,
   },
-  { eco: "C41", name: "Philidor Defence", moves: ["e4", "e5", "Nf3", "d6"] },
-  { eco: "C40", name: "Latvian Gambit", moves: ["e4", "e5", "Nf3", "f5"] },
-  { eco: "C40", name: "Elephant Gambit", moves: ["e4", "e5", "Nf3", "d5"] },
+  { eco: "C41", name: "Philidor Defence", style: "solid", moves: ["e4", "e5", "Nf3", "d6"] },
+  { eco: "C40", name: "Latvian Gambit", style: "gambit", moves: ["e4", "e5", "Nf3", "f5"] },
+  { eco: "C40", name: "Elephant Gambit", style: "gambit", moves: ["e4", "e5", "Nf3", "d5"] },
 
   // Second-move alternatives for white
   {
     eco: "C30",
     name: "King's Gambit",
+    style: "gambit",
     moves: ["e4", "e5", "f4"],
     weight: 2,
   },
   {
     eco: "C33",
     name: "King's Gambit Accepted",
+    style: "gambit",
     moves: ["e4", "e5", "f4", "exf4"],
   },
   {
     eco: "C31",
     name: "King's Gambit Declined: Falkbeer Countergambit",
+    style: "gambit",
     moves: ["e4", "e5", "f4", "d5"],
   },
-  { eco: "C25", name: "Vienna Game", moves: ["e4", "e5", "Nc3"], weight: 2 },
+  { eco: "C25", name: "Vienna Game", style: "classical", moves: ["e4", "e5", "Nc3"], weight: 2 },
   {
     eco: "C29",
     name: "Vienna Gambit",
+    style: "gambit",
     moves: ["e4", "e5", "Nc3", "Nf6", "f4"],
   },
-  { eco: "C23", name: "Bishop's Opening", moves: ["e4", "e5", "Bc4"] },
-  { eco: "C21", name: "Centre Game", moves: ["e4", "e5", "d4"] },
+  { eco: "C23", name: "Bishop's Opening", style: "classical", moves: ["e4", "e5", "Bc4"] },
+  { eco: "C21", name: "Centre Game", style: "gambit", moves: ["e4", "e5", "d4"] },
   {
     eco: "C22",
     name: "Centre Game Accepted",
+    style: "gambit",
     moves: ["e4", "e5", "d4", "exd4", "Qxd4"],
   },
   {
     eco: "C21",
     name: "Danish Gambit",
+    style: "gambit",
     moves: ["e4", "e5", "d4", "exd4", "c3"],
   },
 
@@ -271,12 +320,14 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "B30",
     name: "Sicilian Defence: Old Sicilian",
+    style: "sharp",
     moves: ["e4", "c5", "Nf3", "Nc6"],
     weight: 2,
   },
   {
     eco: "B90",
     name: "Sicilian Defence: Najdorf Variation",
+    style: "sharp",
     moves: [
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6",
     ],
@@ -285,6 +336,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "B70",
     name: "Sicilian Defence: Dragon Variation",
+    style: "sharp",
     moves: [
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "g6",
     ],
@@ -293,6 +345,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "B80",
     name: "Sicilian Defence: Scheveningen Variation",
+    style: "sharp",
     moves: [
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "e6",
     ],
@@ -300,6 +353,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "B60",
     name: "Sicilian Defence: Richter-Rauzer Attack",
+    style: "sharp",
     moves: [
       "e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "d6", "Bg5",
     ],
@@ -307,6 +361,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "B33",
     name: "Sicilian Defence: Sveshnikov Variation",
+    style: "sharp",
     moves: [
       "e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "e5",
     ],
@@ -321,6 +376,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "B21",
     name: "Sicilian Defence: Smith-Morra Gambit",
+    style: "gambit",
     moves: ["e4", "c5", "d4", "cxd4", "c3"],
   },
 
@@ -335,6 +391,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C01",
     name: "French Defence: Exchange Variation",
+    style: "solid",
     moves: ["e4", "e6", "d4", "d5", "exd5", "exd5"],
   },
   {
@@ -352,42 +409,49 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "C11",
     name: "French Defence: Classical Variation",
+    style: "solid",
     moves: ["e4", "e6", "d4", "d5", "Nc3", "Nf6"],
   },
   {
     eco: "C15",
     name: "French Defence: Winawer Variation",
+    style: "sharp",
     moves: ["e4", "e6", "d4", "d5", "Nc3", "Bb4"],
     weight: 2,
   },
 
   // Caro-Kann
-  { eco: "B10", name: "Caro-Kann Defence", moves: ["e4", "c6"], weight: 3 },
+  { eco: "B10", name: "Caro-Kann Defence", style: "solid", moves: ["e4", "c6"], weight: 3 },
   {
     eco: "B12",
     name: "Caro-Kann Defence: Advance Variation",
+    style: "solid",
     moves: ["e4", "c6", "d4", "d5", "e5"],
     weight: 2,
   },
   {
     eco: "B13",
     name: "Caro-Kann Defence: Exchange Variation",
+    style: "solid",
     moves: ["e4", "c6", "d4", "d5", "exd5", "cxd5"],
   },
   {
     eco: "B15",
     name: "Caro-Kann Defence: Main Line",
+    style: "solid",
     moves: ["e4", "c6", "d4", "d5", "Nc3"],
     weight: 2,
   },
   {
     eco: "B18",
     name: "Caro-Kann Defence: Classical Variation",
+    style: "solid",
     moves: ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5"],
   },
   {
     eco: "B17",
     name: "Caro-Kann Defence: Steinitz Variation",
+    style: "solid",
     moves: ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nd7"],
   },
   {
@@ -403,11 +467,12 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     name: "Scandinavian Defence: Main Line",
     moves: ["e4", "d5", "exd5", "Qxd5", "Nc3", "Qa5"],
   },
-  { eco: "B02", name: "Alekhine's Defence", moves: ["e4", "Nf6"] },
-  { eco: "B06", name: "Modern Defence", moves: ["e4", "g6"] },
+  { eco: "B02", name: "Alekhine's Defence", style: "sharp", moves: ["e4", "Nf6"] },
+  { eco: "B06", name: "Modern Defence", style: "sharp", moves: ["e4", "g6"] },
   {
     eco: "B07",
     name: "Pirc Defence",
+    style: "sharp",
     moves: ["e4", "d6", "d4", "Nf6", "Nc3"],
   },
   { eco: "B00", name: "Nimzowitsch Defence", moves: ["e4", "Nc6"] },
@@ -418,51 +483,58 @@ export const OPENING_LINES: readonly OpeningLine[] = [
 
   // 1.d4 d5
   { eco: "D00", name: "Queen's Pawn Game", moves: ["d4", "d5"], weight: 4 },
-  { eco: "D06", name: "Queen's Gambit", moves: ["d4", "d5", "c4"], weight: 4 },
+  { eco: "D06", name: "Queen's Gambit", style: "classical", moves: ["d4", "d5", "c4"], weight: 4 },
   {
     eco: "D20",
     name: "Queen's Gambit Accepted",
+    style: "gambit",
     moves: ["d4", "d5", "c4", "dxc4"],
     weight: 2,
   },
   {
     eco: "D30",
     name: "Queen's Gambit Declined",
+    style: "solid",
     moves: ["d4", "d5", "c4", "e6"],
     weight: 3,
   },
   {
     eco: "D35",
     name: "Queen's Gambit Declined: Exchange Variation",
+    style: "solid",
     moves: ["d4", "d5", "c4", "e6", "Nc3", "Nf6", "cxd5", "exd5"],
   },
   {
     eco: "D37",
     name: "Queen's Gambit Declined: Three Knights Variation",
+    style: "solid",
     moves: ["d4", "d5", "c4", "e6", "Nc3", "Nf6", "Nf3", "Be7"],
   },
-  { eco: "D10", name: "Slav Defence", moves: ["d4", "d5", "c4", "c6"], weight: 3 },
+  { eco: "D10", name: "Slav Defence", style: "solid", moves: ["d4", "d5", "c4", "c6"], weight: 3 },
   {
     eco: "D43",
     name: "Semi-Slav Defence",
+    style: "solid",
     moves: ["d4", "d5", "c4", "c6", "Nf3", "Nf6", "Nc3", "e6"],
   },
   { eco: "D07", name: "Chigorin Defence", moves: ["d4", "d5", "c4", "Nc6"] },
   {
     eco: "D02",
     name: "London System",
+    style: "solid",
     moves: ["d4", "d5", "Nf3", "Nf6", "Bf4"],
     weight: 2,
   },
   {
     eco: "D05",
     name: "Colle System",
+    style: "solid",
     moves: ["d4", "d5", "Nf3", "Nf6", "e3"],
   },
 
   // 1.d4 Nf6 — the Indian defences
   { eco: "A45", name: "Indian Defence", moves: ["d4", "Nf6"], weight: 5 },
-  { eco: "A45", name: "Trompowsky Attack", moves: ["d4", "Nf6", "Bg5"] },
+  { eco: "A45", name: "Trompowsky Attack", style: "sharp", moves: ["d4", "Nf6", "Bg5"] },
   {
     eco: "A46",
     name: "Indian Defence: Knights Variation",
@@ -484,49 +556,56 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "E20",
     name: "Nimzo-Indian Defence",
+    style: "classical",
     moves: ["d4", "Nf6", "c4", "e6", "Nc3", "Bb4"],
     weight: 3,
   },
   {
     eco: "E12",
     name: "Queen's Indian Defence",
+    style: "solid",
     moves: ["d4", "Nf6", "c4", "e6", "Nf3", "b6"],
     weight: 2,
   },
   {
     eco: "E60",
     name: "King's Indian Defence",
+    style: "sharp",
     moves: ["d4", "Nf6", "c4", "g6"],
     weight: 3,
   },
   {
     eco: "E61",
     name: "King's Indian Defence: Normal Variation",
+    style: "sharp",
     moves: ["d4", "Nf6", "c4", "g6", "Nc3", "Bg7"],
     weight: 2,
   },
   {
     eco: "D80",
     name: "Grünfeld Defence",
+    style: "sharp",
     moves: ["d4", "Nf6", "c4", "g6", "Nc3", "d5"],
     weight: 2,
   },
-  { eco: "A56", name: "Benoni Defence", moves: ["d4", "Nf6", "c4", "c5"] },
+  { eco: "A56", name: "Benoni Defence", style: "sharp", moves: ["d4", "Nf6", "c4", "c5"] },
   {
     eco: "A57",
     name: "Benko Gambit",
+    style: "gambit",
     moves: ["d4", "Nf6", "c4", "c5", "d5", "b5"],
   },
 
   // The rest of 1.d4
-  { eco: "A80", name: "Dutch Defence", moves: ["d4", "f5"] },
+  { eco: "A80", name: "Dutch Defence", style: "sharp", moves: ["d4", "f5"] },
   { eco: "A40", name: "Queen's Pawn: Modern Defence", moves: ["d4", "g6"] },
 
   // ── Flank openings ──────────────────────────────────────────────────────
-  { eco: "A04", name: "Réti Opening", moves: ["Nf3"], weight: 3 },
+  { eco: "A04", name: "Réti Opening", style: "solid", moves: ["Nf3"], weight: 3 },
   {
     eco: "A09",
     name: "Réti Opening: Main Line",
+    style: "solid",
     moves: ["Nf3", "d5", "c4"],
   },
   { eco: "A07", name: "King's Indian Attack", moves: ["Nf3", "d5", "g3"] },
@@ -534,11 +613,13 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   {
     eco: "A20",
     name: "English Opening: King's English",
+    style: "classical",
     moves: ["c4", "e5"],
   },
   {
     eco: "A30",
     name: "English Opening: Symmetrical Variation",
+    style: "solid",
     moves: ["c4", "c5"],
   },
   {

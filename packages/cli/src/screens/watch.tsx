@@ -287,7 +287,7 @@ function SpectatorBoard({
     }
   });
 
-  const board = useReplayedGame(game?.history ?? []);
+  const board = useReplayedGame(game?.history ?? [], game?.startFen ?? null);
   const over = game?.result != null;
 
   // No `onExpire`: a watcher has no standing to settle anyone's game on time.

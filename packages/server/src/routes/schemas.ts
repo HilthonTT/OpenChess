@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { PERSONALITY_ORDER, type PersonalityId } from "@openchess/shared";
 
 import {
   challengeLinksSchema,
@@ -21,6 +22,19 @@ export const SQUARE = /^[a-h][1-8]$/;
 export const difficultySchema = z
   .enum(["EASY", "MEDIUM", "HARD"])
   .openapi({ example: "MEDIUM" });
+
+/**
+ * Which bot, by its id in @openchess/shared's catalog. Enumerated from that
+ * catalog rather than written out here, so adding a bot cannot leave the API
+ * refusing to let anyone play it.
+ */
+export const personalitySchema = z
+  .enum(PERSONALITY_ORDER as [PersonalityId, ...PersonalityId[]])
+  .openapi({ example: "maestro" });
+
+export const gameVariantSchema = z
+  .enum(["STANDARD", "CHESS960"])
+  .openapi({ example: "STANDARD" });
 
 export const colorSchema = z.enum(["w", "b"]).openapi({ example: "w" });
 
@@ -102,7 +116,15 @@ export const gameSchema = z
   .object({
     id: z.string(),
     mode: z.enum(["AI", "PVP"]),
+    variant: gameVariantSchema,
+    /** The array the game began from, or null when it is the ordinary one.
+     * Replaying `history` without it puts a shuffled game's moves on the wrong
+     * pieces, so a client that rebuilds the board must honour it. */
+    startFen: z.string().nullable().openapi({ example: null }),
     difficulty: difficultySchema.nullable(),
+    /** Which bot is playing, in an AI game. Null in a PvP game, and on an AI
+     * game recorded before the bots had names. */
+    personality: personalitySchema.nullable().openapi({ example: null }),
     /** The other human in a PvP game; null in an AI game. */
     opponent: z
       .object({
@@ -149,7 +171,9 @@ export const gameSummarySchema = z
   .object({
     id: z.string(),
     mode: z.enum(["AI", "PVP"]),
+    variant: gameVariantSchema,
     difficulty: difficultySchema.nullable(),
+    personality: personalitySchema.nullable().openapi({ example: null }),
     yourColor: colorSchema,
     result: gameResultSchema.nullable(),
     ply: z.number().int(),
@@ -177,6 +201,9 @@ export const spectatorGameSchema = z
     id: z.string(),
     white: playerFaceSchema.nullable(),
     black: playerFaceSchema.nullable(),
+    variant: gameVariantSchema,
+    /** The array it began from; see `Game.startFen`. */
+    startFen: z.string().nullable().openapi({ example: null }),
     fen: z.string(),
     turn: colorSchema,
     status: gameStatusSchema,
@@ -231,6 +258,7 @@ export const challengeSchema = z
     challenged: z.object({ username: z.string() }).nullable(),
     /** The colour the challenger asked for. */
     color: challengeColorSchema,
+    variant: gameVariantSchema,
     timeControl: timeControlKeySchema.nullable(),
     status: z.enum([
       "PENDING",
@@ -255,6 +283,8 @@ export const createChallengeSchema = z
      */
     opponent: z.string().min(3).max(32).nullish(),
     color: challengeColorSchema.default("RANDOM"),
+    /** Omit for an ordinary game. The array is dealt on acceptance. */
+    variant: gameVariantSchema.default("STANDARD"),
     /** Omit or pass null for an untimed game. */
     timeControl: timeControlKeySchema.nullish(),
   })
@@ -270,10 +300,14 @@ export const challengeCodeParamsSchema = z.object({
 
 export const createGameSchema = z
   .object({
-    difficulty: difficultySchema,
+    /** Which bot to play. Its tier — and so what beating it pays — is the
+     * server's to read off the catalog, not the client's to claim. */
+    personality: personalitySchema,
     color: z.enum(["white", "black", "random"]).default("random"),
     /** Omit or pass null for an untimed game. */
     timeControl: timeControlKeySchema.nullish(),
+    /** Omit for an ordinary game. */
+    variant: gameVariantSchema.default("STANDARD"),
   })
   .openapi("CreateGame");
 
@@ -348,8 +382,105 @@ export const nextPuzzleSchema = z
     puzzle: puzzleSchema.nullable(),
     rating: z.number().int().openapi({ example: 1000 }),
     streak: z.number().int().openapi({ example: 3 }),
+    /** The theme this was filtered by, or null when it was not. */
+    theme: z.string().nullable().openapi({ example: null }),
   })
   .openapi("NextPuzzle");
+
+/**
+ * A theme tag. Left as a free string rather than an enum of the catalog: the
+ * tags come from whichever corpus was imported, and a fixed list here would
+ * refuse a filter the database can perfectly well answer.
+ */
+export const puzzleThemeKeySchema = z
+  .string()
+  .min(1)
+  .max(40)
+  .regex(/^[A-Za-z][A-Za-z0-9]*$/)
+  .openapi({ example: "fork" });
+
+export const puzzleThemeSchema = z
+  .object({
+    key: puzzleThemeKeySchema,
+    label: z.string().openapi({ example: "Fork" }),
+    group: z.string().openapi({ example: "motif" }),
+    /** Whether it is worth offering as something to train on its own. */
+    trainable: z.boolean(),
+    /** How many puzzles in the corpus carry it. */
+    available: z.number().int(),
+    /** Your own record at it. */
+    attempted: z.number().int(),
+    solved: z.number().int(),
+  })
+  .openapi("PuzzleTheme");
+
+export const rushModeSchema = z
+  .enum(["THREE_MINUTE", "FIVE_MINUTE", "SURVIVAL"])
+  .openapi({ example: "THREE_MINUTE" });
+
+export const rushRewardSchema = z
+  .object({
+    xp: z.number().int(),
+    coins: z.number().int(),
+    levelBefore: z.number().int(),
+    levelAfter: z.number().int(),
+    unlocked: z.array(unlockSchema),
+  })
+  .openapi("PuzzleRushReward");
+
+export const rushRunSchema = z
+  .object({
+    id: z.string(),
+    mode: rushModeSchema,
+    /** The score. */
+    solved: z.number().int(),
+    missed: z.number().int(),
+    livesLeft: z.number().int().openapi({ example: 3 }),
+    /** The puzzle to solve now; null once the run is over. */
+    puzzle: puzzleSchema.nullable(),
+    /** When the clock stops it; null on a survival run. */
+    endsAt: z.string().nullable().openapi({ example: null }),
+    endedAt: z.string().nullable().openapi({ example: null }),
+    over: z.boolean(),
+    /** Present only on the response that ends the run. */
+    rewards: rushRewardSchema.nullable(),
+    /** Your best at this mode, this run included. */
+    best: z.number().int(),
+  })
+  .openapi("PuzzleRushRun");
+
+export const rushMoveResultSchema = rushRunSchema
+  .extend({
+    /** What the last move did; null when the run was already over. */
+    outcome: z.enum(["continue", "solved", "wrong"]).nullable(),
+    /** The forced reply, when the puzzle is not finished yet. UCI. */
+    reply: z.string().nullable(),
+    /** Revealed once the puzzle is done with, right or wrong. */
+    solution: z.array(z.string()).nullable(),
+  })
+  .openapi("PuzzleRushMoveResult");
+
+export const rushStartSchema = z
+  .object({ mode: rushModeSchema.default("THREE_MINUTE") })
+  .openapi("StartPuzzleRush");
+
+export const rushLeaderboardEntrySchema = z
+  .object({
+    rank: z.number().int(),
+    username: z.string(),
+    title: z.string().nullable(),
+    solved: z.number().int(),
+    achievedAt: z.string(),
+  })
+  .openapi("PuzzleRushLeaderboardEntry");
+
+export const rushBestSchema = z
+  .object({
+    mode: rushModeSchema,
+    best: z.number().int(),
+    runs: z.number().int(),
+  })
+  .openapi("PuzzleRushBest");
 
 export const puzzleRewardSchema = z
   .object({

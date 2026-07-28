@@ -330,12 +330,17 @@ function ChallengeList() {
 }
 
 const WHO_W = 26;
-const CLOCK_W = 10;
+const CLOCK_W = 14;
 
 function clockLabel(challenge: ServerChallenge): string {
-  return challenge.timeControl
+  const clock = challenge.timeControl
     ? TIME_CONTROLS[challenge.timeControl].name
     : "Untimed";
+
+  // The variant rides in the clock column rather than taking one of its own:
+  // it is the rarer fact, and a row that never mentions it reads as standard —
+  // which is exactly what an unmarked challenge is.
+  return challenge.variant === "CHESS960" ? `${clock} 960` : clock;
 }
 
 function colorLabel(color: ChallengeColor): string {
@@ -420,6 +425,7 @@ function NewChallenge({
   const [opponent, setOpponent] = useState("");
   const [timeControl, setTimeControl] = useState<TimeControlKey | null>(null);
   const [color, setColor] = useState<ChallengeColor>("RANDOM");
+  const [variant, setVariant] = useState<"STANDARD" | "CHESS960">("STANDARD");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -431,6 +437,7 @@ function NewChallenge({
       const challenge = await createChallenge({
         opponent: opponent.trim() === "" ? null : opponent.trim(),
         color,
+        variant,
         timeControl,
       });
 
@@ -443,7 +450,7 @@ function NewChallenge({
       setMessage(errorMessage(cause));
       setPending(false);
     }
-  }, [color, onDone, opponent, timeControl]);
+  }, [color, onDone, opponent, timeControl, variant]);
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || pending) {
@@ -462,6 +469,14 @@ function NewChallenge({
         (value) =>
           COLOR_CYCLE[(COLOR_CYCLE.indexOf(value) + 1) % COLOR_CYCLE.length]!,
       );
+      return;
+    }
+
+    // `9` for the shuffled array, matching the local board's key for it. Held
+    // behind ctrl for the same reason the clock choices are: the name field has
+    // focus and would otherwise eat the digit.
+    if (key.name === "9" && key.ctrl) {
+      setVariant((value) => (value === "STANDARD" ? "CHESS960" : "STANDARD"));
       return;
     }
 
@@ -504,6 +519,14 @@ function NewChallenge({
           <span fg={theme.faint}>You play </span>
           <span fg={theme.cream}>{colorLabel(color)}</span>
           <span fg={theme.faint}>{"   tab to change"}</span>
+        </text>
+
+        <text>
+          <span fg={theme.faint}>Rules </span>
+          <span fg={theme.cream}>
+            {variant === "CHESS960" ? "Chess960" : "Standard"}
+          </span>
+          <span fg={theme.faint}>{"   ctrl+9 to change"}</span>
         </text>
 
         {message ? <text fg={theme.gold}>{message}</text> : null}

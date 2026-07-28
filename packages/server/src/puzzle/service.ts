@@ -1,8 +1,10 @@
 import { Prisma, type Puzzle as PuzzleRow, type User } from "@openchess/database";
 import { db } from "@openchess/database/client";
 import {
+  PUZZLE_THEMES,
   puzzleHint,
   puzzleRatingBand,
+  puzzleThemeLabel,
   solutionSan,
   startPuzzle,
   submitPuzzleMove,
@@ -11,6 +13,7 @@ import {
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import { satisfiedPuzzleCodes } from "../game/achievements";
+import { cached } from "../lib/cache";
 import { throwProblem } from "../lib/problem-details";
 import { levelFor } from "../game/rules";
 import { unlockAchievements, type Unlocked } from "../player/unlocks";
@@ -461,7 +464,13 @@ async function attemptedIds(
 async function pickPuzzle(
   userId: string,
   rating: number,
+  theme?: string | null,
 ): Promise<PuzzleRow | null> {
+  // `has` compiles to `themes @> ARRAY[$1]`, which is what the GIN index on the
+  // column answers. Without the theme the clause is absent entirely rather than
+  // matching everything, so the ordinary queue still seeks on the rating index.
+  const themed = theme ? { themes: { has: theme } } : {};
+
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const band = puzzleRatingBand(rating, attempt);
     const target = band.min + Math.random() * (band.max - band.min);
@@ -469,7 +478,7 @@ async function pickPuzzle(
     const unattempted = { attempts: { none: { userId } } };
 
     const above = await db.puzzle.findFirst({
-      where: { rating: { gte: target, lte: band.max }, ...unattempted },
+      where: { rating: { gte: target, lte: band.max }, ...unattempted, ...themed },
       orderBy: { rating: "asc" },
     });
 
@@ -478,7 +487,7 @@ async function pickPuzzle(
     }
 
     const below = await db.puzzle.findFirst({
-      where: { rating: { lte: target, gte: band.min }, ...unattempted },
+      where: { rating: { lte: target, gte: band.min }, ...unattempted, ...themed },
       orderBy: { rating: "desc" },
     });
 
@@ -489,9 +498,10 @@ async function pickPuzzle(
 
   // Every puzzle in range is spent. Fall back to anything unattempted at all,
   // so a player who has cleared their band still gets a puzzle rather than an
-  // empty screen.
+  // empty screen. The theme is kept: a player who asked to train forks would
+  // rather be told there are no forks left than be handed a skewer.
   return db.puzzle.findFirst({
-    where: { attempts: { none: { userId } } },
+    where: { attempts: { none: { userId } }, ...themed },
     orderBy: { rating: "asc" },
   });
 }
@@ -501,12 +511,17 @@ export type NextPuzzle = {
   /** The solver's current puzzle rating, for the header. */
   rating: number;
   streak: number;
+  /** The theme this was filtered by, echoed back so a client can show it. */
+  theme: string | null;
 };
 
-/** The next puzzle to serve this player. */
-export async function nextPuzzle(user: User): Promise<NextPuzzle> {
+/** The next puzzle to serve this player, optionally of one theme. */
+export async function nextPuzzle(
+  user: User,
+  theme?: string | null,
+): Promise<NextPuzzle> {
   const stats = await statsFor(user.id);
-  const row = await pickPuzzle(user.id, stats.puzzleRating);
+  const row = await pickPuzzle(user.id, stats.puzzleRating, theme);
 
   return {
     puzzle: row
@@ -517,6 +532,7 @@ export async function nextPuzzle(user: User): Promise<NextPuzzle> {
       : null,
     rating: stats.puzzleRating,
     streak: stats.currentPuzzleStreak,
+    theme: theme ?? null,
   };
 }
 
@@ -556,7 +572,12 @@ export async function dailyPuzzle(user: User): Promise<NextPuzzle> {
   const row = assigned ?? (await assignDailyPuzzle(today));
 
   if (!row) {
-    return { puzzle: null, rating: stats.puzzleRating, streak: stats.currentPuzzleStreak };
+    return {
+      puzzle: null,
+      rating: stats.puzzleRating,
+      streak: stats.currentPuzzleStreak,
+      theme: null,
+    };
   }
 
   const attempted = await attemptedIds(user.id, [row.id]);
@@ -568,6 +589,8 @@ export async function dailyPuzzle(user: User): Promise<NextPuzzle> {
     }),
     rating: stats.puzzleRating,
     streak: stats.currentPuzzleStreak,
+    // The daily is whatever it is; nobody filtered it.
+    theme: null,
   };
 }
 
@@ -631,6 +654,123 @@ export async function getPuzzle(
     attempted: attempted.has(row.id),
     daily: isTodaysPuzzle(row.dailyOn),
   });
+}
+
+export type PuzzleThemeSummary = {
+  key: string;
+  label: string;
+  group: string;
+  /** Whether it is worth offering as something to train on its own. */
+  trainable: boolean;
+  /** How many puzzles in the corpus carry it. */
+  available: number;
+  /** How many of them this player has been scored on, and how many they got. */
+  attempted: number;
+  solved: number;
+};
+
+type ThemeCountRow = { theme: string; total: bigint | number };
+type ThemeRecordRow = {
+  theme: string;
+  attempted: bigint | number;
+  solved: bigint | number;
+};
+
+/** Postgres hands back `bigint` for `count(*)`, which does not survive JSON. */
+function toCount(value: bigint | number): number {
+  return typeof value === "bigint" ? Number(value) : value;
+}
+
+/**
+ * How many puzzles carry each theme.
+ *
+ * A grouped `unnest` over the whole table, which is a sequential scan and the
+ * one query here that an imported corpus makes genuinely expensive. It is also
+ * a number that changes only when someone runs an import, so it is cached for
+ * an hour rather than computed per visitor.
+ */
+async function themeCounts(): Promise<Map<string, number>> {
+  const rows = await cached("puzzle-themes", "counts", 3600, async () => {
+    const result = await db.$queryRaw<ThemeCountRow[]>`
+      SELECT t.theme AS theme, COUNT(*) AS total
+      FROM "Puzzle" p
+      CROSS JOIN LATERAL unnest(p.themes) AS t(theme)
+      GROUP BY t.theme
+    `;
+
+    // Narrowed to JSON-safe values before it reaches the cache, which
+    // round-trips through JSON and cannot carry a bigint.
+    return result.map((row) => ({
+      theme: row.theme,
+      total: toCount(row.total),
+    }));
+  });
+
+  return new Map(rows.map((row) => [row.theme, row.total]));
+}
+
+/** This player's record at each theme they have met. */
+async function themeRecord(userId: string): Promise<Map<string, ThemeRecordRow>> {
+  const rows = await db.$queryRaw<ThemeRecordRow[]>`
+    SELECT t.theme AS theme,
+           COUNT(*) AS attempted,
+           COUNT(*) FILTER (WHERE a.solved) AS solved
+    FROM "PuzzleAttempt" a
+    JOIN "Puzzle" p ON p.id = a."puzzleId"
+    CROSS JOIN LATERAL unnest(p.themes) AS t(theme)
+    WHERE a."userId" = ${userId}
+    GROUP BY t.theme
+  `;
+
+  return new Map(rows.map((row) => [row.theme, row]));
+}
+
+/**
+ * The themes, what each is worth training, and how this player has done at it.
+ *
+ * The catalog leads rather than the corpus: a theme nobody has imported a
+ * puzzle for still shows, with a zero beside it, which is the honest answer to
+ * "can I train forks" on a seeded database. Anything the corpus tags that the
+ * catalog has never heard of is appended, so a fresh import is never silently
+ * half-hidden behind a list written months earlier.
+ */
+export async function puzzleThemeSummary(
+  user: User,
+): Promise<PuzzleThemeSummary[]> {
+  const [counts, record] = await Promise.all([
+    themeCounts(),
+    themeRecord(user.id),
+  ]);
+
+  const summarize = (
+    key: string,
+    label: string,
+    group: string,
+    trainable: boolean,
+  ): PuzzleThemeSummary => {
+    const mine = record.get(key);
+    return {
+      key,
+      label,
+      group,
+      trainable,
+      available: counts.get(key) ?? 0,
+      attempted: mine ? toCount(mine.attempted) : 0,
+      solved: mine ? toCount(mine.solved) : 0,
+    };
+  };
+
+  const known = PUZZLE_THEMES.map((entry) =>
+    summarize(entry.key, entry.label, entry.group, entry.trainable),
+  );
+
+  const catalogued = new Set(PUZZLE_THEMES.map((entry) => entry.key));
+  const extra = [...counts.keys()]
+    .filter((key) => !catalogued.has(key))
+    .sort()
+    .map((key) => summarize(key, puzzleThemeLabel(key), "motif", true));
+
+  return [...known, ...extra];
 }
 
 export type PuzzleHistoryEntry = {

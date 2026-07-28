@@ -78,6 +78,25 @@ export function satisfiedStreakCodes(day: number): string[] {
     .map(([code]) => code);
 }
 
+/**
+ * The Puzzle Rush rules, which key off a finished run's score alone. Kept
+ * here with the rest for the reason above: every unlock condition in the
+ * product should be readable in one file.
+ */
+const RUSH_RULES: Record<string, (solved: number) => boolean> = {
+  RUSH_FIRST: (solved) => solved >= 1,
+  RUSH_10: (solved) => solved >= 10,
+  RUSH_20: (solved) => solved >= 20,
+  RUSH_30: (solved) => solved >= 30,
+};
+
+/** The codes a run that solved `solved` puzzles satisfies. */
+export function satisfiedRushCodes(solved: number): string[] {
+  return Object.entries(RUSH_RULES)
+    .filter(([, rule]) => rule(solved))
+    .map(([code]) => code);
+}
+
 export type PuzzleUnlockContext = {
   solved: boolean;
   /** The player's solve count *after* this attempt. */

@@ -39,6 +39,7 @@ model User {
   gamesAsBlack Game[]            @relation("BlackPlayer")
 
   puzzleAttempts     PuzzleAttempt[]
+  puzzleRushRuns     PuzzleRushRun[]
   ratingSnapshots    RatingSnapshot[]
   challengesSent     Challenge[]      @relation("Challenger")
   challengesReceived Challenge[]      @relation("Challenged")
@@ -111,6 +112,16 @@ enum Difficulty {
 }
 
 /**
+ * Which set of rules a game is played under. `CHESS960` shuffles the back rank,
+ * which is why a game carrying it also has to carry `startFen` — the moves
+ * alone replay from the standard array and would land somewhere else entirely.
+ */
+enum GameVariant {
+  STANDARD
+  CHESS960
+}
+
+/**
  * Which side a standing draw offer came from. Two values, mirroring the
  * engine's "w"/"b": an offer belongs to a player, so there is no third value
  * for it to hold and no invalid state to guard against. `ChallengeColor` is not
@@ -125,10 +136,22 @@ model Game {
   id   String   @id @default(cuid())
   mode GameMode
 
+  variant GameVariant @default(STANDARD)
+
+  // The position the game began from. Null on a standard game, which starts
+  // from the array everything already knows; required on a shuffled one, where
+  // it is the only record of which of the 960 was dealt. Replay reads this, so
+  // a Chess960 row without it is unreplayable rather than merely unlabelled.
+  startFen String?
+
   // UCI ("e2e4", "e7e8q"), appended one per ply — the format `fromRecord` in
   // @openchess/shared replays. Replaying is what reconstructs the repetition map
   // and the fifty-move clock; a FEN alone cannot carry position history, so
   // `draw-repetition` would never fire if this were the cache and not the record.
+  //
+  // A Chess960 castle is written king-takes-rook ("g1h1"), which is what makes
+  // it distinguishable from the ordinary king move to the same square that the
+  // shuffled array can also offer.
   moves String[]
 
   // Denormalized cache of the position after the last ply. Lets a
@@ -137,6 +160,17 @@ model Game {
 
   // AI games need a strength. Rewards scale off it.
   difficulty Difficulty?
+
+  // Which bot played, by its id in @openchess/shared's personality catalog.
+  // Null on a PvP game, and on an AI game recorded before the bots had names —
+  // both of which fall back to the tier's default personality, so an old row
+  // still replays and still analyses.
+  //
+  // Kept beside `difficulty` rather than replacing it: a personality is a style
+  // and a strength together, and it is the strength that rewards and rating are
+  // scaled by. Folding them into one column would mean a bot could never be
+  // retuned without silently repricing every game anyone had played against it.
+  personality String?
 
   // Null on whichever side the bot is playing in an AI game.
   whitePlayerId String?
@@ -399,9 +433,15 @@ model Puzzle {
   createdAt DateTime @default(now())
 
   attempts PuzzleAttempt[]
+  rushRuns PuzzleRushRun[]
 
   // The serving query is "a puzzle near this rating I have not attempted".
   @@index([rating])
+  // Theme filtering is `themes @> ARRAY['fork']`, which a b-tree cannot answer
+  // at all. GIN is the index for array containment, and without it picking a
+  // themed puzzle degrades to a sequential scan of the whole corpus — fine over
+  // the seeded dozen, and not over an imported two hundred thousand.
+  @@index([themes(ops: ArrayOps)], type: Gin)
 }
 
 model PuzzleAttempt {
@@ -432,6 +472,65 @@ model PuzzleAttempt {
   // a puzzle you have already attempted is allowed; it just pays nothing.
   @@unique([userId, puzzleId])
   @@index([userId, createdAt(sort: Desc)])
+}
+
+/// How a Puzzle Rush run ends: a clock, or a third mistake.
+enum PuzzleRushMode {
+  THREE_MINUTE
+  FIVE_MINUTE
+  SURVIVAL
+}
+
+/**
+ * One Puzzle Rush run: as many puzzles as you can solve before the clock or
+ * your third mistake stops you.
+ * Deliberately kept off the puzzle ladder. A run is a different question from a
+ * rated attempt — it rewards speed and nerve rather than accuracy — and mixing
+ * the two would let a player farm their puzzle rating by rushing, or wreck it
+ * by trying to. So a run writes no `PuzzleAttempt` rows, moves no rating, and
+ * leaves the "puzzles I have not been scored on" pool exactly where it was;
+ * `servedPuzzleIds` is what stops a run repeating itself, and it lasts only as
+ * long as the run does.
+ */
+model PuzzleRushRun {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mode PuzzleRushMode
+
+  /// Puzzles solved — the score, and what the leaderboard sorts on.
+  solved Int @default(0)
+  /// Wrong answers. The third one ends the run.
+  missed Int @default(0)
+
+  /// The puzzle in front of the player, or null once the run is over. The
+  /// server hands out one at a time and remembers which, so the client is never
+  /// holding a queue of solutions it is being asked to find.
+  currentPuzzleId String?
+  currentPuzzle   Puzzle? @relation(fields: [currentPuzzleId], references: [id], onDelete: SetNull)
+
+  /// Every puzzle served so far, so one run never asks the same question twice.
+  servedPuzzleIds String[]
+
+  startedAt DateTime  @default(now())
+  /// When the clock stops it. Null on a survival run, which has only the three
+  /// mistakes. The server compares against this rather than trusting a client's
+  /// own timer, which is the whole reason the run lives in a row at all.
+  endsAt    DateTime?
+  endedAt   DateTime?
+
+  xpAwarded    Int @default(0)
+  coinsAwarded Int @default(0)
+
+  /// Guards the payout against a retried finish, exactly as `Game` does.
+  rewardsGranted Boolean @default(false)
+
+  /// A player's own history, newest first.
+  @@index([userId, startedAt(sort: Desc)])
+  /// The leaderboard: the best runs at a given mode. Partial on "finished" is
+  /// not expressible here, so the query carries that predicate itself.
+  @@index([mode, solved(sort: Desc)])
 }
 
 enum ChallengeStatus {
@@ -475,6 +574,11 @@ model Challenge {
 
   /// The side the challenger asked for. RANDOM is drawn when the game is made.
   color ChallengeColor @default(RANDOM)
+
+  /// The rules to play under. The array itself is drawn when the game is made,
+  /// not here — a challenge that sat in the inbox overnight should still deal a
+  /// fresh position rather than one its sender got to look at first.
+  variant GameVariant @default(STANDARD)
 
   /// Null for an untimed game.
   clock ClockPreset?

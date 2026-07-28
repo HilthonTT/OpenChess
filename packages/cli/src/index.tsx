@@ -13,6 +13,7 @@ import { Store } from "./screens/store";
 import { Analysis } from "./screens/analysis";
 import { Explorer } from "./screens/explorer";
 import { Puzzles } from "./screens/puzzles";
+import { Rush } from "./screens/rush";
 import { Watch } from "./screens/watch";
 import { Challenges } from "./screens/challenges";
 
@@ -32,6 +33,7 @@ const router = createMemoryRouter([
       { path: "/analysis", element: <Analysis /> },
       { path: "/explorer", element: <Explorer /> },
       { path: "/puzzles", element: <Puzzles /> },
+      { path: "/rush", element: <Rush /> },
       { path: "/watch", element: <Watch /> },
       { path: "/challenges", element: <Challenges /> },
     ],

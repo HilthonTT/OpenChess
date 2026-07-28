@@ -2,20 +2,27 @@ import { describe, expect, test } from "bun:test";
 import { parseFen, toAlgebraic } from "./board";
 import { analyzePosition, findBestMove } from "./ai";
 import { applyMove, generateLegalMoves, isInCheck } from "./moves";
-import type { Difficulty } from "./ai";
+import { PERSONALITY_ORDER } from "./personality";
+
+/**
+ * A draw that never slips and always takes the last book move. The bots below
+ * hard are told to play a random move some of the time, which is the point of
+ * them and would make every assertion here a coin toss.
+ */
+const steady = { random: () => 0.999999 };
 
 describe("findBestMove", () => {
   test("returns null when there is no legal move", () => {
     // Black is checkmated in the corner by the supported queen.
     const mated = parseFen("k7/1Q6/1K6/8/8/8/8/8 b - - 0 1");
-    expect(findBestMove(mated, "hard")).toBeNull();
+    expect(findBestMove(mated, "maestro")).toBeNull();
   });
 
-  test("easy plays a legal move", () => {
+  test("the Rookie plays a legal move", () => {
     const position = parseFen(
       "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     );
-    const move = findBestMove(position, "easy");
+    const move = findBestMove(position, "rookie");
     expect(move).not.toBeNull();
     const legal = generateLegalMoves(position);
     expect(
@@ -23,17 +30,17 @@ describe("findBestMove", () => {
     ).toBe(true);
   });
 
-  test("medium grabs a hanging queen", () => {
+  test("a mid-tier bot grabs a hanging queen", () => {
     // The black queen on d5 is free for the rook on d2.
     const position = parseFen("k7/8/8/3q4/8/8/3R4/K7 w - - 0 1");
-    const move = findBestMove(position, "medium");
+    const move = findBestMove(position, "fortress", [], steady);
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.to)).toBe("d5");
   });
 
-  test("hard finds a back-rank mate in one", () => {
+  test("a top-tier bot finds a back-rank mate in one", () => {
     const position = parseFen("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1");
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
     expect(move).not.toBeNull();
 
     const after = applyMove(position, move!);
@@ -41,19 +48,19 @@ describe("findBestMove", () => {
     expect(isInCheck(after, "b")).toBe(true);
   });
 
-  test("hard does not hang its queen to a pawn", () => {
+  test("a top-tier bot does not hang its queen to a pawn", () => {
     // Qxe5 would win a pawn but lose the queen to d6xe5.
     const position = parseFen(
       "k7/8/3p4/4p3/8/8/1Q6/K7 w - - 0 1",
     );
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.to)).not.toBe("e5");
   });
 
   test("searching sides are symmetric: black also finds mate in one", () => {
     const position = parseFen("r6k/8/8/8/8/8/5PPP/6K1 b - - 0 1");
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
     expect(move).not.toBeNull();
 
     const after = applyMove(position, move!);
@@ -61,19 +68,19 @@ describe("findBestMove", () => {
     expect(isInCheck(after, "w")).toBe(true);
   });
 
-  test("every difficulty answers within the opening", () => {
+  test("every personality answers within the opening", () => {
     const position = parseFen(
       "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
     );
-    for (const difficulty of ["easy", "medium", "hard"] as Difficulty[]) {
-      expect(findBestMove(position, difficulty)).not.toBeNull();
+    for (const id of PERSONALITY_ORDER) {
+      expect(findBestMove(position, id), id).not.toBeNull();
     }
   });
 
   test("escapes check with a legal move", () => {
     // Black king on h8 is checked by the rook on a8; only Kg7 escapes.
     const position = parseFen("R6k/7p/8/8/8/8/8/7K b - - 0 1");
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.from)).toBe("h8");
   });
@@ -90,7 +97,7 @@ describe("quiescence", () => {
     // Rxd5 wins a knight but the c6 pawn recaptures: a rook for a knight down.
     // A depth-3 search without quiescence stops on the knight and plays it.
     const position = parseFen("k7/8/2p5/3n4/8/8/3R4/K7 w - - 0 1");
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
 
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.to)).not.toBe("d5");
@@ -99,7 +106,7 @@ describe("quiescence", () => {
   test("takes a capture that the recapture cannot punish", () => {
     // The same shape with the defending pawn gone: Rxd5 is simply a free knight.
     const position = parseFen("k7/8/8/3n4/8/8/3R4/K7 w - - 0 1");
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
 
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.to)).toBe("d5");
@@ -110,7 +117,7 @@ describe("quiescence", () => {
     // the d1 rook. Rxd5 cxd5 Rxd5 nets a rook and a pawn for a rook — winning —
     // but only a search that plays the sequence out can tell.
     const position = parseFen("k7/8/2p5/3r4/8/8/3R4/K2R4 w - - 0 1");
-    const move = findBestMove(position, "hard");
+    const move = findBestMove(position, "maestro", [], steady);
 
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.to)).toBe("d5");
@@ -120,7 +127,7 @@ describe("quiescence", () => {
     // No captures available at all: quiescence must stand pat immediately
     // rather than recurse. Guards the cap and the stalemate probe.
     const position = parseFen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1");
-    expect(findBestMove(position, "hard")).not.toBeNull();
+    expect(findBestMove(position, "maestro", [], steady)).not.toBeNull();
   });
 
   test("scores a stalemate at the horizon as a draw, not a rout", () => {

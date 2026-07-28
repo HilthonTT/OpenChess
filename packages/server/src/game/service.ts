@@ -3,6 +3,7 @@ import {
   type Difficulty,
   type Game as GameRow,
   type GameResult,
+  type GameVariant,
   type User,
   type UserStats,
 } from "@openchess/database";
@@ -18,7 +19,9 @@ import {
   isGameOver,
   materialBalance,
   needsPromotion,
+  personalityFor,
   play,
+  randomChess960Fen,
   toAlgebraic,
   toFen,
   toPgn,
@@ -29,6 +32,7 @@ import {
   type Game,
   type HistoryEntry,
   type Move,
+  type PersonalityId,
   type PgnResult,
   type PromotionPiece,
   type TimeControlKey,
@@ -56,9 +60,11 @@ import {
   MIN_REWARDED_PLIES,
   statsAfter,
   timeOf,
+  botFor,
   toDrawOfferSide,
   toEngineDifficulty,
   toOfferColor,
+  toStoredDifficulty,
   type ClockState,
   type Outcome,
   type Reward,
@@ -127,7 +133,17 @@ export type ClockView = {
 export type GameView = {
   id: string;
   mode: GameRow["mode"];
+  variant: GameVariant;
+  /**
+   * The array the game began from, or null when it is the ordinary one. A
+   * client rebuilds the board by replaying `history`, and replaying a shuffled
+   * game's moves onto the standard array puts the wrong pieces everywhere —
+   * so this is not decoration, it is what makes the history readable.
+   */
+  startFen: string | null;
   difficulty: Difficulty | null;
+  /** Which bot is playing, in an AI game; null in a PvP game. */
+  personality: PersonalityId | null;
   /** The other human in a PvP game; null in an AI game. */
   opponent: OpponentView | null;
   yourColor: Color;
@@ -250,7 +266,10 @@ function view(
   return {
     id: row.id,
     mode: row.mode,
+    variant: row.variant,
+    startFen: row.startFen,
     difficulty: row.difficulty,
+    personality: row.mode === "AI" ? botFor(row).id : null,
     opponent,
     yourColor: color,
     fen: toFen(game.position),
@@ -286,7 +305,11 @@ function view(
  */
 function replay(row: GameRow): Game {
   try {
-    return fromRecord({ moves: row.moves });
+    // `startFen` is null on a standard game and `fromRecord` falls back to the
+    // ordinary array. On a shuffled one it is the only record of which of the
+    // 960 was dealt, and replaying without it would not merely mislabel the
+    // game — the moves would land on different pieces.
+    return fromRecord({ fen: row.startFen ?? undefined, moves: row.moves });
   } catch (error) {
     throw new Error(
       `Game ${row.id} has an unreplayable move list: ${
@@ -303,7 +326,7 @@ function pgnFor(
   playerName: string,
   color: Color,
 ): string {
-  const bot = `OpenChess Bot (${(row.difficulty ?? "MEDIUM").toLowerCase()})`;
+  const bot = `OpenChess ${botFor(row).name}`;
   const date = row.startedAt.toISOString().slice(0, 10).replace(/-/g, ".");
 
   return toPgn(game, {
@@ -815,9 +838,15 @@ export function initialClockData(
 
 export async function createAiGame(input: {
   user: User;
-  difficulty: Difficulty;
+  /**
+   * Which bot to play. The tier it plays at is read off the personality rather
+   * than taken from the caller, so a client cannot ask for the Rookie and be
+   * paid as though it had beaten the Maestro.
+   */
+  personality: PersonalityId;
   color: "white" | "black" | "random";
   timeControl?: TimeControlKey | null;
+  variant?: GameVariant;
 }): Promise<GameView> {
   // Checked outside a transaction, so two racing creates can land at cap + 1.
   // The ceiling is a backstop against runaway loops, not an invariant — off by
@@ -845,15 +874,20 @@ export async function createAiGame(input: {
         ? "w"
         : "b";
 
-  let game = createGame();
+  const bot = personalityFor(input.personality);
+  const variant: GameVariant = input.variant ?? "STANDARD";
+
+  // The array is drawn here, once, and written down. A shuffled game that only
+  // stored its moves would replay onto the standard array and be a different
+  // game every time it was read.
+  const startFen = variant === "CHESS960" ? randomChess960Fen() : null;
+
+  let game = createGame(startFen ?? undefined);
 
   // The bot has white, so it opens. Playing it here rather than on the first
   // move request means the client is never handed a board it is not to move on.
   if (color === "b") {
-    const opening = findBestMove(
-      game.position,
-      toEngineDifficulty(input.difficulty),
-    );
+    const opening = findBestMove(game.position, bot);
     if (opening) {
       game = play(game, opening);
     }
@@ -862,7 +896,10 @@ export async function createAiGame(input: {
   const row = await db.game.create({
     data: {
       mode: "AI",
-      difficulty: input.difficulty,
+      variant,
+      startFen,
+      difficulty: toStoredDifficulty(bot.tier),
+      personality: bot.id,
       whitePlayerId: color === "w" ? input.user.id : null,
       blackPlayerId: color === "b" ? input.user.id : null,
       moves: gameMoves(game),
@@ -1117,7 +1154,7 @@ export async function playMove(input: {
   if (row.mode === "AI" && !isGameOver(game.status)) {
     const reply = findBestMove(
       game.position,
-      toEngineDifficulty(row.difficulty ?? "MEDIUM"),
+      botFor(row),
       // The positions already played. Without them the bot cannot see a
       // repetition, and will shuffle a won game into a draw believing it is
       // still winning.
@@ -1850,7 +1887,9 @@ export async function flagGame(gameId: string, user: User): Promise<GameView> {
 export type GameSummary = {
   id: string;
   mode: GameRow["mode"];
+  variant: GameVariant;
   difficulty: Difficulty | null;
+  personality: PersonalityId | null;
   yourColor: Color;
   result: GameResult | null;
   ply: number;
@@ -1862,7 +1901,9 @@ function summarize(row: GameRow, userId: string): GameSummary {
   return {
     id: row.id,
     mode: row.mode,
+    variant: row.variant,
     difficulty: row.difficulty,
+    personality: row.mode === "AI" ? botFor(row).id : null,
     // Every row we list here was queried by this user's own id on one side or
     // the other, so the color is never actually null.
     yourColor: colorOf(row, userId) ?? "w",
@@ -1953,6 +1994,9 @@ export type SpectatorView = {
   id: string;
   white: OpponentView | null;
   black: OpponentView | null;
+  variant: GameVariant;
+  /** The array it began from; see `GameView.startFen`. */
+  startFen: string | null;
   fen: string;
   turn: Color;
   status: Game["status"];
@@ -2015,6 +2059,8 @@ function spectatorView(
     id: row.id,
     white: players.white,
     black: players.black,
+    variant: row.variant,
+    startFen: row.startFen,
     fen: toFen(game.position),
     turn: game.position.turn,
     status: game.status,

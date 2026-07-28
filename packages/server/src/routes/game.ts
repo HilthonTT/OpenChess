@@ -591,13 +591,14 @@ base.get("/:id/watch/events", (c) => {
 // full shape. That type is what `hc<AppType>` builds the typed CLI client from.
 const router = base
   .openapi(create, async (c) => {
-    const { difficulty, color, timeControl } = c.req.valid("json");
+    const { personality, color, timeControl, variant } = c.req.valid("json");
 
     const game = await createAiGame({
       user: c.get("user"),
-      difficulty,
+      personality,
       color,
       timeControl: timeControl ?? null,
+      variant,
     });
 
     return c.json(withGameLinks(game), HttpStatusCodes.CREATED);

@@ -7,9 +7,11 @@ import type {
 import {
   isDraw,
   levelFor,
+  personalityFor,
   type Color,
   type Difficulty as EngineDifficulty,
   type GameStatus,
+  type Personality,
   type TimeControlKey,
 } from "@openchess/shared";
 
@@ -30,6 +32,34 @@ const ENGINE_DIFFICULTY: Record<Difficulty, EngineDifficulty> = {
 
 export function toEngineDifficulty(difficulty: Difficulty): EngineDifficulty {
   return ENGINE_DIFFICULTY[difficulty];
+}
+
+/** And back, for storing the tier a chosen personality plays at. */
+const STORED_DIFFICULTY: Record<EngineDifficulty, Difficulty> = {
+  easy: "EASY",
+  medium: "MEDIUM",
+  hard: "HARD",
+};
+
+export function toStoredDifficulty(difficulty: EngineDifficulty): Difficulty {
+  return STORED_DIFFICULTY[difficulty];
+}
+
+/**
+ * Which bot a game is against.
+ *
+ * `personality` is the answer when the row has one. A row that does not — an AI
+ * game recorded before the bots had names — falls back to its tier's default,
+ * so an old game still replays, still gets a reply, and still analyses.
+ */
+export function botFor(row: {
+  difficulty: Difficulty | null;
+  personality: string | null;
+}): Personality {
+  return personalityFor(
+    row.personality,
+    toEngineDifficulty(row.difficulty ?? "MEDIUM"),
+  );
 }
 
 /** The same bridge for clocks: the DB enum names @openchess/shared's presets. */

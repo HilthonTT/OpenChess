@@ -6,8 +6,14 @@ import {
   isInsufficientMaterial,
 } from "./moves";
 import { chooseBookMove } from "./opening-book";
+import {
+  personalityFor,
+  searchLimitsFor,
+  type Difficulty,
+  type Personality,
+  type PersonalityId,
+} from "./personality";
 import { MATE_SCORE, MATE_THRESHOLD, search } from "./search";
-import type { SearchLimits } from "./search";
 import type { Color, Move, Position } from "./types";
 
 /**
@@ -20,36 +26,18 @@ import type { Color, Move, Position } from "./types";
  * figures should match, which a search bounded by a clock could never promise.
  */
 
-export type Difficulty = "easy" | "medium" | "hard";
-
-export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
-
-/**
- * What each difficulty is allowed to spend on one move.
- *
- * These are budgets rather than depths, so the same setting gets more out of a
- * fast machine than a slow one instead of stalling the game on the slow one: the
- * search deepens until the budget runs out and keeps the deepest answer it
- * finished. `medium` keeps a depth ceiling as well, because a difficulty ladder
- * wants a rung that is reliably beatable rather than one that depends on the
- * hardware.
- *
- * The time bounds are set by where the search runs rather than by how strong it
- * could be. `findBestMove` is synchronous, so on the server it holds the event
- * loop for its whole budget and every other request waits behind it, and in the
- * terminal it is a pause between keystrokes. Six hundred milliseconds is already
- * far past what the engine needed to win a match against its own previous
- * version; spending more would buy about half a ply per doubling, at the cost of
- * every request sharing the process.
- *
- * `easy` never reaches the search at all — it plays at random, which is the point
- * of it.
- */
-const SEARCH_LIMITS: Record<Difficulty, SearchLimits> = {
-  easy: {},
-  medium: { depth: 4, timeMs: 300, randomize: true },
-  hard: { timeMs: 600, randomize: true },
-};
+export type { Difficulty, Personality, PersonalityId };
+export {
+  DEFAULT_PERSONALITY,
+  DIFFICULTIES,
+  PERSONALITIES,
+  PERSONALITY_LIST,
+  PERSONALITY_ORDER,
+  isPersonalityId,
+  personalitiesAtTier,
+  personalityFor,
+  searchLimitsFor,
+} from "./personality";
 
 export type FindMoveOptions = {
   /**
@@ -58,6 +46,11 @@ export type FindMoveOptions = {
    * own answer to a position theory has already answered.
    */
   book?: boolean;
+  /**
+   * Injectable randomness, so a test can pin which move a bot slips into and
+   * which line it opens with. Must return a value in [0, 1) like `Math.random`.
+   */
+  random?: () => number;
 };
 
 /**
@@ -68,20 +61,28 @@ export type FindMoveOptions = {
  * game will happily check the same king back and forth until the fifty-move rule
  * takes the win off it.
  *
- * The opening book comes first, while the game is still in it. That is worth
- * more than the plies it saves: a search on an opening budget picks the move that
- * looks best three moves out, which in the opening is how an engine talks itself
- * into the same slightly-off line every game. Book moves are also instant, so the
- * bot's clock — and the server's event loop — only starts paying once the
- * position is genuinely its own problem.
+ * The order below is the whole of what makes one bot different from another.
  *
- * `easy` skips the book along with the search. It plays at random, which is the
- * point of it; a beginner's opponent that opens with ten plies of the Najdorf and
- * then hangs its queen is a worse teacher than one that is bad throughout.
+ * A slip comes first, because a bot that is meant to be beatable has to go
+ * wrong *somewhere*, and it may as well be able to go wrong in the opening too.
+ * The Rookie slips on every move, which is what makes it play at random without
+ * needing a case of its own — and which is the point of it: a beginner's
+ * opponent that opens with ten plies of the Najdorf and then hangs its queen is
+ * a worse teacher than one that is bad throughout.
+ *
+ * Then the book, while the game is still in it. That is worth more than the
+ * plies it saves: a search on an opening budget picks the move that looks best
+ * three moves out, which in the opening is how an engine talks itself into the
+ * same slightly-off line every game. Book moves are also instant, so the bot's
+ * clock — and the server's event loop — only starts paying once the position is
+ * genuinely its own problem. Which line it takes out of the book is where a
+ * personality's taste shows first.
+ *
+ * Then the search, on that personality's budget and with its evaluation.
  */
 export function findBestMove(
   position: Position,
-  difficulty: Difficulty,
+  who: PersonalityId | Personality,
   history: readonly Position[] = [],
   options: FindMoveOptions = {},
 ): Move | null {
@@ -90,12 +91,18 @@ export function findBestMove(
     return null;
   }
 
-  if (difficulty === "easy") {
-    return moves[Math.floor(Math.random() * moves.length)] ?? null;
+  const personality = typeof who === "string" ? personalityFor(who) : who;
+  const random = options.random ?? Math.random;
+
+  if (personality.slipChance > 0 && random() < personality.slipChance) {
+    return moves[Math.floor(random() * moves.length)] ?? null;
   }
 
   if (options.book ?? true) {
-    const fromBook = chooseBookMove(position);
+    const fromBook = chooseBookMove(position, {
+      random,
+      style: personality.opening,
+    });
     if (fromBook) {
       return (
         findMove(
@@ -108,7 +115,7 @@ export function findBestMove(
     }
   }
 
-  return search(position, SEARCH_LIMITS[difficulty], history).bestMove;
+  return search(position, searchLimitsFor(personality), history).bestMove;
 }
 
 /**

@@ -194,6 +194,25 @@ export function withPuzzleLinks<T extends { id: string; attempted: boolean }>(
   };
 }
 
+/**
+ * The same links for the puzzle pinned to a Rush run.
+ *
+ * A run's puzzle is solved through the run's own endpoints, not the puzzle's —
+ * a move there has to score the run, and `/puzzles/{id}/moves` would settle it
+ * as a rated attempt instead. So the puzzle is handed over marked `attempted`,
+ * which is exactly the flag that withholds those links.
+ */
+export function withRushPuzzleLinks<
+  T extends { puzzle: { id: string; attempted: boolean } | null },
+>(run: T): T & { puzzle: (T["puzzle"] & { _links: PuzzleLinks }) | null } {
+  return {
+    ...run,
+    puzzle: run.puzzle
+      ? withPuzzleLinks({ ...run.puzzle, attempted: true })
+      : null,
+  } as T & { puzzle: (T["puzzle"] & { _links: PuzzleLinks }) | null };
+}
+
 export const challengeLinksSchema = z
   .object({
     self: linkSchema,

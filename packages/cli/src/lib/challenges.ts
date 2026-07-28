@@ -50,12 +50,15 @@ export async function listChallenges(): Promise<{
 export async function createChallenge(input: {
   opponent?: string | null;
   color?: ChallengeColor;
+  /** Omit for an ordinary game. The array is dealt when it is accepted. */
+  variant?: "STANDARD" | "CHESS960";
   timeControl?: TimeControlKey | null;
 }): Promise<ServerChallenge> {
   const response = await apiClient.challenges.$post({
     json: {
       opponent: input.opponent ?? null,
       color: input.color ?? "RANDOM",
+      variant: input.variant ?? "STANDARD",
       timeControl: input.timeControl ?? null,
     },
   });

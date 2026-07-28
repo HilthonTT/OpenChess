@@ -378,7 +378,7 @@ function OnlineMatch({
   /** The opponent has been on the clock long enough to claim the win. */
   const [claimAvailable, setClaimAvailable] = useState(false);
 
-  const game = useReplayedGame(server.history);
+  const game = useReplayedGame(server.history, server.startFen);
   const { position, status } = game;
   const over = server.result !== null || isGameOver(status);
 

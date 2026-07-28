@@ -12,6 +12,7 @@ import {
   findKing,
   mistakes,
   openingOf,
+  PERSONALITIES,
   playSan,
   STARTING_FEN,
   toSan,
@@ -24,6 +25,7 @@ import type {
   Game,
   GameReport,
   MoveQuality,
+  PersonalityId,
 } from "@openchess/shared";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
@@ -36,13 +38,12 @@ import {
   type GameHistoryEntry,
   type ServerGame,
 } from "../lib/games";
-import { toEngineDifficulty } from "../lib/games";
 import {
   DEFAULT_EXPORT_DIR,
   exportGamePgn,
   importPgnFile,
 } from "../lib/pgn-files";
-import { DIFFICULTY_LABELS } from "./ai-game/setup";
+
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useUITheme } from "../providers/theme";
@@ -315,11 +316,21 @@ function historyResult(entry: GameHistoryEntry): string {
 }
 
 function historyKind(entry: GameHistoryEntry): string {
+  const rules = entry.variant === "CHESS960" ? " · 960" : "";
+
   if (entry.mode === "AI") {
-    const label = DIFFICULTY_LABELS[toEngineDifficulty(entry.difficulty)];
-    return `vs Engine (${label})`;
+    return `vs ${botName(entry.personality)}${rules}`;
   }
-  return "Online 1v1";
+  return `Online 1v1${rules}`;
+}
+
+/**
+ * What to call the bot a game was played against. A game recorded before the
+ * bots had names has none, and "Engine" is the honest answer — inventing one
+ * from the tier would put a personality's name on a game it never played.
+ */
+function botName(personality: PersonalityId | null): string {
+  return personality ? PERSONALITIES[personality].name : "Engine";
 }
 
 function HistoryTable({
@@ -590,7 +601,9 @@ function whiteShare(analysis: Analysis): number {
 function subtitleFor(game: ServerGame): string {
   const kind =
     game.mode === "AI"
-      ? `vs Engine (${DIFFICULTY_LABELS[toEngineDifficulty(game.difficulty)]})`
+      ? `vs ${botName(game.personality)}${
+          game.variant === "CHESS960" ? " · Chess960" : ""
+        }`
       : `vs ${game.opponent?.username ?? "your opponent"}`;
 
   let outcome = "unfinished";
@@ -679,9 +692,10 @@ function Review({
     <ReviewBoard
       source={{
         history: game.history,
-        // Every server game starts from the initial array; the record format
-        // has no room for anything else.
-        startingFen: STARTING_FEN,
+        // Null on an ordinary game, and the dealt array on a shuffled one.
+        // Reviewing a Chess960 game from the standard start would replay its
+        // moves onto the wrong pieces and fail on the first one that differs.
+        startingFen: game.startFen ?? STARTING_FEN,
         orientation: game.yourColor,
         subtitle: subtitleFor(game),
         gameId: game.id,

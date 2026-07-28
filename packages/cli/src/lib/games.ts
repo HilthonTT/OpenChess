@@ -1,6 +1,7 @@
 import type { InferResponseType } from "hono/client";
 import type {
   Difficulty,
+  PersonalityId,
   PromotionPiece,
   TimeControlKey,
 } from "@openchess/shared";
@@ -65,10 +66,13 @@ export function toEngineDifficulty(
 }
 
 export async function createAiGame(input: {
-  difficulty: ServerDifficulty;
+  /** Which bot to play. The server reads its tier off the catalog. */
+  personality: PersonalityId;
   color: "white" | "black" | "random";
   /** Omit or null for an untimed game. */
   timeControl?: TimeControlKey | null;
+  /** Omit for an ordinary game. */
+  variant?: "STANDARD" | "CHESS960";
 }): Promise<ServerGame> {
   const response = await apiClient.games.$post({ json: input });
 

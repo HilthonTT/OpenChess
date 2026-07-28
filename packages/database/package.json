@@ -7,7 +7,12 @@
     "./client": "./src/client.ts"
   },
   "scripts": {
-    "db:generate": "bunx prisma generate"
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate dev",
+    "db:migrate:deploy": "bunx prisma migrate deploy",
+    "db:migrate:status": "bunx prisma migrate status",
+    "db:migrate:reset": "bunx prisma migrate reset",
+    "db:studio": "bunx prisma studio"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",

@@ -1,4 +1,4 @@
-import { STARTING_FEN } from "./board";
+import { STARTING_FEN, isStandardCastlingSetup } from "./board";
 import { movePairs, type Game } from "./game";
 import { openingOf } from "./opening-book";
 import { startingFen } from "./pgn";
@@ -102,6 +102,15 @@ export function toPgn(
     `[Black "${escapeTagValue(seven.black)}"]`,
     `[Result "${result}"]`,
   ];
+
+  // A shuffled game has to say so. Without it a reader has a legal-looking FEN
+  // and no reason to expect `O-O` to move a king that is not on e1, and the
+  // castling field's file letters — which is how it would find out — are
+  // exactly the part a standard-chess reader is entitled to reject.
+  const startPosition = game.history[0]?.before ?? game.position;
+  if (!isStandardCastlingSetup(startPosition.castlingFiles)) {
+    lines.push(`[Variant "Chess960"]`);
+  }
 
   // A game that did not start from the initial array is unreadable without the
   // position it did start from. `SetUp` is what tells a reader to honor `FEN`.

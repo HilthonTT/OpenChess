@@ -12,6 +12,7 @@ import {
   type PromotionPiece,
 } from "@openchess/shared";
 import { Board } from "../components/board";
+import { PuzzleThemeDialogContent } from "../components/dialogs/puzzle-theme-dialog";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { MoveList, PromotionPrompt } from "../components/game-panels";
@@ -19,10 +20,12 @@ import {
   fetchDailyPuzzle,
   fetchNextPuzzle,
   fetchPuzzleHint,
+  fetchPuzzleThemes,
   revealPuzzle,
   sendPuzzleMove,
   type NextPuzzle,
   type PuzzleMoveResult,
+  type PuzzleThemeEntry,
   type ServerPuzzle,
 } from "../lib/puzzles";
 import { errorMessage } from "../lib/utils";
@@ -30,6 +33,7 @@ import { homeSquare, useBoardCursor } from "../hooks/use-board-cursor";
 import { useGameKeys } from "../hooks/use-game-keys";
 import { useMoveSelection } from "../hooks/use-move-selection";
 import { useAuth } from "../providers/auth";
+import { useDialog } from "../providers/dialog";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 
@@ -50,7 +54,11 @@ export function Puzzles() {
   const auth = useAuth();
   const theme = useUITheme();
 
+  const dialog = useDialog();
+
   const [mode, setMode] = useState<"rated" | "daily">("rated");
+  const [themeKey, setThemeKey] = useState<string | null>(null);
+  const [themes, setThemes] = useState<PuzzleThemeEntry[]>([]);
   const [state, setState] = useState<NextPuzzle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -64,7 +72,8 @@ export function Puzzles() {
     setError(null);
     setState(null);
 
-    const load = mode === "daily" ? fetchDailyPuzzle : fetchNextPuzzle;
+    const load =
+      mode === "daily" ? fetchDailyPuzzle : () => fetchNextPuzzle(themeKey);
 
     void load()
       .then((next) => {
@@ -81,13 +90,56 @@ export function Puzzles() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, auth.status, mode]);
+  }, [attempt, auth.status, mode, themeKey]);
+
+  // Fetched once and kept, since the picker is opened far more often than the
+  // corpus changes — and a dialog that has to wait on a request before it can
+  // show anything is a dialog nobody uses twice.
+  useEffect(() => {
+    if (auth.status !== "signed-in") {
+      return;
+    }
+
+    let cancelled = false;
+    void fetchPuzzleThemes()
+      .then((list) => {
+        if (!cancelled) {
+          setThemes(list);
+        }
+      })
+      // A themes list that will not load costs the filter, not the screen.
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.status]);
 
   const advance = useCallback(() => setAttempt((value) => value + 1), []);
 
   const toggleDaily = useCallback(() => {
     setMode((value) => (value === "daily" ? "rated" : "daily"));
   }, []);
+
+  const chooseTheme = useCallback(() => {
+    dialog.open({
+      title: "Train a theme",
+      children: (
+        <PuzzleThemeDialogContent
+          themes={themes}
+          onSelect={(picked) => {
+            setThemeKey(picked);
+            // A theme change is a different queue, so the daily is left behind.
+            setMode("rated");
+            setAttempt((value) => value + 1);
+          }}
+        />
+      ),
+    });
+  }, [dialog, themes]);
+
+  const themeLabel =
+    themes.find((entry) => entry.key === themeKey)?.label ?? themeKey;
 
   if (auth.status === "checking") {
     return (
@@ -147,8 +199,10 @@ export function Puzzles() {
       rating={state.rating}
       streak={state.streak}
       daily={mode === "daily"}
+      themeLabel={mode === "daily" ? null : themeLabel}
       onNext={advance}
       onToggleDaily={toggleDaily}
+      onChooseTheme={chooseTheme}
     />
   );
 }
@@ -164,15 +218,20 @@ function PuzzleBoard({
   rating,
   streak,
   daily,
+  themeLabel,
   onNext,
   onToggleDaily,
+  onChooseTheme,
 }: {
   puzzle: ServerPuzzle;
   rating: number;
   streak: number;
   daily: boolean;
+  /** The theme being trained, or null for the whole catalog. */
+  themeLabel: string | null;
   onNext: () => void;
   onToggleDaily: () => void;
+  onChooseTheme: () => void;
 }) {
   const theme = useUITheme();
   const toast = useToast();
@@ -377,6 +436,12 @@ function PuzzleBoard({
             onToggleDaily();
           }
           break;
+        // `/` opens the theme picker, matching the explorer's search key.
+        case "/":
+          if (!pending) {
+            onChooseTheme();
+          }
+          break;
       }
     },
   });
@@ -411,7 +476,7 @@ function PuzzleBoard({
       title={`${TITLE}${daily ? " · Daily" : ""}`}
       subtitle={`Rated ${puzzle.rating} · ${puzzle.solverMoves} move${
         puzzle.solverMoves === 1 ? "" : "s"
-      } to find`}
+      } to find${themeLabel ? ` · ${themeLabel}` : ""}`}
       width={WIDTH}
       footer={
         <>
@@ -431,6 +496,8 @@ function PuzzleBoard({
           <span fg={theme.faint}> next </span>
           <span fg={theme.cream}>d</span>
           <span fg={theme.faint}>{daily ? " rated " : " daily "}</span>
+          <span fg={theme.cream}>/</span>
+          <span fg={theme.faint}> theme </span>
         </>
       }
     >

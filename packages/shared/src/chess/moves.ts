@@ -1,9 +1,11 @@
 import {
   fileOf,
   findKing,
+  homeRankOf,
   isColor,
   isOnBoard,
   isPiece,
+  isStandardCastlingFiles,
   opposite,
   pieceAt,
   pieceColor,
@@ -13,6 +15,7 @@ import {
 } from "./board";
 import type {
   Board,
+  CastleSide,
   CastlingRights,
   Color,
   Move,
@@ -307,11 +310,105 @@ function addSlidingMoves(
   }
 }
 
+/**
+ * Where a castle *ends*, which is the one part of the rule that never moves.
+ * The king finishes on the g- or c-file and the rook beside it on the f- or
+ * d-file whatever files the two of them started on, which is what makes a
+ * shuffled game's castling recognisably the same move as a normal one.
+ */
+const CASTLE_KING_FILE: Record<CastleSide, number> = { king: 6, queen: 2 };
+const CASTLE_ROOK_FILE: Record<CastleSide, number> = { king: 5, queen: 3 };
+
+/** The right `side` needs, named as it is on `CastlingRights`. */
+function castlingRightKey(
+  color: Color,
+  side: CastleSide,
+): keyof CastlingRights {
+  if (color === "w") {
+    return side === "king" ? "whiteKingSide" : "whiteQueenSide";
+  }
+  return side === "king" ? "blackKingSide" : "blackQueenSide";
+}
+
+/** Where the rook that castles to `side` began, for `color`. */
+export function castlingRookSquare(position: Position, color: Color, side: CastleSide): number {
+  const files = position.castlingFiles[color];
+  return squareAt(
+    side === "king" ? files.kingRook : files.queenRook,
+    homeRankOf(color),
+  );
+}
+
+/** Where the king and rook stand once `side` has been castled to. */
+export function castlingDestinations(
+  color: Color,
+  side: CastleSide,
+): { kingTo: number; rookTo: number } {
+  const rank = homeRankOf(color);
+  return {
+    kingTo: squareAt(CASTLE_KING_FILE[side], rank),
+    rookTo: squareAt(CASTLE_ROOK_FILE[side], rank),
+  };
+}
+
+/**
+ * Every square from `fromFile` to `toFile` along `rank` is empty, ignoring the
+ * two squares the castling king and rook are themselves standing on.
+ *
+ * The exemptions are what makes this work on a shuffled array, where the king's
+ * destination is routinely the rook's starting square and vice versa: those two
+ * are about to swap, so finding each other in the way is not an obstruction.
+ */
+function fileRangeIsClear(
+  board: Board,
+  rank: number,
+  fromFile: number,
+  toFile: number,
+  kingFrom: number,
+  rookFrom: number,
+): boolean {
+  const low = Math.min(fromFile, toFile);
+  const high = Math.max(fromFile, toFile);
+
+  for (let file = low; file <= high; file += 1) {
+    const square = squareAt(file, rank);
+    if (square === kingFrom || square === rookFrom) {
+      continue;
+    }
+    if (pieceAt(board, square) !== EMPTY) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/** No square the king starts on, crosses, or lands on is attacked. */
+function kingWalkIsSafe(
+  board: Board,
+  rank: number,
+  fromFile: number,
+  toFile: number,
+  enemy: Color,
+): boolean {
+  const low = Math.min(fromFile, toFile);
+  const high = Math.max(fromFile, toFile);
+
+  for (let file = low; file <= high; file += 1) {
+    if (isSquareAttacked(board, squareAt(file, rank), enemy)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
   const color = pieceColor(piece);
   const board = position.board;
-  const homeRank = color === "w" ? 0 : 7;
-  const kingFrom = squareAt(4, homeRank);
+  const homeRank = homeRankOf(color);
+  const files = position.castlingFiles[color];
+  const kingFrom = squareAt(files.king, homeRank);
 
   // A king that has been displaced can't castle; rights alone aren't enough to
   // trust, because a test FEN may hand us rights with the king elsewhere.
@@ -320,70 +417,61 @@ function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
   }
 
   const enemy = opposite(color);
+
+  // Castling out of check is illegal on either side, so it is worth answering
+  // once here rather than inside each side's walk.
   if (isSquareAttacked(board, kingFrom, enemy)) {
     return;
   }
 
   const rook = toPiece("r", color);
-  const sides: CastleSideConfig[] = [
-    {
-      side: "king",
-      allowed:
-        color === "w"
-          ? position.castling.whiteKingSide
-          : position.castling.blackKingSide,
-      rookFrom: squareAt(7, homeRank),
-      empty: [squareAt(5, homeRank), squareAt(6, homeRank)],
-      safe: [squareAt(5, homeRank), squareAt(6, homeRank)],
-      kingTo: squareAt(6, homeRank),
-    },
-    {
-      side: "queen",
-      allowed:
-        color === "w"
-          ? position.castling.whiteQueenSide
-          : position.castling.blackQueenSide,
-      rookFrom: squareAt(0, homeRank),
-      empty: [
-        squareAt(1, homeRank),
-        squareAt(2, homeRank),
-        squareAt(3, homeRank),
-      ],
-      // b1/b8 may be attacked; the king never crosses it.
-      safe: [squareAt(2, homeRank), squareAt(3, homeRank)],
-      kingTo: squareAt(2, homeRank),
-    },
-  ];
+  const standard = isStandardCastlingFiles(files);
 
-  for (const config of sides) {
-    if (!config.allowed || pieceAt(board, config.rookFrom) !== rook) {
+  for (const side of ["king", "queen"] as const) {
+    if (!position.castling[castlingRightKey(color, side)]) {
       continue;
     }
 
-    if (config.empty.some((square) => pieceAt(board, square) !== EMPTY)) {
+    const rookFile = side === "king" ? files.kingRook : files.queenRook;
+    const rookFrom = squareAt(rookFile, homeRank);
+    if (pieceAt(board, rookFrom) !== rook) {
       continue;
     }
 
-    if (config.safe.some((square) => isSquareAttacked(board, square, enemy))) {
+    const kingToFile = CASTLE_KING_FILE[side];
+    const rookToFile = CASTLE_ROOK_FILE[side];
+
+    // Both journeys have to be clear, and between them they cover every square
+    // the rule cares about — including b1/b8, which only the rook crosses and
+    // which the king is therefore allowed to be attacked on.
+    if (
+      !fileRangeIsClear(board, homeRank, files.king, kingToFile, kingFrom, rookFrom) ||
+      !fileRangeIsClear(board, homeRank, rookFile, rookToFile, kingFrom, rookFrom)
+    ) {
+      continue;
+    }
+
+    if (!kingWalkIsSafe(board, homeRank, files.king, kingToFile, enemy)) {
       continue;
     }
 
     out.push(
-      move({ from: kingFrom, to: config.kingTo, piece, isCastle: config.side }),
+      move({
+        from: kingFrom,
+        // In a shuffled game the king's castling destination is frequently a
+        // square it could also reach as an ordinary king move — b1-c1 is both
+        // "king steps right" and "castles queenside" — so naming that square
+        // would make one move description mean two moves. Castling is written
+        // king-takes-rook there instead, as every Chess960 implementation
+        // writes it, and that can never collide: the square holds the mover's
+        // own rook, so no plain king move goes to it.
+        to: standard ? squareAt(kingToFile, homeRank) : rookFrom,
+        piece,
+        isCastle: side,
+      }),
     );
   }
 }
-
-type CastleSideConfig = {
-  side: "king" | "queen";
-  allowed: boolean;
-  rookFrom: number;
-  /** Squares between king and rook that must be vacant. */
-  empty: number[];
-  /** Squares the king crosses or lands on, which must not be attacked. */
-  safe: number[];
-  kingTo: number;
-};
 
 /** Every move the side to move could make ignoring whether it leaves the king in check. */
 export function generatePseudoLegalMoves(position: Position): Move[] {
@@ -453,6 +541,15 @@ function leavesKingSafe(
   const color = position.turn;
   const { from, to } = candidate;
 
+  // Castling moves four squares' worth of board around and, on a shuffled
+  // array, those four squares overlap — the king's destination is often the
+  // rook's origin. That makes the "lift, place, put back" dance below wrong in
+  // a way no amount of ordering fixes, so a castle gets its own path where
+  // every touched square is saved up front and restored from that snapshot.
+  if (candidate.isCastle !== null) {
+    return castleLeavesKingSafe(position, candidate);
+  }
+
   const moved = board[from];
   const replaced = board[to];
 
@@ -473,36 +570,57 @@ function leavesKingSafe(
     board[enPassantSquare] = EMPTY;
   }
 
-  // Castling puts a rook down as well. It cannot legalise a move that would
-  // otherwise fail — the king's path is checked separately — but the rook can
-  // block a check on the back rank, so the board has to show it.
-  let rookFrom = -1;
-  let rookTo = -1;
-  if (candidate.isCastle !== null) {
-    const homeRank = color === "w" ? 0 : 7;
-    [rookFrom, rookTo] =
-      candidate.isCastle === "king"
-        ? [squareAt(7, homeRank), squareAt(5, homeRank)]
-        : [squareAt(0, homeRank), squareAt(3, homeRank)];
-
-    board[rookFrom] = EMPTY;
-    board[rookTo] = toPiece("r", color);
-  }
-
   // A king that just moved is on the square it moved to; every other move leaves
   // it where the caller already found it.
   const king = candidate.piece.toLowerCase() === "k" ? to : kingSquare;
   const safe = king < 0 || !isSquareAttacked(board, king, opposite(color));
 
-  if (rookFrom !== -1) {
-    board[rookTo] = EMPTY;
-    board[rookFrom] = toPiece("r", color);
-  }
   if (enPassantSquare !== -1) {
     board[enPassantSquare] = enPassantPawn;
   }
   board[to] = replaced as SquareContent;
   board[from] = moved as SquareContent;
+
+  return safe;
+}
+
+/**
+ * The same in-place test for a castle.
+ *
+ * Castling cannot walk into check — `addCastlingMoves` already refused every
+ * square the king crosses — but the rook lands somewhere new, and on the back
+ * rank it can be the piece that was blocking a check on the king's destination.
+ * That is the one thing left to test, so the rook has to be down when it runs.
+ *
+ * The four squares are snapshotted before anything is written and restored from
+ * that snapshot afterwards, which stays correct however they overlap: writing a
+ * square twice with the value it started with is the same as writing it once.
+ */
+function castleLeavesKingSafe(position: Position, candidate: Move): boolean {
+  const board = position.board;
+  const color = position.turn;
+  const side = candidate.isCastle as CastleSide;
+
+  const kingFrom = candidate.from;
+  const rookFrom = castlingRookSquare(position, color, side);
+  const { kingTo, rookTo } = castlingDestinations(color, side);
+
+  const wasKingFrom = board[kingFrom] as SquareContent;
+  const wasRookFrom = board[rookFrom] as SquareContent;
+  const wasKingTo = board[kingTo] as SquareContent;
+  const wasRookTo = board[rookTo] as SquareContent;
+
+  board[kingFrom] = EMPTY;
+  board[rookFrom] = EMPTY;
+  board[kingTo] = candidate.piece;
+  board[rookTo] = toPiece("r", color);
+
+  const safe = !isSquareAttacked(board, kingTo, opposite(color));
+
+  board[kingFrom] = wasKingFrom;
+  board[rookFrom] = wasRookFrom;
+  board[kingTo] = wasKingTo;
+  board[rookTo] = wasRookTo;
 
   return safe;
 }
@@ -586,11 +704,8 @@ export function movesFrom(position: Position, square: number): Move[] {
   return generateLegalMoves(position).filter((m) => m.from === square);
 }
 
-function updateCastlingRights(
-  rights: CastlingRights,
-  move: Move,
-): CastlingRights {
-  const next = { ...rights };
+function updateCastlingRights(position: Position, move: Move): CastlingRights {
+  const next = { ...position.castling };
   const type = move.piece.toLowerCase();
 
   if (type === "k") {
@@ -604,12 +719,17 @@ function updateCastlingRights(
   }
 
   // A rook leaving its home square, or being captured on it, kills that right.
-  // Checking squares rather than piece identity covers both cases at once.
+  // Checking squares rather than piece identity covers both cases at once —
+  // and the squares are read from the position rather than assumed to be the
+  // corners, which is the whole of what a shuffled array changes here.
   for (const square of [move.from, move.to]) {
-    if (square === squareAt(0, 0)) next.whiteQueenSide = false;
-    if (square === squareAt(7, 0)) next.whiteKingSide = false;
-    if (square === squareAt(0, 7)) next.blackQueenSide = false;
-    if (square === squareAt(7, 7)) next.blackKingSide = false;
+    for (const color of ["w", "b"] as const) {
+      for (const side of ["king", "queen"] as const) {
+        if (square === castlingRookSquare(position, color, side)) {
+          next[castlingRightKey(color, side)] = false;
+        }
+      }
+    }
   }
 
   return next;
@@ -628,19 +748,25 @@ export function applyMove(position: Position, move: Move): Position {
     board[captured] = EMPTY;
   }
 
-  board[move.to] = move.promotion
-    ? toPiece(move.promotion, color)
-    : move.piece;
-
   if (move.isCastle) {
-    const homeRank = color === "w" ? 0 : 7;
-    const [rookFrom, rookTo] =
-      move.isCastle === "king"
-        ? [squareAt(7, homeRank), squareAt(5, homeRank)]
-        : [squareAt(0, homeRank), squareAt(3, homeRank)];
+    const rookFrom = castlingRookSquare(position, color, move.isCastle);
+    const { kingTo, rookTo } = castlingDestinations(color, move.isCastle);
 
+    // Both pieces are lifted before either is put down. On a shuffled array the
+    // king's destination is often the rook's starting square — and the rook's
+    // destination the king's — so placing one before lifting the other would
+    // quietly delete a piece.
+    //
+    // The king lands on `kingTo` rather than on `move.to`: in a shuffled game
+    // the move is written king-takes-rook, so `move.to` is where the *rook*
+    // was, not where the king is going.
     board[rookFrom] = EMPTY;
+    board[kingTo] = move.piece;
     board[rookTo] = toPiece("r", color);
+  } else {
+    board[move.to] = move.promotion
+      ? toPiece(move.promotion, color)
+      : move.piece;
   }
 
   const isPawnMove = move.piece.toLowerCase() === "p";
@@ -649,7 +775,8 @@ export function applyMove(position: Position, move: Move): Position {
   return {
     board,
     turn: opposite(color),
-    castling: updateCastlingRights(position.castling, move),
+    castling: updateCastlingRights(position, move),
+    castlingFiles: position.castlingFiles,
     enPassant: move.isDoublePawnPush
       ? squareAt(fileOf(move.from), (rankOf(move.from) + rankOf(move.to)) / 2)
       : null,

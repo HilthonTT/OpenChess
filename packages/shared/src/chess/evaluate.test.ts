@@ -36,6 +36,10 @@ function mirror(position: Position): Position {
       blackKingSide: position.castling.whiteKingSide,
       blackQueenSide: position.castling.whiteQueenSide,
     },
+    castlingFiles: {
+      w: position.castlingFiles.b,
+      b: position.castlingFiles.w,
+    },
     enPassant: position.enPassant === null ? null : position.enPassant ^ 56,
     halfmoveClock: position.halfmoveClock,
     fullmoveNumber: position.fullmoveNumber,
