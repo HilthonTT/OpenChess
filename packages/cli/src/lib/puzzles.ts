@@ -137,6 +137,24 @@ const rushById = apiClient.puzzles.rush[":id"];
 
 export type RushMode = "THREE_MINUTE" | "FIVE_MINUTE" | "SURVIVAL";
 
+/**
+ * What to call each mode. Here rather than in a screen because two of them show
+ * it — the rush board and the stats card — and a mode that reads "3 min" in one
+ * place and "3 minutes" in the other is a mode a player has to think about.
+ */
+export const RUSH_MODE_LABEL: Record<RushMode, string> = {
+  THREE_MINUTE: "3 min",
+  FIVE_MINUTE: "5 min",
+  SURVIVAL: "Survival",
+};
+
+/** The modes in the order they are offered, easiest commitment first. */
+export const RUSH_MODES: RushMode[] = [
+  "THREE_MINUTE",
+  "FIVE_MINUTE",
+  "SURVIVAL",
+];
+
 export type RushRun = InferResponseType<
   typeof apiClient.puzzles.rush.$post,
   201

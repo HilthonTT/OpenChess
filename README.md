@@ -55,9 +55,9 @@ terminal.
 - **Leaderboard** — ranked by rating, level or wins
 - **Achievements** — one-time XP/coin bonuses, some of them secret
 - **Daily streaks** — check in each day for a growing XP and coin payout
-- **Stats** — your record, streaks, level progress, and your rating as a curve
-  rather than a number: where it has been over your recent rated games, and the
-  best it has ever been
+- **Stats** — your record, streaks, level progress, your best Puzzle Rush score
+  at each mode, and your rating as a curve rather than a number: where it has
+  been over your recent rated games, and the best it has ever been
 - **Store** — buy titles with coins and wear one on the leaderboard
 - **30+ themes** — the whole UI and board repaint from one picker
 

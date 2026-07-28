@@ -18,6 +18,7 @@ import {
   endRush,
   fetchRushBests,
   fetchRushLeaderboard,
+  RUSH_MODE_LABEL,
   sendRushMove,
   startRush,
   type RushBest,
@@ -58,12 +59,6 @@ const MODES: Array<{ mode: RushMode; key: string; label: string; blurb: string }
   { mode: "FIVE_MINUTE", key: "2", label: "5 minutes", blurb: "A little more room" },
   { mode: "SURVIVAL", key: "3", label: "Survival", blurb: "No clock — three mistakes" },
 ];
-
-const MODE_LABEL: Record<RushMode, string> = {
-  THREE_MINUTE: "3 min",
-  FIVE_MINUTE: "5 min",
-  SURVIVAL: "Survival",
-};
 
 export function Rush() {
   const auth = useAuth();
@@ -234,7 +229,7 @@ function Lobby({
       </box>
 
       <box flexDirection="column" gap={0}>
-        <text fg={theme.walnut}>{`Top runs · ${MODE_LABEL[mode]}`}</text>
+        <text fg={theme.walnut}>{`Top runs · ${RUSH_MODE_LABEL[mode]}`}</text>
         {board.length === 0 ? (
           <text fg={theme.dim}>Nobody has posted a score yet. Go first.</text>
         ) : (
@@ -476,7 +471,7 @@ function RunBoard({
 
   return (
     <GameScreen
-      title={`${TITLE} · ${MODE_LABEL[run.mode]}`}
+      title={`${TITLE} · ${RUSH_MODE_LABEL[run.mode]}`}
       subtitle={
         puzzle && !over
           ? `Rated ${puzzle.rating} · ${puzzle.solverMoves} move${

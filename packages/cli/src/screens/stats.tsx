@@ -11,6 +11,12 @@ import {
   type Profile,
   type RatingHistory,
 } from "../lib/profile";
+import {
+  fetchRushBests,
+  RUSH_MODES,
+  RUSH_MODE_LABEL,
+  type RushBest,
+} from "../lib/puzzles";
 import { sparkline } from "../lib/sparkline";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -29,7 +35,12 @@ const BAR_W = 20;
  */
 const CURVE_POINTS = BAR_W - 1;
 
-type Data = { profile: Profile; stats: PlayerStats; curve: RatingHistory };
+type Data = {
+  profile: Profile;
+  stats: PlayerStats;
+  curve: RatingHistory;
+  rush: RushBest[];
+};
 
 export function Stats() {
   const auth = useAuth();
@@ -53,10 +64,14 @@ export function Stats() {
       fetchProfile(),
       fetchStats(),
       fetchRatingHistory(CURVE_POINTS),
+      // Supplementary, so it is allowed to fail on its own: a rush endpoint
+      // having a bad day should cost this one block, not blank the whole card
+      // behind an error about a feature the player may never have opened.
+      fetchRushBests().catch(() => [] as RushBest[]),
     ])
-      .then(([profile, stats, curve]) => {
+      .then(([profile, stats, curve, rush]) => {
         if (!cancelled) {
-          setData({ profile, stats, curve });
+          setData({ profile, stats, curve, rush });
         }
       })
       .catch((cause) => {
@@ -106,7 +121,7 @@ function Notice({ text }: { text: string }) {
 
 function Card({ data }: { data: Data }) {
   const theme = useUITheme();
-  const { profile, stats, curve } = data;
+  const { profile, stats, curve, rush } = data;
 
   const games = stats.wins + stats.losses + stats.draws;
   const winRate = games > 0 ? Math.round((stats.wins / games) * 100) : null;
@@ -200,6 +215,54 @@ function Card({ data }: { data: Data }) {
           </span>
         </Row>
       </box>
+
+      <RushBests bests={rush} />
+    </box>
+  );
+}
+
+/**
+ * Best Puzzle Rush score per mode.
+ *
+ * Kept apart from the record above rather than folded into it, because a rush
+ * score is not on the same axis as anything else here: it moves no rating and
+ * counts no games, so a row of it beside the win/loss record would invite the
+ * two to be read as one measure of how you are doing.
+ */
+function RushBests({ bests }: { bests: RushBest[] }) {
+  const theme = useUITheme();
+
+  // Modes are listed from the catalog rather than from the response, so a mode
+  // never run still shows — "you have not tried survival" is the useful answer,
+  // and a list that grew a row the first time you played one would be worse.
+  const played = bests.filter((entry) => entry.runs > 0);
+
+  return (
+    <box flexDirection="column">
+      <text fg={theme.walnut}>Puzzle Rush</text>
+      {played.length === 0 ? (
+        <text fg={theme.dim}>
+          {"  No runs yet — Puzzle Rush is on the menu."}
+        </text>
+      ) : (
+        RUSH_MODES.map((mode) => {
+          const entry = bests.find((best) => best.mode === mode);
+          const runs = entry?.runs ?? 0;
+
+          return (
+            <Row key={mode} label={RUSH_MODE_LABEL[mode]}>
+              <span fg={runs > 0 ? theme.gold : theme.faint}>
+                {runs > 0 ? String(entry!.best) : "—"}
+              </span>
+              <span fg={theme.dim}>
+                {runs > 0
+                  ? ` best · ${runs} ${runs === 1 ? "run" : "runs"}`
+                  : " not yet run"}
+              </span>
+            </Row>
+          );
+        })
+      )}
     </box>
   );
 }
