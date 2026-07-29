@@ -94,12 +94,24 @@ type GameState = {
 export function gameLinks(game: GameState): GameLinks {
   const base = `${API_PATHS.games}/${game.id}`;
   const live = game.result === null;
-  // White moves on the even plies, so after `ply` half-moves white has played
-  // ceil(ply / 2) of them and black floor(ply / 2). Abort is only legal while
-  // your own count is zero — which is how the bot's opening move in an AI game
-  // does not cost you the escape hatch.
-  const yourMoves =
-    game.yourColor === "w" ? Math.ceil(game.ply / 2) : Math.floor(game.ply / 2);
+  // Whether `abortGame` would allow it, spelled the way that handler spells it.
+  // A link is an affordance, so one the handler answers with a 409 is worse than
+  // no link at all — the client renders "abort" and the keypress fails.
+  //
+  // The two modes genuinely differ. Against the bot the rule is your *own* first
+  // move, counted off the ply: white moves on the even plies, so after `ply`
+  // half-moves white has played ceil(ply / 2) and black floor(ply / 2) — which
+  // is how the bot's opening move, on the row from birth when it drew white,
+  // does not cost its opponent the escape hatch. In a PvP game the rule is the
+  // board's first move by either side: an abort there is the way out of a match
+  // nobody showed up to, and once your opponent has committed a move it is a
+  // game to resign rather than one to walk away from.
+  const abortable =
+    game.mode === "AI"
+      ? (game.yourColor === "w"
+          ? Math.ceil(game.ply / 2)
+          : Math.floor(game.ply / 2)) === 0
+      : game.ply === 0;
 
   return {
     self: get(base),
@@ -107,7 +119,7 @@ export function gameLinks(game: GameState): GameLinks {
       ? { moves: post(`${base}/moves`) }
       : {}),
     ...(live ? { resign: post(`${base}/resign`) } : {}),
-    ...(live && yourMoves === 0 ? { abort: post(`${base}/abort`) } : {}),
+    ...(live && abortable ? { abort: post(`${base}/abort`) } : {}),
     ...(live && game.mode === "PVP" && game.turn !== game.yourColor
       ? { claim: post(`${base}/claim`) }
       : {}),

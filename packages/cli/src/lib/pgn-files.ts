@@ -31,11 +31,42 @@ export function expandPath(input: string): string {
 }
 
 /**
+ * A `Content-Disposition` filename reduced to something safe to join onto a
+ * directory, or null when nothing usable is left.
+ *
+ * The header is data off the network, not a name we chose: a hostile — or
+ * merely MITM'd, since `API_URL` defaults to plain http — server answering with
+ * `filename="../../.bashrc"` would otherwise have `join` walk straight out of
+ * the export directory and `Bun.write` overwrite an arbitrary file with
+ * arbitrary content. So the path structure is stripped rather than validated:
+ * take the last segment on either separator, refuse the ones that still mean a
+ * directory, and require the `.pgn` suffix this only ever writes.
+ */
+export function safeExportFilename(candidate: string): string | null {
+  // Both separators, because the header is not the local platform's to spell:
+  // `node:path` on POSIX does not treat a backslash as one, and a Windows
+  // server's name would otherwise arrive as a single segment full of them.
+  const base = candidate.split(/[/\\]/).pop()?.trim() ?? "";
+
+  // "." and ".." survive the split above and both still name a directory;
+  // control characters are unprintable in a file listing at best.
+  const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+
+  if (base === "" || base === "." || base === ".." || CONTROL_CHARS.test(base)) {
+    return null;
+  }
+
+  // Anything else claiming to be a PGN is not what this function writes.
+  return base.toLowerCase().endsWith(".pgn") ? base : null;
+}
+
+/**
  * Download a finished game's PGN and write it next to the others.
  *
  * The filename comes from the server's `Content-Disposition` — it is the one
- * that names the date and the game — with a local fallback so a proxy that
- * strips the header cannot leave the file nameless.
+ * that names the date and the game — sanitized to a bare filename, with a local
+ * fallback so neither a proxy that strips the header nor a server that sends a
+ * hostile one decides where the file lands.
  */
 export async function exportGamePgn(
   gameId: string,
@@ -53,7 +84,9 @@ export async function exportGamePgn(
 
   const disposition = response.headers.get("content-disposition") ?? "";
   const named = /filename="([^"]+)"/.exec(disposition)?.[1];
-  const filename = named ?? `openchess-${gameId.slice(-8)}.pgn`;
+  const filename =
+    (named ? safeExportFilename(named) : null) ??
+    `openchess-${gameId.slice(-8)}.pgn`;
 
   const path = join(directory, filename);
 
