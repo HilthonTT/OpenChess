@@ -14,6 +14,7 @@ import { createEnvironmentBasedCORS } from "../security/cors-patterns";
 import { securityHeadersMiddleware } from "../security/headers";
 import { defaultHook, notFound, onError } from "./problem-details";
 import type { AppBindings, AppOpenAPI } from "./types";
+import { recorder } from "../middlewares/recorder";
 
 export function createRouter() {
   return new OpenAPIHono<AppBindings>({
@@ -98,6 +99,7 @@ export default function createApp() {
     .use(prettyJSON())
     .use(requestId())
     .use(pinoLogger())
+    .use(recorder)
     .use(securityHeadersMiddleware())
     .use(createCORS().middleware())
     .use(compress({ contentTypeFilter: /^application\/json/ }))
