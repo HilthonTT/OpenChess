@@ -180,7 +180,7 @@ async function view(
   };
 }
 
-/** Start a run. Any run already open at the same mode is closed out first. */
+/** Start a run. Any run still open — at any mode — is settled out first. */
 export async function startRush(input: {
   user: User;
   mode: PuzzleRushMode;
@@ -188,10 +188,22 @@ export async function startRush(input: {
   // An abandoned run is finished rather than left to linger. Without this a
   // player could keep several open and cherry-pick the one that went best —
   // and a survival run, having no clock, would otherwise never close at all.
-  await db.puzzleRushRun.updateMany({
+  //
+  // Settled through `finishRun` rather than closed with a bare `updateMany`.
+  // Stamping `endedAt` on its own strands the run permanently unpaid: every
+  // path that pays — `getRush`, `endRush`, `playRushMoves` — settles only a run
+  // whose `endedAt` is still null, so once it is set nothing will ever grant the
+  // rewards. The score itself is not stranded with them, since `bestScore` and
+  // `rushBests` both count an ended run, which is what made the loss silent —
+  // a twenty-solve run walked away from kept its place on the board and paid
+  // nothing. Abandoning a run is the same act as ending it, so it pays the same.
+  const open = await db.puzzleRushRun.findMany({
     where: { userId: input.user.id, endedAt: null },
-    data: { endedAt: new Date(), currentPuzzleId: null },
   });
+
+  for (const abandoned of open) {
+    await finishRun(input.user, abandoned);
+  }
 
   const first = await pickRushPuzzle(0, []);
 

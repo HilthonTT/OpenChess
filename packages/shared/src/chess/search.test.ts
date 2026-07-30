@@ -319,19 +319,40 @@ describe("converting a won endgame", () => {
     return game;
   }
 
-  test("king and queen mate", () => {
-    expect(playOut("8/8/8/4k3/8/8/8/K6Q w - - 0 1", 80).status).toBe("checkmate");
-  });
+  /**
+   * These play out ninety-odd plies at depth 6 apiece, so they run in seconds
+   * rather than milliseconds and blow through `bun test`'s 5s default on any
+   * machine slower than a fast laptop — a red suite that says nothing about the
+   * engine. Stated explicitly so the budget is a decision rather than whatever
+   * the runner happens to default to.
+   */
+  const CONVERSION_TIMEOUT_MS = 60_000;
 
-  test("king and rook mate", () => {
-    expect(playOut("8/8/8/4k3/8/8/8/K6R w - - 0 1", 90).status).toBe("checkmate");
-  });
+  test(
+    "king and queen mate",
+    () => {
+      expect(playOut("8/8/8/4k3/8/8/8/K6Q w - - 0 1", 80).status).toBe("checkmate");
+    },
+    CONVERSION_TIMEOUT_MS,
+  );
 
-  test("two bishops mate", () => {
-    // The mate is a dozen moves of technique further off than any search here
-    // sees, so this one is carried entirely by the evaluation pointing the way.
-    expect(playOut("8/8/8/4k3/8/8/8/KBB5 w - - 0 1", 95).status).toBe("checkmate");
-  });
+  test(
+    "king and rook mate",
+    () => {
+      expect(playOut("8/8/8/4k3/8/8/8/K6R w - - 0 1", 90).status).toBe("checkmate");
+    },
+    CONVERSION_TIMEOUT_MS,
+  );
+
+  test(
+    "two bishops mate",
+    () => {
+      // The mate is a dozen moves of technique further off than any search here
+      // sees, so this one is carried entirely by the evaluation pointing the way.
+      expect(playOut("8/8/8/4k3/8/8/8/KBB5 w - - 0 1", 95).status).toBe("checkmate");
+    },
+    CONVERSION_TIMEOUT_MS,
+  );
 
   test("a bare king against a bare king is a draw, not a shuffle to nowhere", () => {
     const game = playOut("8/8/8/4k3/8/8/8/K7 w - - 0 1", 10);
