@@ -42,6 +42,15 @@ const EnvSchema = z
       "silent",
     ]),
     DATABASE_URL: z.url(),
+    // Whether a proxy we control terminates connections in front of this
+    // server. Only then is `X-Forwarded-For` worth reading: it is a plain
+    // request header, so a directly-reachable server that honours it lets any
+    // client choose the IP address its requests are recorded under. Off means
+    // the recorder logs the socket peer, which nobody can forge.
+    TRUST_PROXY: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.stringbool().default(false),
+    ),
     // Comma-separated CORS allowlist, read by the production CORS manager.
     ALLOWED_ORIGINS: z.string().optional(),
     // The origin this API is reached on, used to build the URLs we hand to
