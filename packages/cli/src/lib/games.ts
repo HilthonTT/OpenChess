@@ -1,5 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import type {
+  ChatPhraseId,
   Difficulty,
   PersonalityId,
   PromotionPiece,
@@ -239,6 +240,30 @@ export async function flagGame(id: string): Promise<ServerGame> {
   }
 
   return response.json();
+}
+
+export type ChatMessage = ServerGame["chat"][number];
+
+/**
+ * Say one of the catalog's phrases to your opponent.
+ *
+ * The wire carries the phrase's key and never any text of ours, which is what
+ * keeps this a feature rather than a moderation problem. Returns the recent
+ * transcript with the new message on the end; the opponent gets the same over
+ * their event stream.
+ */
+export async function sendChatMessage(
+  id: string,
+  phrase: ChatPhraseId,
+): Promise<ChatMessage[]> {
+  const response = await byId.chat.$post({ param: { id }, json: { phrase } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  const { chat } = await response.json();
+  return chat;
 }
 
 export type GameHistoryEntry = InferResponseType<

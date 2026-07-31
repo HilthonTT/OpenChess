@@ -30,10 +30,16 @@ terminal.
 - **Online 1v1** — matched against the next player in the queue, with the
   opponent's moves pushed over a live stream; the only games that move your Elo
   rating, and they pay the biggest rewards. Offer a draw and they can take it,
-  decline it, or answer with a move
+  decline it, or answer with a move. Say one of nine set phrases — enough for
+  "good luck", "nice move" and "good game", and nothing you have to moderate
 - **Challenges** — play someone you picked instead of whoever is next: by name,
   or by a short code anyone can take. A finished game offers a rematch, same
   clock and colours swapped
+- **Friends** — ask a player to be friends and see who is around: online, in a
+  game, or last seen an hour ago. Sorted so whoever you could actually play is
+  at the top, and one key from there to a challenge
+- **Profiles** — anyone's record, rating curve, title, achievements and recent
+  games, reached by name from the friends list or straight off a leaderboard row
 - **Puzzles** — a tactics trainer on its own Elo ladder, with a daily puzzle
   everyone gets, a solve streak, and hints that cost you half the payout. Train
   one motif at a time — forks, back-rank mates, zugzwang — and see your record
@@ -73,7 +79,7 @@ by agreement.
 | [`packages/cli`](packages/cli)         | The game — an [OpenTUI](https://github.com/sst/opentui) React app |
 | [`packages/server`](packages/server)   | The HTTP API — [Hono](https://hono.dev) with OpenAPI docs        |
 | [`packages/database`](packages/database) | The [Prisma](https://www.prisma.io) schema and client, on PostgreSQL |
-| [`packages/shared`](packages/shared)   | The chess engine and progression rules both sides agree on       |
+| [`packages/shared`](packages/shared)   | The chess engine, the progression rules and the chat catalog both sides agree on |
 
 ## Requirements
 
@@ -180,20 +186,31 @@ Interactive API docs are served at `/reference`, and the raw OpenAPI document at
 [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
 stream — the one route not in the OpenAPI document, because its body is a stream
 rather than a modelled response. It emits `state` events whose data is exactly
-the JSON body of `GET /api/games/{id}`: one immediately on connect, one on every
-change, and then the server hangs up once the game is settled. It sits behind the
-same auth as every other game route and refuses a game you are not playing in.
+the JSON body of `GET /api/games/{id}`: one immediately on connect, and one on
+every change. It sits behind the same auth as every other game route and refuses
+a game you are not playing in.
 
-Not every change is a move. A draw offer moves neither the ply nor the result, so
-a client that decides "is this new?" by comparing those two alone will filter the
-one board change that is pure negotiation straight out — compare `drawOfferFrom`
-as well, as both CLI screens do.
+A settled game does not close the stream immediately. The server keeps it open
+for ninety seconds past the result, because the thing people actually say in a
+chess game is said *after* it — a stream that hung up on the final move would
+deliver every message except "good game". A game that was already over when the
+stream opened is the exception: it gets its one state event and a hang-up, since
+nobody is standing at that board.
+
+Not every change is a move. A draw offer moves neither the ply nor the result,
+and neither does a message, so a client deciding "is this new?" from those two
+alone would filter out both of the changes that are pure conversation. Compare
+`drawOfferFrom` and the last id in `chat` as well, as the CLI does — and treat
+the two differently once you have: a move is a new position and should clear a
+held selection, while a message is not and must not. Being told "nice move"
+should not put your piece back down.
 
 `GET /api/games/{id}/watch/events` is the spectators' feed, on the same loop and
 the same notifications, so a watcher is never a tick behind the players. Its
 payload is the narrower `GET /api/games/{id}/watch` body: both players, the
 position, the clocks and the move list, and no legal moves at all — there is
-nothing in it a watcher could act on.
+nothing in it a watcher could act on, and no chat either, since the two people
+playing did not sign up to be overheard.
 
 That is how the opponent's moves reach the CLI. They used to arrive by polling
 every two seconds, each poll paying for a token verification and a full game
@@ -211,10 +228,11 @@ would not already ask for.
 
 Pick a screen from the menu with `↑↓` and `enter`, or press the number beside
 it. `ctrl + .` opens the theme picker, `ctrl + l` signs you in or out, and `q`
-quits. Online features (puzzles, challenges, watching, leaderboard,
-achievements, stats, store) need an account; sign-in opens your browser and
-hands the token back to the CLI. Reviewing a PGN file is the one exception — the
-file is the whole game and the engine runs locally, so it works signed out.
+quits. Online features (puzzles, challenges, friends, profiles, watching,
+leaderboard, achievements, stats, store) need an account; sign-in opens your
+browser and hands the token back to the CLI. Reviewing a PGN file is the one
+exception — the file is the whole game and the engine runs locally, so it works
+signed out.
 
 At the board:
 
@@ -240,6 +258,14 @@ away by a stray keypress); while your own offer stands, `n` withdraws it; and
 when the offer is your opponent's, `d` accepts and `n` declines. The footer and
 the status line say which of those the keys currently mean, and an offer reaches
 the other player over the same live stream their moves do.
+
+`t` opens the phrase picker and `1`–`9` say one of them; `t` again or `esc`
+closes it. The picker leads with whatever fits — greetings on move one, "good
+game" once the result is in — but the whole catalog is always on it, so "sorry"
+is reachable at any point. Saying something never locks the board: unlike every
+other request the screen makes, it changes nothing about the position, and
+freezing the pieces for it would cost a tempo in a bullet game. It still works
+after the game ends, which is what the stream's ninety-second stay-open is for.
 
 In the **Analysis** screen — reached from the menu or with `a` from a finished
 game — `←→` step through the moves, `home`/`end` jump to either end, and `f`
@@ -283,10 +309,67 @@ sent, `enter` accepts, `d` declines, `x` withdraws one of yours, `n` writes a
 new one, and `c` joins by code. In **Watch**, `enter` opens the highlighted
 game and `f` flips the board.
 
+In **Friends**, `←→` move between your friends, who has asked you, and who you
+have asked. On the inbox `enter` accepts and `d` declines; everywhere else
+`enter` opens the player's profile, `c` takes you to a challenge with their name
+already filled in, and `x` twice removes them or withdraws your request. `a`
+opens the search: type a name and matches appear as you go, each saying where
+you already stand with that player, so you cannot ask someone twice by accident.
+
+A **profile** — from a friend's row, from `enter` on a leaderboard row, or from
+the search — carries `f` to ask (or to accept, when it is their request you are
+looking at), `d` to decline, `x` twice to unfriend or withdraw, and `c` to
+challenge. As at the board, the footer says which of those the keys currently
+mean.
+
 On the other screens: `↑↓` browse, `←→` page the leaderboard, `s` cycles its
 sort, and `r` refreshes. In the store, `enter` buys the highlighted title
 (pressed twice, so a stray keypress can't spend your coins), equips one you
 own, or unequips the one you're wearing.
+
+## Friends, presence and what you can say
+
+**Presence is derived, never declared.** There is no "go online" call and no
+connection to hold open: an authenticated request records that you were here,
+and everything else is arithmetic against that one timestamp. A player counts as
+online for five minutes after their last request, `playing` if they also have an
+unfinished online game, and offline otherwise. That ordering matters — a game
+sits unfinished until somebody resigns it, so someone who walked away mid-game
+would otherwise read as "playing" forever. The clock decides whether they are
+here at all; the game only decides what they are doing while they are.
+
+The write is throttled to once a minute per player and is never awaited, because
+presence is decoration and must not cost a request. So it is accurate to about a
+minute, and the UI says "5m ago" rather than pretending to seconds it does not
+have.
+
+**A friendship is one row, and mutual requests resolve rather than pile up.**
+Asking someone who has already asked you *accepts* their request — two players
+who have each asked have agreed, and the order the two happened to land in is
+not a reason to leave both pending. It is the same reading two simultaneous draw
+offers get. Asking again while your own request stands returns the one already
+sent instead of filling their list, and a decline is an answer to one request
+rather than a permanent verdict: either of you can ask again later.
+
+**A profile is a strict subset of `/me`.** It carries what a player has made
+public by playing — record, rating and curve, title, achievements, recent games
+— and nothing else. No wallet, no ledger, no account identity. That is enforced
+by projecting field by field rather than by loading the row and deleting what
+should not be there, so a column added to `User` tomorrow is invisible on a
+profile until somebody writes it down.
+
+**Chat is nine phrases and no free text.** The wire carries a key like
+`goodGame`; the receiving client looks up what that means. Nothing one player
+controls ever reaches the other player's screen, which makes the feature safe by
+construction rather than safe by filtering — there is no moderation queue, no
+mute list, and no report flow to build, because there is nothing to moderate.
+The cap is per player per game, since nine phrases cannot be abusive one at a
+time but a hundred of them in a row can. Players only: a spectator can watch a
+game but cannot talk in it, and the watch feed carries no chat at all.
+
+Retiring a phrase from the catalog is a copy edit, not a migration — stored
+messages keep their key, and a key the catalog no longer has renders as itself
+rather than breaking the game it is in.
 
 ## Draws by agreement
 

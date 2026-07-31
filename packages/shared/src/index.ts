@@ -16,6 +16,7 @@ export * from "./chess/accuracy";
 export * from "./chess/puzzle";
 export * from "./chess/puzzle-themes";
 export * from "./chess/time-control";
+export * from "./social/chat";
 export * from "./progression/level";
 export * from "./progression/streak";
 export * from "./progression/puzzle-rating";

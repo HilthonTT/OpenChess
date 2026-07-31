@@ -4,6 +4,8 @@ export const TAGS = {
   GAMES: "Games",
   PUZZLES: "Puzzles",
   CHALLENGES: "Challenges",
+  FRIENDS: "Friends",
+  PLAYERS: "Players",
   LEADERBOARD: "Leaderboard",
   ME: "Me",
   STORE: "Store",

@@ -19,6 +19,18 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // The last authenticated request we saw from this player, which is what
+  // "online" is derived from. Deliberately not `updatedAt`: that column moves
+  // whenever anything about the row changes — a coin payout, a title equipped —
+  // and a player who has not opened the game in a week would read as present
+  // the moment a scheduled job touched their balance.
+  //
+  // Written at most once a minute per player and never on the request's critical
+  // path; a presence write that fails is a player who looks idle, not a request
+  // that fails. Null for an account that has not made a request since the column
+  // existed, which reads as offline — the honest answer.
+  lastSeenAt DateTime?
+
   // Source of truth for progression. `level` is derived from `experience` by
   // server logic and stored so the leaderboard can sort without recomputing it.
   experience Int @default(0)
@@ -44,6 +56,14 @@ model User {
   challengesSent     Challenge[]      @relation("Challenger")
   challengesReceived Challenge[]      @relation("Challenged")
 
+  friendshipsSent     Friendship[] @relation("FriendshipRequester")
+  friendshipsReceived Friendship[] @relation("FriendshipAddressee")
+  gameMessages        GameMessage[]
+
+  // Player search is a prefix match on the username, which the `@unique` index
+  // above cannot answer under a non-C collation. The `text_pattern_ops` index
+  // that can is created in the migration — Prisma's schema language has no way
+  // to name an operator class.
   @@index([level(sort: Desc), experience(sort: Desc)])
 }
 
@@ -218,6 +238,7 @@ model Game {
 
   transactions    CoinTransaction[]
   ratingSnapshots RatingSnapshot[]
+  messages        GameMessage[]
 
   // The challenge this game was created from, when it was not created by the
   // matchmaking queue. One game per challenge; see `Challenge.gameId`.
@@ -598,4 +619,91 @@ model Challenge {
   // The two list queries: what is waiting for me, and what am I waiting on.
   @@index([challengedId, status, createdAt(sort: Desc)])
   @@index([challengerId, status, createdAt(sort: Desc)])
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+/**
+ * A friendship, or a request to become one.
+ *
+ * One directed row for both, rather than a request table and a friendship
+ * table: a friendship *is* an accepted request, and splitting them would mean
+ * writing the same pair of ids twice and keeping the two in step. The direction
+ * survives acceptance because it is still the honest record of who asked.
+ *
+ * That direction is also why reads are two-sided. "My friends" is
+ * `requesterId = me OR addresseeId = me`, and the pair of indexes below is what
+ * makes both halves of that an index scan. The alternative — writing a row in
+ * each direction on acceptance — buys a one-sided read and pays for it with two
+ * rows that can disagree, which is a worse trade for a list this small.
+ *
+ * `@@unique([requesterId, addresseeId])` is one-directional by construction, so
+ * it cannot on its own stop A→B and B→A both existing. Nothing in the schema
+ * can: the constraint that would need to hold is over an unordered pair. The
+ * service closes it instead, and closes it by *meaning* rather than by refusal —
+ * two players who have each asked to be friends have agreed, so the second
+ * request accepts the first rather than adding a row beside it. Exactly the
+ * treatment two simultaneous draw offers get.
+ */
+model Friendship {
+  id String @id @default(cuid())
+
+  /// Who asked.
+  requesterId String
+  requester   User   @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  /// Who was asked.
+  addresseeId String
+  addressee   User   @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  status FriendshipStatus @default(PENDING)
+
+  createdAt   DateTime  @default(now())
+  /// When it was accepted or declined. Null while it is still a question.
+  respondedAt DateTime?
+
+  @@unique([requesterId, addresseeId])
+  // The three list queries: my friends (both halves), and my pending inbox.
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+}
+
+/**
+ * One canned message sent in an online game.
+ *
+ * `phrase` is a key in @openchess/shared's catalog, never the text itself. That
+ * is the whole design: the wire carries `goodGame`, the client renders "Good
+ * game", and there is no free-form string anywhere in the system to moderate,
+ * escape, or truncate. It also means the catalog can be reworded — or
+ * translated — without rewriting anyone's history.
+ *
+ * Kept as rows rather than an array on `Game` for the same reason the coin
+ * ledger is: each message has a sender and a time of its own, and appending to
+ * an array column would mean reading and rewriting the whole thing under a race
+ * with the opponent doing the same.
+ */
+model GameMessage {
+  id String @id @default(cuid())
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  /// The catalog key — "goodGame", "goodLuck". Validated against the catalog on
+  /// the way in, and left a plain string here so retiring a phrase is a catalog
+  /// edit rather than a migration over everyone's finished games.
+  phrase String
+
+  createdAt DateTime @default(now())
+
+  // The only query: this game's messages, oldest first.
+  @@index([gameId, createdAt])
+  // Per-game flood control counts a sender's own rows; see `MAX_MESSAGES_PER_PLAYER`.
+  @@index([gameId, senderId])
 }

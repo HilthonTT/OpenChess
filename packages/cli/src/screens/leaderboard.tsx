@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useKeyboard } from "@opentui/react";
+import { useNavigate } from "react-router";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
@@ -34,12 +35,15 @@ type Data = { entries: LeaderboardEntry[]; total: number };
  */
 export function Leaderboard() {
   const auth = useAuth();
+  const navigate = useNavigate();
 
   const [sort, setSort] = useState<LeaderboardSort>("rating");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Which row the cursor is on, within the current page. */
+  const [index, setIndex] = useState(0);
   /** Bumped to refetch the current page, e.g. after r or a fixed error. */
   const [attempt, setAttempt] = useState(0);
 
@@ -93,7 +97,11 @@ export function Leaderboard() {
   const cycleSort = useCallback(() => {
     setSort((current) => SORTS[(SORTS.indexOf(current) + 1) % SORTS.length]!);
     setPage(1);
+    setIndex(0);
   }, []);
+
+  const entries = data?.entries ?? [];
+  const selected = entries[Math.min(index, entries.length - 1)] ?? null;
 
   const { isTopLayer } = useKeyboardLayer();
 
@@ -103,25 +111,46 @@ export function Leaderboard() {
     }
 
     switch (key.name) {
+      case "up":
+      case "k":
+        setIndex((value) => Math.max(0, value - 1));
+        break;
+      case "down":
+      case "j":
+        setIndex((value) => Math.min(entries.length - 1, value + 1));
+        break;
       case "right":
       case "l":
       case "n":
         step(1);
+        setIndex(0);
         break;
       case "left":
       case "h":
       case "p":
         step(-1);
+        setIndex(0);
         break;
       case "home":
         setPage(1);
+        setIndex(0);
         break;
       case "end":
         setPage(pageCount);
+        setIndex(0);
         break;
       // g / G, the vim pair for "top" and "bottom".
       case "g":
         setPage(key.shift ? pageCount : 1);
+        setIndex(0);
+        break;
+      // A rank is a name, and a name is a player worth looking at. This is the
+      // one place in the app where you meet somebody you have never played.
+      case "return":
+      case "space":
+        if (selected) {
+          void navigate("/profile", { state: { username: selected.username } });
+        }
         break;
       case "s":
         cycleSort();
@@ -147,12 +176,19 @@ export function Leaderboard() {
       ) : !data ? (
         <Notice text="Loading…" />
       ) : (
-        <Table entries={data.entries} sort={sort} loading={loading} />
+        <Table
+          entries={data.entries}
+          sort={sort}
+          loading={loading}
+          index={index}
+        />
       )}
 
       <HintBar
         hints={[
+          { key: "↑↓", label: "browse" },
           { key: "←→", label: "page" },
+          { key: "enter", label: "profile" },
           { key: "s", label: "sort", value: SORT_LABELS[sort] },
           { key: "r", label: "refresh" },
         ]}
@@ -201,10 +237,12 @@ function Table({
   entries,
   sort,
   loading,
+  index,
 }: {
   entries: LeaderboardEntry[];
   sort: LeaderboardSort;
   loading: boolean;
+  index: number;
 }) {
   const theme = useUITheme();
 
@@ -228,8 +266,13 @@ function Table({
         {heading("Wins".padStart(NUM_W), sort === "wins")}
       </text>
 
-      {entries.map((entry) => (
-        <Row key={entry.userId} entry={entry} dimmed={loading} />
+      {entries.map((entry, i) => (
+        <Row
+          key={entry.userId}
+          entry={entry}
+          dimmed={loading}
+          cursor={i === Math.min(index, entries.length - 1)}
+        />
       ))}
     </box>
   );
@@ -242,11 +285,21 @@ function fit(value: string, width: number): string {
     : value.padEnd(width);
 }
 
-function Row({ entry, dimmed }: { entry: LeaderboardEntry; dimmed: boolean }) {
+function Row({
+  entry,
+  dimmed,
+  cursor,
+}: {
+  entry: LeaderboardEntry;
+  dimmed: boolean;
+  cursor: boolean;
+}) {
   const theme = useUITheme();
 
   // Your own row is highlighted so it stays findable while paging — it is the
-  // one row anyone is actually looking for.
+  // one row anyone is actually looking for. The cursor is drawn as a marker in
+  // the rank column rather than as a second background, so the two can be on
+  // the same row without one hiding the other.
   const fg = dimmed ? theme.faint : entry.you ? theme.cream : theme.text;
   const numbers = dimmed ? theme.faint : theme.dim;
   const name = entry.title
@@ -254,9 +307,9 @@ function Row({ entry, dimmed }: { entry: LeaderboardEntry; dimmed: boolean }) {
     : entry.username;
 
   return (
-    <text bg={entry.you ? theme.selectionBg : undefined}>
-      <span fg={dimmed ? theme.faint : theme.walnut}>
-        {String(entry.rank).padEnd(RANK_W)}
+    <text bg={entry.you || cursor ? theme.selectionBg : undefined}>
+      <span fg={dimmed ? theme.faint : cursor ? theme.gold : theme.walnut}>
+        {`${cursor ? "▸" : " "}${String(entry.rank).padEnd(RANK_W - 1)}`}
       </span>
       <span fg={fg}>{fit(name, NAME_W)}</span>
       <span fg={fg}>{String(entry.rating).padStart(NUM_W)}</span>

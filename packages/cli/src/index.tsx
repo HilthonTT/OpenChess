@@ -16,6 +16,8 @@ import { Puzzles } from "./screens/puzzles";
 import { Rush } from "./screens/rush";
 import { Watch } from "./screens/watch";
 import { Challenges } from "./screens/challenges";
+import { Friends } from "./screens/friends";
+import { Profile } from "./screens/profile";
 
 const router = createMemoryRouter([
   {
@@ -36,6 +38,8 @@ const router = createMemoryRouter([
       { path: "/rush", element: <Rush /> },
       { path: "/watch", element: <Watch /> },
       { path: "/challenges", element: <Challenges /> },
+      { path: "/friends", element: <Friends /> },
+      { path: "/profile", element: <Profile /> },
     ],
   },
 ]);

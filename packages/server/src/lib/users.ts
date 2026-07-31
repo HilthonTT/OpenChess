@@ -43,6 +43,29 @@ function sanitize(candidate: string): string | null {
   return cleaned.length >= 3 ? cleaned.slice(0, 24) : null;
 }
 
+/**
+ * A typed-in name, as it is actually stored.
+ *
+ * Every username in the database is lower case: `sanitize` above lower-cases
+ * whatever Clerk supplied and strips it to `[a-z0-9_-]`, and the `player_xxxx`
+ * fallback is lower case by construction. That invariant is what lets every
+ * lookup elsewhere — the friend request, the profile, the search — be plain
+ * equality or a plain prefix instead of a case-insensitive comparison.
+ *
+ * The difference is not cosmetic. Prisma's `mode: "insensitive"` compiles to
+ * `ILIKE`, which cannot use the unique index on `username` and cannot use a
+ * `lower(username)` index either, so a case-insensitive search would be a
+ * sequential scan of every account. Normalizing the *input* keeps the indexes
+ * in play and still lets a player type `Magnus`.
+ *
+ * If a name ever gets written by a path that does not go through `sanitize`,
+ * this is the assumption that breaks, and it breaks by failing to find people
+ * rather than by finding the wrong ones.
+ */
+export function normalizeUsername(typed: string): string {
+  return typed.trim().toLowerCase();
+}
+
 /** Prefer what the user chose in Clerk; anything else falls back to noise. */
 async function baseUsername(clerkUserId: string): Promise<string> {
   const profile = await fetchClerkProfile(clerkUserId);

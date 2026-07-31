@@ -2,6 +2,7 @@ import type { User } from "@openchess/database";
 import { createMiddleware } from "hono/factory";
 
 import { getOrCreateUser } from "../lib/users";
+import { touchPresence } from "../player/presence";
 import type { AuthenticatedEnv } from "./require-auth";
 
 /**
@@ -23,6 +24,12 @@ export const requireUser = createMiddleware<PlayerEnv>(async (c, next) => {
   const user = await getOrCreateUser(c.get("userId"));
 
   c.set("user", user);
+
+  // An authenticated request is the only evidence anyone has that a player is
+  // around, so this is where presence gets recorded. Deliberately not awaited:
+  // it writes at most once a minute per player and never throws, and a request
+  // that waited on it would be paying for a friend list's decoration.
+  void touchPresence(user.id);
 
   await next();
 });

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { TIME_CONTROLS, type TimeControlKey } from "@openchess/shared";
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
@@ -74,7 +74,14 @@ function ChallengeList() {
   const theme = useUITheme();
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const { isTopLayer } = useKeyboardLayer();
+
+  // Arrived here from a friend's row or their profile: the player is already
+  // chosen, so the form opens on the questions that are actually left — clock,
+  // colour, rules.
+  const invited =
+    (location.state as { opponent?: string } | null)?.opponent ?? null;
 
   const [incoming, setIncoming] = useState<ServerChallenge[]>([]);
   const [outgoing, setOutgoing] = useState<ServerChallenge[]>([]);
@@ -85,7 +92,7 @@ function ChallengeList() {
 
   const [pane, setPane] = useState<Pane>("incoming");
   const [index, setIndex] = useState(0);
-  const [form, setForm] = useState<Form>(null);
+  const [form, setForm] = useState<Form>(invited === null ? null : "new");
 
   /** Jump into the game a challenge became. */
   const openGame = useCallback(
@@ -258,6 +265,7 @@ function ChallengeList() {
   if (form === "new") {
     return (
       <NewChallenge
+        opponent={invited}
         onDone={(message) => {
           setForm(null);
           setNote(message);
@@ -412,9 +420,12 @@ const CLOCK_CHOICES: Array<{ key: string; value: TimeControlKey | null }> = [
 const COLOR_CYCLE: ChallengeColor[] = ["RANDOM", "WHITE", "BLACK"];
 
 function NewChallenge({
+  opponent: invited,
   onDone,
   onCancel,
 }: {
+  /** Pre-filled when the player was chosen elsewhere — a friend's row, a profile. */
+  opponent?: string | null;
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
@@ -422,7 +433,7 @@ function NewChallenge({
   const { isTopLayer } = useKeyboardLayer();
 
   const inputRef = useRef<InputRenderable>(null);
-  const [opponent, setOpponent] = useState("");
+  const [opponent, setOpponent] = useState(invited ?? "");
   const [timeControl, setTimeControl] = useState<TimeControlKey | null>(null);
   const [color, setColor] = useState<ChallengeColor>("RANDOM");
   const [variant, setVariant] = useState<"STANDARD" | "CHESS960">("STANDARD");
@@ -500,6 +511,7 @@ function NewChallenge({
         <text fg={theme.faint}>Opponent</text>
         <input
           ref={inputRef}
+          value={invited ?? ""}
           placeholder="username, or blank for an open challenge"
           focused
           onContentChange={() => setOpponent(inputRef.current?.value ?? "")}

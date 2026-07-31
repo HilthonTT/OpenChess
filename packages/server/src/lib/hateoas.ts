@@ -34,6 +34,8 @@ export const API_PATHS = {
   games: "/api/games",
   puzzles: "/api/puzzles",
   challenges: "/api/challenges",
+  friends: "/api/friends",
+  players: "/api/players",
   me: "/api/me",
   titles: "/api/titles",
   achievements: "/api/achievements",
@@ -73,6 +75,9 @@ export const gameLinksSchema = z
     /** Present whenever an offer stands, from either side: yours to withdraw,
      * or theirs to decline. */
     declineDraw: linkSchema.optional(),
+    /** Present in any PvP game, settled or not — "good game" is said after the
+     * result, not before it. Absent against the bot, which has nothing to say. */
+    say: linkSchema.optional(),
   })
   .openapi("GameLinks");
 
@@ -140,6 +145,11 @@ export function gameLinks(game: GameState): GameLinks {
     ...(live && game.mode === "PVP" && game.drawOfferFrom !== null
       ? { declineDraw: del(`${base}/draw`) }
       : {}),
+    // Not gated on `live`, unlike everything above it. The customary exchange
+    // of "good game" happens once the result is in, and a link that vanished at
+    // the moment the game ended would take the feature away exactly when it is
+    // wanted. The handler still enforces the per-player message cap.
+    ...(game.mode === "PVP" ? { say: post(`${base}/chat`) } : {}),
   };
 }
 
@@ -267,6 +277,105 @@ export function withChallengeLinks<T extends ChallengeState>(
       ...(challenge.gameId
         ? { game: get(`${API_PATHS.games}/${challenge.gameId}`) }
         : {}),
+    },
+  };
+}
+
+export const friendLinksSchema = z
+  .object({
+    /** Their profile. Always present — a row names a player. */
+    profile: linkSchema,
+    /** Present on a pending request addressed to you. */
+    accept: linkSchema.optional(),
+    /** Present on a pending request addressed to you. */
+    decline: linkSchema.optional(),
+    /** Withdraw a request you sent, or unfriend. One route, either reading. */
+    remove: linkSchema.optional(),
+    /** Present on an accepted friendship: someone you may play. */
+    challenge: linkSchema.optional(),
+  })
+  .openapi("FriendLinks");
+
+export type FriendLinks = z.infer<typeof friendLinksSchema>;
+
+/** The slice of a friend row the links are decided from. */
+type FriendState = {
+  id: string;
+  username: string;
+  status: string;
+  /** Whether the caller is the one who sent the request. */
+  outgoing: boolean;
+};
+
+export function withFriendLinks<T extends FriendState>(
+  friend: T,
+): T & { _links: FriendLinks } {
+  const base = `${API_PATHS.friends}/${friend.id}`;
+  const pending = friend.status === "PENDING";
+
+  return {
+    ...friend,
+    _links: {
+      profile: get(`${API_PATHS.players}/${friend.username}`),
+      ...(pending && !friend.outgoing
+        ? { accept: post(`${base}/accept`), decline: post(`${base}/decline`) }
+        : {}),
+      // Present on a request you sent (withdraw) and on a friendship (unfriend),
+      // and absent on one addressed to you — that one is declined, not withdrawn.
+      ...(!pending || friend.outgoing ? { remove: del(base) } : {}),
+      ...(friend.status === "ACCEPTED"
+        ? { challenge: post(API_PATHS.challenges) }
+        : {}),
+    },
+  };
+}
+
+export const playerLinksSchema = z
+  .object({
+    self: linkSchema,
+    /** Present when there is no live friendship or request between you. */
+    addFriend: linkSchema.optional(),
+    /** Present when their request is yours to answer. */
+    acceptFriend: linkSchema.optional(),
+    declineFriend: linkSchema.optional(),
+    /** Present on a friendship, or on a request of yours still standing. */
+    removeFriend: linkSchema.optional(),
+    /** Absent on your own profile — there is nobody there to play. */
+    challenge: linkSchema.optional(),
+  })
+  .openapi("PlayerLinks");
+
+export type PlayerLinks = z.infer<typeof playerLinksSchema>;
+
+/** The slice of a public profile the links are decided from. */
+type PlayerState = {
+  username: string;
+  friendship: { state: string; friendshipId: string | null };
+};
+
+export function withPlayerLinks<T extends PlayerState>(
+  player: T,
+): T & { _links: PlayerLinks } {
+  const { state, friendshipId } = player.friendship;
+  const friendship = friendshipId
+    ? `${API_PATHS.friends}/${friendshipId}`
+    : null;
+
+  return {
+    ...player,
+    _links: {
+      self: get(`${API_PATHS.players}/${player.username}`),
+      ...(state === "none" ? { addFriend: post(API_PATHS.friends) } : {}),
+      ...(state === "requestReceived" && friendship
+        ? {
+            acceptFriend: post(`${friendship}/accept`),
+            declineFriend: post(`${friendship}/decline`),
+          }
+        : {}),
+      ...((state === "friends" || state === "requestSent") && friendship
+        ? { removeFriend: del(friendship) }
+        : {}),
+      ...(state === "self" ? {} : { challenge: post(API_PATHS.challenges) }),
     },
   };
 }
@@ -442,6 +551,9 @@ export const rootLinksSchema = z
     leaveQueue: linkSchema,
     challenges: linkSchema,
     createChallenge: linkSchema,
+    friends: linkSchema,
+    addFriend: linkSchema,
+    searchPlayers: linkSchema,
     nextPuzzle: linkSchema,
     dailyPuzzle: linkSchema,
     profile: linkSchema,
@@ -467,6 +579,9 @@ export function rootLinks(): RootLinks {
     leaveQueue: del(`${API_PATHS.games}/pvp/queue`),
     challenges: get(API_PATHS.challenges),
     createChallenge: post(API_PATHS.challenges),
+    friends: get(API_PATHS.friends),
+    addFriend: post(API_PATHS.friends),
+    searchPlayers: get(API_PATHS.players),
     nextPuzzle: get(`${API_PATHS.puzzles}/next`),
     dailyPuzzle: get(`${API_PATHS.puzzles}/daily`),
     profile: get(API_PATHS.me),

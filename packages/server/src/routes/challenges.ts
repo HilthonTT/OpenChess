@@ -11,6 +11,7 @@ import {
   findChallengeByCode,
   listChallenges,
 } from "../game/challenges";
+import { attachChat } from "../game/chat";
 import { createPlayerRouter } from "../lib/create-app";
 import { withChallengeLinks, withGameLinks } from "../lib/hateoas";
 import { problemDetailsContent } from "../lib/problem-details";
@@ -197,7 +198,11 @@ const router = base
     return c.json(
       {
         challenge: withChallengeLinks(challenge),
-        game: withGameLinks(game),
+        // A brand-new game has an empty transcript, but the shape has to carry
+        // one all the same: this response is what the accepting client opens
+        // the board from, and a `chat` that only appeared on the next request
+        // would make the field optional for every reader of it.
+        game: withGameLinks(await attachChat(game, c.get("user"))),
       },
       HttpStatusCodes.OK,
     );

@@ -63,6 +63,15 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
   {
+    id: "friends",
+    title: "Friends",
+    icon: "◆",
+    description: "Who's around, and who's asked",
+    action(ctx) {
+      ctx.navigate("/friends");
+    },
+  },
+  {
     id: "watch",
     title: "Watch",
     icon: "◉",

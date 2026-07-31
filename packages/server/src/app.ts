@@ -3,7 +3,9 @@ import configureOpenAPI from "./lib/configure-open-api";
 import achievements from "./routes/achievements";
 import auth from "./routes/auth";
 import challenges from "./routes/challenges";
+import friends from "./routes/friends";
 import game from "./routes/game";
+import players from "./routes/players";
 import puzzles from "./routes/puzzles";
 import leaderboard from "./routes/leaderboard";
 import me from "./routes/me";
@@ -25,6 +27,8 @@ const api = createRouter()
   .route("/games", game)
   .route("/puzzles", puzzles)
   .route("/challenges", challenges)
+  .route("/friends", friends)
+  .route("/players", players)
   .route("/me", me)
   .route("/titles", store)
   .route("/achievements", achievements)

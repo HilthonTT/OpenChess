@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  chatPhraseText,
+  chatPhrasesFor,
   isGameOver,
   opposite,
   TIME_CONTROLS,
@@ -7,6 +9,7 @@ import {
   toAlgebraic,
 } from "@openchess/shared";
 import type {
+  ChatPhraseId,
   Color,
   GameStatus,
   PromotionPiece,
@@ -30,7 +33,9 @@ import {
   leavePvpQueue,
   offerDraw,
   resignGame,
+  sendChatMessage,
   sendMove,
+  type ChatMessage,
   type ServerGame,
 } from "../lib/games";
 import { offerRematch } from "../lib/challenges";
@@ -64,6 +69,21 @@ const QUEUE_POLL_MS = 2_000;
  * position), so by the time the offer shows, the server already agrees.
  */
 const CLAIM_AFTER_MS = 5 * 60_000;
+
+/**
+ * The layer the phrase picker takes while it is open, so the board's own keys
+ * go quiet underneath it — `1` has to mean "say hello" and not fall through to
+ * anything the board might one day bind it to.
+ */
+const CHAT_LAYER_ID = "online-chat";
+
+/** Messages kept on screen. The server sends a window; this is what fits under a board. */
+const CHAT_LINES = 4;
+
+/** The newest message's id, or "" — how a client tells one transcript from another. */
+function lastMessageId(game: { chat: ChatMessage[] }): string {
+  return game.chat.at(-1)?.id ?? "";
+}
 
 /** The status line reworded for a game against a named human. */
 function describeOnlineStatus(
@@ -377,6 +397,8 @@ function OnlineMatch({
   const [confirmingDraw, setConfirmingDraw] = useState(false);
   /** The opponent has been on the clock long enough to claim the win. */
   const [claimAvailable, setClaimAvailable] = useState(false);
+  /** The phrase picker is open and taking the digits. */
+  const [saying, setSaying] = useState(false);
 
   const game = useReplayedGame(server.history, server.startFen);
   const { position, status } = game;
@@ -437,9 +459,10 @@ function OnlineMatch({
   const latest = useRef(server);
   latest.current = server;
 
-  // The opponent's moves, resignations and draw offers arrive pushed, not polled.
-  // Only a changed board is applied — `apply` clears the current selection, and
-  // having a square picked up must survive an event that says nothing new.
+  // The opponent's moves, resignations, draw offers and messages arrive pushed,
+  // not polled. Only a changed board is *applied* — `apply` clears the current
+  // selection, and having a square picked up must survive an event that says
+  // nothing new.
   //
   // That same guard is what protects the rewards breakdown: our own move's POST
   // response carries it and the stream's copy never does, so the echo of our
@@ -448,24 +471,43 @@ function OnlineMatch({
   // A draw offer moves neither the ply nor the result, so it has to be named here
   // too or the one board change that is pure negotiation would be filtered out as
   // "nothing new" — and an offer nobody is told about is not an offer.
+  //
+  // A message moves none of the three, and is also not a board change at all: it
+  // takes the narrow path, which copies the transcript across and leaves
+  // everything else — the held selection, the rewards line — exactly where it
+  // was. Being told "nice move" must not put your piece back down.
+  //
+  // Gated on whether the game was live when this screen opened rather than on
+  // `over`, so the subscription survives the game ending. The server keeps the
+  // stream open for a minute and a half past the result precisely so the "good
+  // game" afterwards lands, and an effect that tore down on `over` would hang up
+  // a moment before it arrived.
+  const wasLiveOnOpen = initial.result === null;
+
   useEffect(() => {
-    if (over) {
+    if (!wasLiveOnOpen) {
       return;
     }
 
     return subscribeToGame(server.id, {
       onState: (state) => {
         const current = latest.current;
+
         if (
           state.ply !== current.ply ||
           state.result !== current.result ||
           state.drawOfferFrom !== current.drawOfferFrom
         ) {
           apply(state);
+          return;
+        }
+
+        if (lastMessageId(state) !== lastMessageId(current)) {
+          setServer((previous) => ({ ...previous, chat: state.chat }));
         }
       },
     });
-  }, [apply, over, server.id]);
+  }, [apply, server.id, wasLiveOnOpen]);
 
   // Arms the claim offer while the opponent sits on their turn. Keyed on ply,
   // not the turn value: only an actual move resets the clock, the same event
@@ -659,6 +701,72 @@ function OnlineMatch({
     }
   }, [opponentName, server.id, setMessage]);
 
+  /**
+   * The nine phrases, led by the ones that fit where the game is.
+   *
+   * The whole catalog is always on screen and only its order moves: a picker
+   * whose contents changed under you would be worse than one whose best answer
+   * is not always first, and "sorry" has to stay reachable at every point in a
+   * game.
+   */
+  const phrases = useMemo(
+    () => chatPhrasesFor(over ? "end" : server.ply < 2 ? "start" : "any"),
+    [over, server.ply],
+  );
+
+  /**
+   * Say one of them.
+   *
+   * Deliberately outside `pending`, unlike every other request on this screen.
+   * Those all change the game and have to lock the board until the server
+   * agrees; this one changes nothing about the position, and freezing the
+   * pieces because somebody typed "nice move" would make the feature cost a
+   * tempo in a bullet game.
+   */
+  const say = useCallback(
+    async (phrase: ChatPhraseId) => {
+      setSaying(false);
+
+      try {
+        const chat = await sendChatMessage(server.id, phrase);
+        setServer((previous) => ({ ...previous, chat }));
+      } catch (error) {
+        setMessage(errorMessage(error));
+      }
+    },
+    [server.id, setMessage],
+  );
+
+  const { push: pushLayer, pop: popLayer, isTopLayer } = useKeyboardLayer();
+
+  // The picker owns the keyboard while it is open, which is what lets it bind
+  // the digits without the board underneath having to know they are spoken for.
+  useEffect(() => {
+    if (!saying) {
+      return;
+    }
+
+    pushLayer(CHAT_LAYER_ID);
+    return () => popLayer(CHAT_LAYER_ID);
+  }, [popLayer, pushLayer, saying]);
+
+  useKeyboard((key) => {
+    if (!isTopLayer(CHAT_LAYER_ID)) {
+      return;
+    }
+
+    if (key.name === "escape" || key.name === "t") {
+      setSaying(false);
+      return;
+    }
+
+    const choice = Number(key.name);
+
+    if (Number.isInteger(choice) && choice >= 1 && choice <= phrases.length) {
+      void say(phrases[choice - 1]!.id);
+    }
+  });
+
   /** Take the win from an opponent who walked away. The server is the judge. */
   const claim = useCallback(async () => {
     setPending("Claiming the win…");
@@ -780,6 +888,10 @@ function OnlineMatch({
             void rematch();
           }
           break;
+        case "t":
+          // Talk. Available after the result too — see `say`.
+          setSaying(true);
+          break;
       }
     },
   });
@@ -887,6 +999,8 @@ function OnlineMatch({
               <span fg={theme.faint}> claim win </span>
             </>
           ) : null}
+          <span fg={theme.cream}>t</span>
+          <span fg={theme.faint}> say </span>
           {over ? (
             <>
               <span fg={theme.cream}>a</span>
@@ -918,6 +1032,12 @@ function OnlineMatch({
         clocks={clocks}
       />
 
+      {saying ? (
+        <PhrasePicker phrases={phrases} />
+      ) : (
+        <ChatLog messages={server.chat} opponent={opponentName} />
+      )}
+
       {rewards ? (
         <text>
           <span fg={theme.gold}>{`+${rewards.xp} xp`}</span>
@@ -930,5 +1050,71 @@ function OnlineMatch({
         </text>
       ) : null}
     </GameScreen>
+  );
+}
+
+/**
+ * What has been said, newest last.
+ *
+ * Renders nothing at all until there is something to show, rather than holding
+ * an empty box open: most games are played in silence, and a permanently blank
+ * pane under the board would cost every one of them four rows.
+ */
+function ChatLog({
+  messages,
+  opponent,
+}: {
+  messages: ChatMessage[];
+  /** Who to name on the half of the log that is not yours. */
+  opponent: string;
+}) {
+  const theme = useUITheme();
+
+  if (messages.length === 0) {
+    return null;
+  }
+
+  return (
+    <box flexDirection="column">
+      {messages.slice(-CHAT_LINES).map((message) => (
+        <text key={message.id}>
+          <span fg={message.mine ? theme.walnut : theme.gold}>
+            {`${(message.mine ? "you" : opponent).slice(0, 12)}: `}
+          </span>
+          {/* The wire carries a key; the text is looked up here. Nothing the
+              opponent controls ever reaches this line. */}
+          <span fg={message.mine ? theme.dim : theme.cream}>
+            {chatPhraseText(message.phrase)}
+          </span>
+        </text>
+      ))}
+    </box>
+  );
+}
+
+/** The nine things, numbered. */
+function PhrasePicker({
+  phrases,
+}: {
+  phrases: ReturnType<typeof chatPhrasesFor>;
+}) {
+  const theme = useUITheme();
+
+  return (
+    <box flexDirection="column">
+      <text fg={theme.walnut}>Say something — esc to close</text>
+      {/* Three to a row: nine phrases stacked would push the board off an
+          80x24 terminal, which is the size this whole screen is drawn for. */}
+      {[0, 3, 6].map((start) => (
+        <text key={start}>
+          {phrases.slice(start, start + 3).map((phrase, i) => (
+            <span key={phrase.id}>
+              <span fg={theme.cream}>{` ${start + i + 1} `}</span>
+              <span fg={theme.dim}>{phrase.text.padEnd(14)}</span>
+            </span>
+          ))}
+        </text>
+      ))}
+    </box>
   );
 }
