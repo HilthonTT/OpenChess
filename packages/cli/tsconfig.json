@@ -2,6 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react"
+    "jsxImportSource": "@opentui/react",
+    // `--version` reads the version out of package.json rather than repeating it.
+    "resolveJsonModule": true
   }
 }

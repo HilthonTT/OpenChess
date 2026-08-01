@@ -226,6 +226,27 @@ would not already ask for.
 
 ## Playing
 
+The game opens on the menu, or on a screen you name:
+
+```sh
+openchess                       # the menu
+openchess puzzles               # straight to the tactics trainer
+openchess profile hikaru        # somebody's record, by name
+openchess --local --theme nord  # a screen may also be written as a flag
+```
+
+`--theme` takes any name from `--themes`, spelled however you like — `nord`,
+`tokyo-night` and `Rosé Pine` all land. It applies to that session only and
+does not touch the theme the picker saved, so it is a way to try one on rather
+than a way to change one. `--help` lists every screen, and `--version` prints
+the version.
+
+In the workspace, arguments go after `--`:
+
+```sh
+bun run dev:cli -- puzzles --theme nord
+```
+
 Pick a screen from the menu with `↑↓` and `enter`, or press the number beside
 it. `ctrl + .` opens the theme picker, `ctrl + l` signs you in or out, and `q`
 quits. Online features (puzzles, challenges, friends, profiles, watching,

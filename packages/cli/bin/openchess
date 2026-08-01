@@ -1,0 +1,5 @@
+#!/usr/bin/env bun
+// The installed entry point named by this package's `bin` field. It only hands
+// over to the app; argument handling lives in src/lib/cli-args.ts, where it can
+// be tested without launching a terminal.
+import "../src/index.tsx";

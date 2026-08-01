@@ -83,10 +83,18 @@ export function useBoardTheme(): BoardTheme {
 
 type ThemeProviderProps = {
   children: ReactNode;
+  /**
+   * A theme to start on instead of the saved one — what `--theme` passes in.
+   * It is only the starting point: nothing here writes it to disk, so a theme
+   * asked for on the command line lasts exactly as long as the session does.
+   */
+  initialTheme?: Theme;
 };
 
-export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [currentTheme, setCurrentTheme] = useState<Theme>(getInitialTheme);
+export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
+  const [currentTheme, setCurrentTheme] = useState<Theme>(
+    () => initialTheme ?? getInitialTheme(),
+  );
 
   const setTheme = useCallback((theme: Theme) => {
     setCurrentTheme(theme);

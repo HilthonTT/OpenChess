@@ -1,48 +1,24 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { RootLayout } from "./layouts/root-layout";
-import { Home } from "./screens/home";
-import { LocalGame } from "./screens/local-game";
-import { OnlineGame } from "./screens/online-game";
-import { AIGame } from "./screens/ai-game";
-import { Leaderboard } from "./screens/leaderboard";
-import { Achievements } from "./screens/achievements";
-import { Stats } from "./screens/stats";
-import { Store } from "./screens/store";
-import { Analysis } from "./screens/analysis";
-import { Explorer } from "./screens/explorer";
-import { Puzzles } from "./screens/puzzles";
-import { Rush } from "./screens/rush";
-import { Watch } from "./screens/watch";
-import { Challenges } from "./screens/challenges";
-import { Friends } from "./screens/friends";
-import { Profile } from "./screens/profile";
+import { RouterProvider } from "react-router";
+import { parseArgs } from "./lib/cli-args";
+import { createAppRouter } from "./router";
 
-const router = createMemoryRouter([
-  {
-    path: "/",
-    element: <RootLayout />,
-    children: [
-      { index: true, element: <Home /> },
-      { path: "/local", element: <LocalGame /> },
-      { path: "/online", element: <OnlineGame /> },
-      { path: "/ai", element: <AIGame /> },
-      { path: "/leaderboard", element: <Leaderboard /> },
-      { path: "/achievements", element: <Achievements /> },
-      { path: "/stats", element: <Stats /> },
-      { path: "/store", element: <Store /> },
-      { path: "/analysis", element: <Analysis /> },
-      { path: "/explorer", element: <Explorer /> },
-      { path: "/puzzles", element: <Puzzles /> },
-      { path: "/rush", element: <Rush /> },
-      { path: "/watch", element: <Watch /> },
-      { path: "/challenges", element: <Challenges /> },
-      { path: "/friends", element: <Friends /> },
-      { path: "/profile", element: <Profile /> },
-    ],
-  },
-]);
+// Read the command line before anything takes over the terminal, so `--help`
+// and a misspelled flag print a line and leave rather than clearing the screen
+// to say it.
+const parsed = parseArgs(Bun.argv.slice(2));
+
+if (parsed.kind === "print") {
+  if (parsed.code === 0) {
+    console.log(parsed.text);
+  } else {
+    console.error(parsed.text);
+  }
+  process.exit(parsed.code);
+}
+
+const router = createAppRouter(parsed.options);
 
 function App() {
   return <RouterProvider router={router} />;
