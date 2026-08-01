@@ -39,6 +39,7 @@ import {
   type ServerGame,
 } from "../lib/games";
 import { offerRematch } from "../lib/challenges";
+import { serverPgnDetails } from "../lib/copy-game";
 import { subscribeToGame } from "../lib/game-events";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
@@ -375,6 +376,8 @@ function OnlineMatch({
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
   const opponentName = server.opponent?.username ?? "your opponent";
+  /** Your own name, for the header of a PGN copied off a finished game. */
+  const you = auth.profile?.username ?? "You";
   // The equipped title is the whole point of buying one; the header is where
   // it gets shown off. Status lines keep the bare username so they stay short.
   const opponentDisplay = server.opponent?.title
@@ -809,6 +812,22 @@ function OnlineMatch({
     selection,
     cursor,
     commit,
+    copy: {
+      game,
+      pgn: serverPgnDetails({
+        event: "OpenChess online game",
+        startedAt: server.startedAt,
+        result: server.result,
+        white: human === "w" ? you : opponentName,
+        black: human === "b" ? you : opponentName,
+      }),
+      // A rated game against a person is the one board where an engine's
+      // opinion is worth something to someone, so the position does not leave
+      // this screen until the result is in. It is the same reading the analysis
+      // screen gets by only ever opening on a finished game.
+      refuse: over ? null : "Not while the game is on — press y once it's over",
+      onNote: setMessage,
+    },
     // A pending confirmation is called off by any key that isn't its own confirm.
     before: (name) => {
       if (confirmingResign && name !== "x") {
@@ -1005,6 +1024,8 @@ function OnlineMatch({
             <>
               <span fg={theme.cream}>a</span>
               <span fg={theme.faint}> analyze </span>
+              <span fg={theme.cream}>y</span>
+              <span fg={theme.faint}> copy </span>
               {server.result === "ABORTED" ? null : (
                 <>
                   <span fg={theme.cream}>p</span>

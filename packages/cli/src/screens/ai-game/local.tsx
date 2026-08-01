@@ -91,6 +91,9 @@ function Match({
   const theme = useUITheme();
   const [game, setGame] = useState(() => createGame(startFen ?? undefined));
 
+  /** What the bot is called in an exported header, as the server names it too. */
+  const botName = `OpenChess ${PERSONALITIES[personality].name}`;
+
   const cursor = useBoardCursor({
     initialSquare: homeSquare(human),
     initiallyFlipped: human === "b",
@@ -176,6 +179,19 @@ function Match({
     selection,
     cursor,
     commit,
+    // Nothing is at stake in an offline game, so the position is the player's
+    // to take wherever they like — including to a stronger engine than this one.
+    copy: {
+      game,
+      pgn: {
+        tags: {
+          event: "OpenChess AI game",
+          white: human === "w" ? "You" : botName,
+          black: human === "b" ? "You" : botName,
+        },
+      },
+      onNote: setMessage,
+    },
     onKey: (name) => {
       switch (name) {
         case "u":
@@ -207,6 +223,8 @@ function Match({
           <span fg={theme.faint}> new </span>
           <span fg={theme.cream}>f</span>
           <span fg={theme.faint}> flip </span>
+          <span fg={theme.cream}>y</span>
+          <span fg={theme.faint}> copy </span>
         </>
       }
     >

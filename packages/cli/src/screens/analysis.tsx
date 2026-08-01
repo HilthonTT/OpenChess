@@ -43,6 +43,12 @@ import {
   exportGamePgn,
   importPgnFile,
 } from "../lib/pgn-files";
+import {
+  copyFen,
+  copyPgn,
+  serverPgnDetails,
+  type PgnDetails,
+} from "../lib/copy-game";
 
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -67,6 +73,12 @@ type ReviewSource = {
   subtitle: string;
   /** Present only for a game the server holds, which is what can be exported. */
   gameId: string | null;
+  /**
+   * The headers a copied PGN carries. Whoever built the source knows the names
+   * and the result; the board only knows the moves, and a game copied out of
+   * here with `[White "?"]` on it would have lost the part worth keeping.
+   */
+  pgn?: PgnDetails;
 };
 
 /**
@@ -412,6 +424,9 @@ function ImportPgn({
           total > 1 ? ` · game 1 of ${total}` : ""
         }`,
         gameId: null,
+        // Copied back out, an imported game keeps the headers it arrived with:
+        // it was somebody else's game before it was on this screen.
+        pgn: { result: game.result, tags: game.tags },
       });
     } catch (cause) {
       setMessage(errorMessage(cause));
@@ -619,6 +634,22 @@ function subtitleFor(game: ServerGame): string {
   return `${kind} · ${outcome}`;
 }
 
+/** Who played, and how it ended — the headers a copied PGN is written with. */
+function pgnDetailsFor(game: ServerGame, you: string): PgnDetails {
+  const them =
+    game.mode === "AI"
+      ? `OpenChess ${botName(game.personality)}`
+      : (game.opponent?.username ?? "?");
+
+  return serverPgnDetails({
+    event: game.mode === "AI" ? "OpenChess AI game" : "OpenChess online game",
+    startedAt: game.startedAt,
+    result: game.result,
+    white: game.yourColor === "w" ? you : them,
+    black: game.yourColor === "b" ? you : them,
+  });
+}
+
 function Review({
   gameId,
   onBack,
@@ -626,6 +657,7 @@ function Review({
   gameId: string;
   onBack: () => void;
 }) {
+  const auth = useAuth();
   const theme = useUITheme();
 
   const [game, setGame] = useState<ServerGame | null>(null);
@@ -699,6 +731,7 @@ function Review({
         orientation: game.yourColor,
         subtitle: subtitleFor(game),
         gameId: game.id,
+        pgn: pgnDetailsFor(game, auth.profile?.username ?? "You"),
       }}
       onBack={onBack}
     />
@@ -808,6 +841,16 @@ function ReviewBoard({
       case "e":
         void exportPgn();
         break;
+      case "y":
+        // The position you are *looking at*, not the one the game ended on —
+        // stepping to a mistake and taking that position elsewhere is the whole
+        // reason to want it. Shifted, it is the game instead.
+        setNote(
+          key.shift
+            ? copyPgn(frames[lastPly]!, source.pgn)
+            : copyFen(frames[ply]!),
+        );
+        break;
     }
   });
 
@@ -870,6 +913,8 @@ function ReviewBoard({
           <span fg={theme.faint}> mistakes </span>
           <span fg={theme.cream}>e</span>
           <span fg={theme.faint}> export </span>
+          <span fg={theme.cream}>y</span>
+          <span fg={theme.faint}> copy </span>
           <span fg={theme.cream}>f</span>
           <span fg={theme.faint}> flip </span>
         </>

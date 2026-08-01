@@ -62,6 +62,51 @@ async function renderApp(initialPath: string) {
 }
 
 /**
+ * Stand in for a terminal that honours OSC 52, and keep what it was sent.
+ * `isTTY` is what the clipboard checks before writing, and it is false under a
+ * test runner — so a real terminal has to be borrowed for the duration.
+ */
+function captureClipboard() {
+  const stdout = process.stdout;
+  const write = stdout.write;
+  const isTTY = stdout.isTTY;
+  const chunks: string[] = [];
+
+  stdout.isTTY = true;
+  // Still forwarded: the renderer writes here too, and swallowing its frames
+  // would make this helper decide what the screen looks like.
+  stdout.write = ((chunk: unknown, ...rest: unknown[]) => {
+    chunks.push(String(chunk));
+    return (write as (...args: unknown[]) => boolean).call(
+      stdout,
+      chunk,
+      ...rest,
+    );
+  }) as typeof stdout.write;
+
+  const marker = `${String.fromCharCode(0x1b)}]52;c;`;
+
+  return {
+    restore: () => {
+      stdout.write = write;
+      stdout.isTTY = isTTY;
+    },
+    /** What the last OSC 52 sequence would have put on the clipboard. */
+    text: () => {
+      const sequence = chunks.filter((chunk) => chunk.includes(marker)).at(-1);
+      if (sequence === undefined) {
+        return null;
+      }
+      const payload = sequence.slice(
+        sequence.indexOf(marker) + marker.length,
+        -1,
+      );
+      return Buffer.from(payload, "base64").toString("utf8");
+    },
+  };
+}
+
+/**
  * Count the board cells drawing a move dot. Matching the cell's leading border
  * keeps the move list's "1." out of the tally.
  */
@@ -177,6 +222,32 @@ describe("local game screen", () => {
     expect(frame).toContain("White  ♙");
     expect(frame).toContain("+1");
     expect(frame).toContain("Black  —");
+  });
+
+  test("y copies the position, and shift+y the game", async () => {
+    const app = await renderApp("/local");
+    const clipboard = captureClipboard();
+
+    try {
+      // 1. e4, so the position copied is one the game reached rather than the
+      // one it starts from.
+      await app.enter();
+      await app.arrow("up");
+      await app.arrow("up");
+      await app.enter();
+
+      await app.type("y");
+      expect(app.frame()).toContain("Position copied as FEN");
+      expect(clipboard.text()).toBe(
+        "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+      );
+
+      await app.type("Y");
+      expect(app.frame()).toContain("Game copied as PGN");
+      expect(clipboard.text()).toContain("1. e4 *");
+    } finally {
+      clipboard.restore();
+    }
   });
 
   test("flipping the board keeps the arrow keys pointing the way you look", async () => {

@@ -55,6 +55,9 @@ terminal.
   an accuracy score per side, a move-quality verdict per ply, the opening as it
   gets named, and the move it would have played. Jump between the mistakes,
   export the game as PGN, or import someone else's
+- **Copy out** — `y` puts the position on the clipboard as a FEN and `shift+y`
+  the game as a PGN, by asking the terminal rather than by shelling out to a
+  clipboard tool, so it works over SSH
 - **Openings** — an explorer over the same book the engine plays from: what
   theory does from here, how much of the book goes each way, and what each
   continuation is called. Search it by name or ECO code
@@ -265,6 +268,7 @@ At the board:
 | `u`            | Take the last move back                   |
 | `r`            | Start a new game                          |
 | `f`            | Flip the board                            |
+| `y`            | Copy the position as a FEN (`shift+y` copies the game as a PGN) |
 | `a`            | Review the game (once it's over)          |
 
 Selecting a piece dots the squares it may move to and highlights the pieces it
@@ -294,7 +298,9 @@ flips the board. `n` and `p` jump to the next and previous mistake, which is the
 fast way through a long game. The eval bar, the accuracy line and the per-move
 verdict fill in as the engine works back through the game. `e` writes the game
 out as PGN (to `~/openchess`), and `i` from the game list reads one back in —
-including a game played somewhere else entirely.
+including a game played somewhere else entirely. `y` copies the position you are
+*looking at* rather than the one the game ended on, which is what makes stepping
+to a mistake and taking that position elsewhere one keystroke.
 
 In **Puzzles**, play the move you think the position wants: `enter` picks a
 piece up and plays it, `t` asks for a hint (which names the square the piece
@@ -347,6 +353,43 @@ On the other screens: `↑↓` browse, `←→` page the leaderboard, `s` cycles
 sort, and `r` refreshes. In the store, `enter` buys the highlighted title
 (pressed twice, so a stray keypress can't spend your coins), equips one you
 own, or unequips the one you're wearing.
+
+## Copying a position out
+
+`y` copies the position as a FEN and `shift+y` the game as a PGN, on every board
+screen and in Analysis and Watch. Both are what the rest of the internet reads,
+so a position yanked here pastes into Lichess, a database, or a message to
+somebody who will tell you what you should have played.
+
+It is done by **asking the terminal**, over
+[OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands):
+print `ESC ] 52 ; c ; <base64> BEL` and the terminal sets the system clipboard.
+That is not just fewer dependencies than shelling out to `pbcopy`, `xclip` or
+`clip.exe` — it is the only one of the two that works over SSH, where the
+clipboard worth writing to is on the machine at the keyboard and every process
+this program could spawn is on the machine at the other end. tmux forwards the
+sequence under its default `set-clipboard external`, so a multiplexed session
+needs nothing set up.
+
+Nothing comes back from a terminal that was asked, so "copied" means the
+sequence was written. What *can* be known is checked first: redirected output is
+not a terminal and gets no escape sequence written into it, and a payload past
+64 KiB is refused rather than sent, since a terminal that truncates an OSC
+string leaves the clipboard holding half a game and says nothing.
+
+**A game the server is paying out on does not give up its position until it is
+over.** In an online game or a server AI game, `y` says so and copies nothing
+until the result is in; the offline engine game and Local 1v1 have the same
+board and no such rule, which is where to go to study a position mid-game. The
+point is not that a determined player could not type the position out by hand —
+it is that shipping the key would be us doing the handing. Watch is deliberately
+not held back: that is somebody else's game, and the watcher has no move to be
+helped with.
+
+A copied PGN carries the headers the screen knows — both players by name, the
+day it was played, and the result — so a game pasted somewhere else arrives as
+that game rather than as `[White "?"]`. An imported PGN keeps the headers it
+arrived with: it was somebody else's game before it was on this screen.
 
 ## Friends, presence and what you can say
 

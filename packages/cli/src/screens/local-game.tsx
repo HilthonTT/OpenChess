@@ -75,6 +75,11 @@ export function LocalGame() {
     selection,
     cursor,
     commit,
+    copy: {
+      game,
+      pgn: { tags: { event: "OpenChess local game" } },
+      onNote: setMessage,
+    },
     onKey: (name) => {
       switch (name) {
         case "u":
@@ -111,6 +116,8 @@ export function LocalGame() {
           <span fg={theme.faint}> new </span>
           <span fg={theme.cream}>f</span>
           <span fg={theme.faint}> flip </span>
+          <span fg={theme.cream}>y</span>
+          <span fg={theme.faint}> copy </span>
           <span fg={theme.cream}>9</span>
           <span fg={theme.faint}>
             {startFen === null ? " chess960 " : " standard "}

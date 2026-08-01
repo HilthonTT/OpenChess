@@ -11,6 +11,7 @@ import { GameScreen } from "../components/game-screen";
 import { CapturedSummary, MoveList, describeStatus } from "../components/game-panels";
 import { HintBar } from "../components/hint-bar";
 import { ClockLine, orientClocks } from "../components/match-view";
+import { copyFen, copyPgn, serverPgnDetails } from "../lib/copy-game";
 import { subscribeToSpectatorGame } from "../lib/game-events";
 import {
   fetchSpectatorGame,
@@ -233,6 +234,8 @@ function SpectatorBoard({
   const [game, setGame] = useState<SpectatorGame | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
+  /** What the last copy did, under the status line. */
+  const [note, setNote] = useState<string | null>(null);
 
   // The first state arrives on the stream, but a fetch gets something on
   // screen without waiting for the connection to come up.
@@ -278,6 +281,8 @@ function SpectatorBoard({
     });
   }, [gameId]);
 
+  const board = useReplayedGame(game?.history ?? [], game?.startFen ?? null);
+
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID)) {
       return;
@@ -285,9 +290,26 @@ function SpectatorBoard({
     if (key.name === "f") {
       setFlipped((value) => !value);
     }
+    // Copying is not held back to the end here as it is on a player's own
+    // board: this is a public game somebody else is playing, and the watcher
+    // has no move to be helped with.
+    if (key.name === "y" && game) {
+      setNote(
+        key.shift
+          ? copyPgn(
+              board,
+              serverPgnDetails({
+                event: "OpenChess online game",
+                startedAt: game.startedAt,
+                result: game.result,
+                white: faceName(game.white),
+                black: faceName(game.black),
+              }),
+            )
+          : copyFen(board),
+      );
+    }
   });
-
-  const board = useReplayedGame(game?.history ?? [], game?.startFen ?? null);
   const over = game?.result != null;
 
   // No `onExpire`: a watcher has no standing to settle anyone's game on time.
@@ -381,6 +403,8 @@ function SpectatorBoard({
         <>
           <span fg={theme.cream}>f</span>
           <span fg={theme.faint}> flip </span>
+          <span fg={theme.cream}>y</span>
+          <span fg={theme.faint}> copy </span>
         </>
       }
     >
@@ -404,6 +428,8 @@ function SpectatorBoard({
       {clocks ? <ClockLine row={clocks.bottom} /> : null}
 
       <text fg={over ? theme.gold : theme.dim}>{status()}</text>
+
+      {note ? <text fg={theme.gold}>{note}</text> : null}
     </GameScreen>
   );
 }

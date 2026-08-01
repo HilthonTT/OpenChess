@@ -22,6 +22,7 @@ import {
   sendMove,
   type ServerGame,
 } from "../../lib/games";
+import { serverPgnDetails } from "../../lib/copy-game";
 import { useAuth } from "../../providers/auth";
 import {
   useKeyboardLayer,
@@ -194,6 +195,12 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
 
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
+
+  /** The two names a copied PGN is headed with. */
+  const you = auth.profile?.username ?? "You";
+  const bot = `OpenChess ${
+    server.personality ? PERSONALITIES[server.personality].name : "Engine"
+  }`;
 
   const cursor = useBoardCursor({
     initialSquare: homeSquare(human),
@@ -395,6 +402,23 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     selection,
     cursor,
     commit,
+    copy: {
+      game,
+      pgn: serverPgnDetails({
+        event: "OpenChess AI game",
+        startedAt: server.startedAt,
+        result: server.result,
+        white: server.yourColor === "w" ? you : bot,
+        black: server.yourColor === "b" ? you : bot,
+      }),
+      // This game pays XP and coins, so the position stays on the board until
+      // it is settled: handing a live one to a stronger engine is the whole of
+      // what cheating at correspondence chess is, and a key for it would be us
+      // doing the handing. The offline engine game has the same board and no
+      // such rule, which is where to go to study a position mid-game.
+      refuse: over ? null : "Not while the game is on — press y once it's over",
+      onNote: setMessage,
+    },
     // A pending resign is called off by any key that isn't its own confirm.
     before: (name) => {
       if (confirmingResign && name !== "x") {
@@ -492,6 +516,8 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
             <>
               <span fg={theme.cream}>a</span>
               <span fg={theme.faint}> analyze </span>
+              <span fg={theme.cream}>y</span>
+              <span fg={theme.faint}> copy </span>
             </>
           ) : null}
           <span fg={theme.cream}>r</span>

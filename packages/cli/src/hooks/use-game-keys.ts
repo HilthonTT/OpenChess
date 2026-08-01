@@ -1,17 +1,20 @@
 import { useKeyboard } from "@opentui/react";
+import type { Game } from "@openchess/shared";
 import { PROMOTION_CHOICES } from "../components/game-panels";
+import { copyFen, copyPgn, type PgnDetails } from "../lib/copy-game";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import type { CommitMove, PendingPromotion } from "./use-move-selection";
 
 /**
  * The keys every board screen shares: cursor movement, select/confirm, the
- * promotion picker, and flipping. While the promotion prompt is open it
- * swallows every key, exactly as the screens did inline.
+ * promotion picker, flipping, and copying the game out. While the promotion
+ * prompt is open it swallows every key, exactly as the screens did inline.
  */
 export function useGameKeys({
   selection,
   cursor,
   commit,
+  copy,
   before,
   onKey,
 }: {
@@ -24,6 +27,18 @@ export function useGameKeys({
     toggleFlipped: () => void;
   };
   commit: CommitMove;
+  /** What `y` and `shift+y` put on the clipboard; omit to leave both unbound. */
+  copy?: {
+    game: Game;
+    /** Headers for the PGN, from a screen that knows who is playing. */
+    pgn?: PgnDetails;
+    /**
+     * Why copying is refused right now, if it is — shown in place of the note.
+     * A game the server pays out on is not one to hand to an engine mid-move.
+     */
+    refuse?: string | null;
+    onNote: (note: string) => void;
+  };
   /** Runs ahead of the shared keys — the resign-confirm screens cancel here. */
   before?: (keyName: string) => void;
   /** Screen-specific keys; sees only what the shared set didn't consume. */
@@ -72,6 +87,18 @@ export function useGameKeys({
       case "f":
         cursor.toggleFlipped();
         return;
+      case "y":
+        // Yank, as an editor spells it: the position on its own, or the whole
+        // game when shifted. A screen that passes no `copy` leaves the key to
+        // `onKey` rather than swallowing it.
+        if (copy) {
+          copy.onNote(
+            copy.refuse ??
+              (key.shift ? copyPgn(copy.game, copy.pgn) : copyFen(copy.game)),
+          );
+          return;
+        }
+        break;
     }
 
     onKey?.(key.name);
