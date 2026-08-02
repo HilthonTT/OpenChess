@@ -14,11 +14,35 @@ import { useToast } from "../providers/toast";
 import { useDialog } from "../providers/dialog";
 import { useTheme } from "../providers/theme";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
 
 // Which row last sent the user away. Module state, not React state: the
 // router unmounts Home while a screen is open, so this is what lets the
 // cursor come back to the same row instead of the top.
 let lastSelectedId: string | undefined;
+
+const KEYMAP: Keymap = {
+  title: "The menu",
+  // The one screen with nowhere to go back to.
+  escape: null,
+  sections: [
+    {
+      keys: [
+        { keys: "↑↓ / jk", label: "move" },
+        { keys: "enter", label: "open the highlighted screen" },
+        { keys: "1-9", label: "open a screen by the number beside it" },
+      ],
+    },
+    {
+      title: "Session",
+      keys: [
+        { keys: "ctrl+.", label: "change the theme" },
+        { keys: "ctrl+l", label: "sign in, or sign out" },
+        { keys: "q", label: "quit" },
+      ],
+    },
+  ],
+};
 
 export function Home() {
   const renderer = useRenderer();
@@ -28,6 +52,8 @@ export function Home() {
   const auth = useAuth();
   const { currentTheme } = useTheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   // The menu is where a session first lands, whether the token was restored at
   // launch or signed in for from the row below, so it is where the day is
@@ -124,6 +150,7 @@ export function Home() {
             { key: "↑↓", label: "move" },
             { key: "enter", label: "select" },
             { key: `1-${highestQuickPick}`, label: "quick pick" },
+            { key: "?", label: "keys" },
           ]}
         />
         <HintBar

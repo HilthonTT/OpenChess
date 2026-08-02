@@ -34,10 +34,30 @@ import { useGameKeys } from "../hooks/use-game-keys";
 import { useMoveSelection } from "../hooks/use-move-selection";
 import { useAuth } from "../providers/auth";
 import { useDialog } from "../providers/dialog";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { BOARD_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 
 const TITLE = "Puzzles";
+
+const KEYMAP: Keymap = {
+  title: "Puzzles",
+  escape: "cancel the selection, then back to the menu",
+  sections: [
+    { title: "At the board", keys: BOARD_KEYS },
+    {
+      title: "The puzzle",
+      keys: [
+        { keys: "t", label: "a hint — names the square, halves the payout" },
+        { keys: "s", label: "give up and watch the answer played out" },
+        { keys: "n", label: "the next puzzle" },
+        { keys: "d", label: "switch between the rated queue and the daily" },
+        { keys: "/", label: "train one motif — forks, back-rank mates, …" },
+      ],
+    },
+  ],
+};
 const SUBTITLE = "Find the move the position is asking for";
 const WIDTH = 58;
 
@@ -236,6 +256,8 @@ function PuzzleBoard({
   const theme = useUITheme();
   const toast = useToast();
   const auth = useAuth();
+
+  useKeymap(KEYMAP);
 
   /**
    * The board, rebuilt from the puzzle's position plus every move the server

@@ -20,8 +20,14 @@ import {
 import { sparkline } from "../lib/sparkline";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { errorMessage } from "../lib/utils";
+
+const KEYMAP: Keymap = {
+  title: "Stats",
+  sections: [{ keys: [{ keys: "r", label: "refresh" }] }],
+};
 
 const WIDTH = 52;
 /** Label column width; values line up in a second column. */
@@ -86,6 +92,8 @@ export function Stats() {
   }, [signedIn, attempt]);
 
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || !signedIn) {

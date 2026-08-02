@@ -19,8 +19,51 @@ import { searchPlayers, type PlayerSearchResult } from "../lib/players";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
 import { BASE_LAYER_ID, useKeyboardLayer } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
+
+const LIST_KEYMAP: Keymap = {
+  title: "Friends",
+  sections: [
+    {
+      title: "Getting around",
+      keys: [
+        { keys: "↑↓ / jk", label: "browse" },
+        { keys: "←→ / tab", label: "your friends, who asked you, who you asked" },
+        { keys: "r", label: "refresh" },
+      ],
+    },
+    {
+      title: "The highlighted player",
+      keys: [
+        { keys: "enter", label: "open their profile — or accept, on the inbox" },
+        { keys: "p", label: "open their profile" },
+        { keys: "c", label: "challenge them, with their name filled in" },
+        { keys: "d", label: "decline their request, on the inbox" },
+        { keys: "x", label: "unfriend, or withdraw — pressed twice to confirm" },
+      ],
+    },
+    {
+      title: "Somebody else",
+      keys: [{ keys: "a", label: "search for a player by name" }],
+    },
+  ],
+};
+
+const SEARCH_KEYMAP: Keymap = {
+  title: "Friends — add somebody",
+  escape: "back to the lists",
+  sections: [
+    {
+      keys: [
+        { keys: "", label: "type a name; matches appear as you go" },
+        { keys: "↑↓", label: "pick one of them" },
+        { keys: "enter", label: "ask them to be friends" },
+      ],
+    },
+  ],
+};
 
 const TITLE = "Friends";
 const SUBTITLE = "Who's around, and who's asked";
@@ -89,6 +132,10 @@ function FriendList() {
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [adding, setAdding] = useState(false);
+
+  // Stood down while the search is up, on the same condition the keyboard
+  // handler below tests: those are the search's keys, not this list's.
+  useKeymap(adding ? null : LIST_KEYMAP);
 
   const [pane, setPane] = useState<Pane>("friends");
   const [index, setIndex] = useState(0);
@@ -470,6 +517,8 @@ function AddFriend({
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(SEARCH_KEYMAP);
 
   const inputRef = useRef<InputRenderable>(null);
   const [query, setQuery] = useState("");

@@ -35,9 +35,35 @@ import { useClock } from "../../hooks/use-clock";
 import { useGameKeys } from "../../hooks/use-game-keys";
 import { useMoveSelection } from "../../hooks/use-move-selection";
 import { useReplayedGame } from "../../hooks/use-replayed-game";
+import { useKeymap, type Keymap } from "../../providers/keymap";
+import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../../lib/keymaps";
 import { Setup, describeAiStatus, type SetupChoice } from "./setup";
 import { LocalAIGame } from "./local";
 import { errorMessage } from "../../lib/utils";
+
+const MATCH_KEYMAP: Keymap = {
+  title: "Play vs AI",
+  escape: BOARD_ESCAPE,
+  sections: [
+    { title: "At the board", keys: BOARD_KEYS },
+    {
+      title: "The game",
+      keys: [
+        { keys: "x", label: "resign — pressed twice to confirm" },
+        { keys: "r", label: "a new game, once this one is over" },
+        { keys: "a", label: "review the game with the engine, once it is over" },
+        { keys: "u", label: "no undo here — this one is on your record" },
+      ],
+    },
+    {
+      title: "Copy out",
+      keys: [
+        ...COPY_KEYS,
+        { keys: "", label: "both held back until the game is settled" },
+      ],
+    },
+  ],
+};
 
 type Phase =
   | { kind: "loading" }
@@ -192,6 +218,8 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   const toast = useToast();
   const auth = useAuth();
   const navigate = useNavigate();
+
+  useKeymap(MATCH_KEYMAP);
 
   const [server, setServer] = useState(initial);
   const human = server.yourColor;

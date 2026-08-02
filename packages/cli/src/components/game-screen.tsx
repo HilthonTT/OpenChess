@@ -65,6 +65,8 @@ export function GameScreen({
       </box>
       <text>
         {footer}
+        <span fg={theme.cream}>?</span>
+        <span fg={theme.faint}> keys </span>
         <span fg={theme.cream}>esc</span>
         <span fg={theme.faint}> back to menu</span>
       </text>

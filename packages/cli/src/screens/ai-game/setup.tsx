@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import {
   opposite,
@@ -20,6 +20,7 @@ import {
   useKeyboardLayer,
   BASE_LAYER_ID,
 } from "../../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../../providers/keymap";
 
 /** Which rules to play under. Mirrors the server's `GameVariant`. */
 export type Variant = "STANDARD" | "CHESS960";
@@ -59,6 +60,54 @@ type Step = "opponent" | "variant" | "time" | "color";
 const OPPONENT_KEYS = PERSONALITY_ORDER.map((_, index) => String(index + 1));
 
 /**
+ * One question is on screen at a time and the digits mean something different
+ * on each, so the overlay describes the step rather than the whole setup.
+ */
+const STEP_KEYS: Record<Step, Keymap["sections"]> = {
+  opponent: [
+    {
+      title: "Pick an opponent",
+      keys: [
+        {
+          keys: `1-${OPPONENT_KEYS.length}`,
+          label: "play the bot on that row",
+        },
+      ],
+    },
+  ],
+  variant: [
+    {
+      title: "Pick the rules",
+      keys: [
+        { keys: "1", label: "the ordinary array" },
+        { keys: "2", label: "Chess960 — the back rank shuffled" },
+      ],
+    },
+  ],
+  time: [
+    {
+      title: "Pick a clock",
+      keys: [
+        { keys: "1", label: "untimed" },
+        { keys: "2", label: "bullet" },
+        { keys: "3", label: "blitz" },
+        { keys: "4", label: "rapid" },
+      ],
+    },
+  ],
+  color: [
+    {
+      title: "Pick a colour — this starts the game",
+      keys: [
+        { keys: "w", label: "play white" },
+        { keys: "b", label: "play black" },
+        { keys: "r", label: "let the coin decide" },
+      ],
+    },
+  ],
+};
+
+/**
  * The quick questions before the board appears — who to play, then the rules,
  * then an optional time control, then colour.
  *
@@ -95,6 +144,17 @@ export function Setup({
         : askTimeControl && timeControl === undefined
           ? "time"
           : "color";
+
+  useKeymap(
+    useMemo<Keymap>(
+      () => ({
+        title: "Play vs AI — setup",
+        escape: "one question back, then to the menu",
+        sections: STEP_KEYS[step],
+      }),
+      [step],
+    ),
+  );
 
   const start = useCallback(
     (color: Color) => {

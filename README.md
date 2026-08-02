@@ -258,6 +258,15 @@ browser and hands the token back to the CLI. Reviewing a PGN file is the one
 exception — the file is the whole game and the engine runs locally, so it works
 signed out.
 
+**`?` lists the keys of whatever screen you are on**, so the rest of this
+section is a reference rather than something to memorise. Each screen answers
+to a different set — `d` is a draw offer at an online board and a decline in the
+friends inbox — and the footer only has room for the three or four you reach
+for most. The overlay carries all of them, grouped, and it describes the
+*reading that is live*: with your opponent's draw offer on the board it says `d`
+accepts and `n` declines, and with your own standing it says `n` withdraws.
+`?` again closes it, as does `esc`.
+
 At the board:
 
 | Key            | Action                                    |

@@ -15,6 +15,25 @@ import { describeStatus } from "../components/game-panels";
 import { useBoardCursor } from "../hooks/use-board-cursor";
 import { useGameKeys } from "../hooks/use-game-keys";
 import { useMoveSelection } from "../hooks/use-move-selection";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../lib/keymaps";
+
+const KEYMAP: Keymap = {
+  title: "Local 1v1",
+  escape: BOARD_ESCAPE,
+  sections: [
+    { title: "At the board", keys: BOARD_KEYS },
+    {
+      title: "The game",
+      keys: [
+        { keys: "u", label: "take the last move back" },
+        { keys: "r", label: "start a new game in the same array" },
+        { keys: "9", label: "switch between the ordinary array and Chess960" },
+      ],
+    },
+    { title: "Copy out", keys: COPY_KEYS },
+  ],
+};
 
 export function LocalGame() {
   const theme = useUITheme();
@@ -28,6 +47,8 @@ export function LocalGame() {
   const [game, setGame] = useState(createGame);
 
   const cursor = useBoardCursor({ initialSquare: squareAt(4, 1) });
+
+  useKeymap(KEYMAP);
 
   const { position, status, history } = game;
   const over = isGameOver(status);

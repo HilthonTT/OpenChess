@@ -3,6 +3,7 @@ import type { Game } from "@openchess/shared";
 import { PROMOTION_CHOICES } from "../components/game-panels";
 import { copyFen, copyPgn, type PgnDetails } from "../lib/copy-game";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { isHelpKey } from "../providers/keymap/key";
 import type { CommitMove, PendingPromotion } from "./use-move-selection";
 
 /**
@@ -62,6 +63,15 @@ export function useGameKeys({
     }
 
     before?.(key.name);
+
+    // `?` is the help overlay's, and the provider has already opened it. It is
+    // swallowed here rather than left to fall through because a terminal
+    // speaking the kitty protocol calls it `/` with a shift flag, and `/` is
+    // the puzzle screen's theme picker — which would otherwise open behind the
+    // overlay every time somebody asked for help.
+    if (isHelpKey(key)) {
+      return;
+    }
 
     switch (key.name) {
       case "up":

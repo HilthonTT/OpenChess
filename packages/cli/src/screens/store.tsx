@@ -7,8 +7,31 @@ import { equipTitle } from "../lib/profile";
 import { fetchTitles, purchaseTitle, type Title } from "../lib/store";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { LIST_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
+
+const KEYMAP: Keymap = {
+  title: "Store",
+  escape: "call off a pending purchase, then back to the menu",
+  sections: [
+    {
+      keys: [
+        ...LIST_KEYS,
+        {
+          keys: "enter",
+          label: "buy the highlighted title — pressed twice to confirm",
+        },
+        {
+          keys: "enter",
+          label: "or equip one you own, or take off the one you wear",
+        },
+        { keys: "r", label: "refresh" },
+      ],
+    },
+  ],
+};
 import type { UITheme } from "../theme";
 import { errorMessage } from "../lib/utils";
 
@@ -191,6 +214,8 @@ export function Store() {
   }, [selected, busy, confirming, auth.profile, toast, buy, toggleEquip]);
 
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || !signedIn) {

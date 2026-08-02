@@ -13,8 +13,28 @@ import {
 } from "../lib/leaderboard";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { errorMessage } from "../lib/utils";
+
+// The one list screen where `home`, `end` and `g` move by page rather than by
+// row, since the rows it is paging through are the whole ladder.
+const KEYMAP: Keymap = {
+  title: "Leaderboard",
+  sections: [
+    {
+      keys: [
+        { keys: "↑↓ / jk", label: "browse the rows on this page" },
+        { keys: "←→ / hl / n p", label: "the next and previous page" },
+        { keys: "home / end", label: "the first and last page" },
+        { keys: "g / shift+g", label: "the same pair, for vim hands" },
+        { keys: "enter / space", label: "open that player's profile" },
+        { keys: "s", label: "sort by rating, level or wins" },
+        { keys: "r", label: "refresh" },
+      ],
+    },
+  ],
+};
 
 /** Rows per page. Sized so the table plus its chrome fits an 80x24 terminal. */
 const PAGE_SIZE = 15;
@@ -104,6 +124,8 @@ export function Leaderboard() {
   const selected = entries[Math.min(index, entries.length - 1)] ?? null;
 
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || !signedIn) {

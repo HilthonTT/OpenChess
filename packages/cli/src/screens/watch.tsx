@@ -24,11 +24,41 @@ import { useClock } from "../hooks/use-clock";
 import { useReplayedGame } from "../hooks/use-replayed-game";
 import { useAuth } from "../providers/auth";
 import { BASE_LAYER_ID, useKeyboardLayer } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { COPY_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
 
 const TITLE = "Watch";
 const SUBTITLE = "Games being played right now";
 const WIDTH = 58;
+
+const LIST_KEYMAP: Keymap = {
+  title: "Watch — games in progress",
+  sections: [
+    {
+      keys: [
+        { keys: "↑↓", label: "browse" },
+        { keys: "enter", label: "watch the highlighted game" },
+        { keys: "r", label: "refresh" },
+      ],
+    },
+  ],
+};
+
+const BOARD_KEYMAP: Keymap = {
+  title: "Watch — spectating",
+  escape: "back to the list",
+  sections: [
+    {
+      keys: [
+        { keys: "f", label: "flip the board" },
+        // Not held back to the end as it is on your own board: this is
+        // somebody else's game, and a watcher has no move to be helped with.
+        ...COPY_KEYS,
+      ],
+    },
+  ],
+};
 
 /** How often the list of live games is refreshed while it is on screen. */
 const LIST_POLL_MS = 10_000;
@@ -97,6 +127,8 @@ function faceName(
 function LiveList({ onOpen }: { onOpen: (gameId: string) => void }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(LIST_KEYMAP);
 
   const [games, setGames] = useState<LiveGame[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +262,8 @@ function SpectatorBoard({
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(BOARD_KEYMAP);
 
   const [game, setGame] = useState<SpectatorGame | null>(null);
   const [error, setError] = useState<string | null>(null);

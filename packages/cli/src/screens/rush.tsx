@@ -36,8 +36,45 @@ import {
   useKeyboardLayer,
   BASE_LAYER_ID,
 } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { BOARD_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
+
+const LOBBY_KEYMAP: Keymap = {
+  title: "Puzzle Rush — pick a mode",
+  sections: [
+    {
+      keys: [
+        { keys: "←→", label: "browse the modes without starting one" },
+        { keys: "1", label: "3 minutes" },
+        { keys: "2", label: "5 minutes" },
+        { keys: "3", label: "Survival — no clock, three mistakes" },
+      ],
+    },
+  ],
+};
+
+const RUN_KEYMAP: Keymap = {
+  title: "Puzzle Rush — a run",
+  escape: "cancel the selection, then back to the menu",
+  sections: [
+    { title: "At the board", keys: BOARD_KEYS },
+    {
+      title: "The run",
+      keys: [
+        { keys: "x", label: "stop here and bank the score" },
+        { keys: "n", label: "another run, once this one is over" },
+      ],
+    },
+    {
+      title: "Not during a run",
+      keys: [
+        { keys: "t s", label: "no hint and no solution — this one is scored" },
+      ],
+    },
+  ],
+};
 
 const TITLE = "Puzzle Rush";
 const SUBTITLE = "Solve as many as you can before the clock or three mistakes";
@@ -132,6 +169,8 @@ function Lobby({
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(LOBBY_KEYMAP);
 
   const [bests, setBests] = useState<RushBest[]>([]);
   const [board, setBoard] = useState<RushLeaderboardEntry[]>([]);
@@ -262,6 +301,8 @@ function RunBoard({
   const theme = useUITheme();
   const toast = useToast();
   const auth = useAuth();
+
+  useKeymap(RUN_KEYMAP);
 
   const [run, setRun] = useState<RushRun | RushMoveResult>(initial);
   const [pending, setPending] = useState(false);

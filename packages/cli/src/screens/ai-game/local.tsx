@@ -19,10 +19,28 @@ import { useUITheme } from "../../providers/theme";
 import { homeSquare, useBoardCursor } from "../../hooks/use-board-cursor";
 import { useGameKeys } from "../../hooks/use-game-keys";
 import { useMoveSelection } from "../../hooks/use-move-selection";
+import { useKeymap, type Keymap } from "../../providers/keymap";
+import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../../lib/keymaps";
 import { Setup, describeAiStatus, type Variant } from "./setup";
 
 /** A short pause before the engine replies, so its moves are easy to follow. */
 const AI_MOVE_DELAY_MS = 400;
+
+const KEYMAP: Keymap = {
+  title: "Play vs AI — offline",
+  escape: BOARD_ESCAPE,
+  sections: [
+    { title: "At the board", keys: BOARD_KEYS },
+    {
+      title: "The game",
+      keys: [
+        { keys: "u", label: "take your move and the engine's reply back" },
+        { keys: "r", label: "start a new game against the same opponent" },
+      ],
+    },
+    { title: "Copy out", keys: COPY_KEYS },
+  ],
+};
 
 type Started = {
   personality: PersonalityId;
@@ -89,6 +107,7 @@ function Match({
   onRedeal: () => void;
 }) {
   const theme = useUITheme();
+  useKeymap(KEYMAP);
   const [game, setGame] = useState(() => createGame(startFen ?? undefined));
 
   /** What the bot is called in an exported header, as the server names it too. */

@@ -19,8 +19,74 @@ import {
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
 import { BASE_LAYER_ID, useKeyboardLayer } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
+
+const LIST_KEYMAP: Keymap = {
+  title: "Challenges",
+  sections: [
+    {
+      title: "Getting around",
+      keys: [
+        { keys: "↑↓ / jk", label: "browse" },
+        { keys: "←→ / tab", label: "what is waiting for you, what you sent" },
+        { keys: "r", label: "refresh" },
+      ],
+    },
+    {
+      title: "The highlighted challenge",
+      keys: [
+        { keys: "enter", label: "accept it — or open the game it became" },
+        { keys: "d", label: "decline it" },
+        { keys: "x", label: "withdraw one of yours" },
+      ],
+    },
+    {
+      title: "A new one",
+      keys: [
+        { keys: "n", label: "challenge somebody by name" },
+        { keys: "c", label: "join by the code they read out to you" },
+      ],
+    },
+  ],
+};
+
+const NEW_KEYMAP: Keymap = {
+  title: "Challenges — a new one",
+  escape: "back to the lists",
+  sections: [
+    {
+      keys: [
+        { keys: "", label: "type the opponent's name, or leave it open" },
+        { keys: "tab", label: "your colour: random, white, black" },
+        { keys: "enter", label: "send it" },
+      ],
+    },
+    {
+      // Held behind ctrl because the name field has focus and would otherwise
+      // eat the digits.
+      title: "Held behind ctrl — the name field has the plain keys",
+      keys: [
+        { keys: "ctrl+1-4", label: "untimed, bullet, blitz, rapid" },
+        { keys: "ctrl+9", label: "the ordinary array, or Chess960" },
+      ],
+    },
+  ],
+};
+
+const CODE_KEYMAP: Keymap = {
+  title: "Challenges — join by code",
+  escape: "back to the lists",
+  sections: [
+    {
+      keys: [
+        { keys: "", label: "type the code" },
+        { keys: "enter", label: "take the challenge" },
+      ],
+    },
+  ],
+};
 
 const TITLE = "Challenges";
 const SUBTITLE = "Play someone you picked, not whoever's next in line";
@@ -93,6 +159,10 @@ function ChallengeList() {
   const [pane, setPane] = useState<Pane>("incoming");
   const [index, setIndex] = useState(0);
   const [form, setForm] = useState<Form>(invited === null ? null : "new");
+
+  // Stood down while a form is up, on the same condition the keyboard handler
+  // below tests: those are the form's keys, not this list's.
+  useKeymap(form === null ? LIST_KEYMAP : null);
 
   /** Jump into the game a challenge became. */
   const openGame = useCallback(
@@ -432,6 +502,8 @@ function NewChallenge({
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
 
+  useKeymap(NEW_KEYMAP);
+
   const inputRef = useRef<InputRenderable>(null);
   const [opponent, setOpponent] = useState(invited ?? "");
   const [timeControl, setTimeControl] = useState<TimeControlKey | null>(null);
@@ -566,6 +638,8 @@ function JoinByCode({
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(CODE_KEYMAP);
 
   const inputRef = useRef<InputRenderable>(null);
   const [code, setCode] = useState("");

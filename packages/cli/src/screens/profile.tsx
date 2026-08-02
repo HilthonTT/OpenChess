@@ -20,7 +20,27 @@ import { sparkline } from "../lib/sparkline";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
 import { BASE_LAYER_ID, useKeyboardLayer } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
+
+const KEYMAP: Keymap = {
+  title: "Profile",
+  sections: [
+    {
+      // `f` is the friend key in each of its readings, exactly as `d` is the
+      // draw key at the board: the footer says which one is live right now,
+      // and this says what the whole range of them is.
+      title: "This player",
+      keys: [
+        { keys: "f", label: "ask them — or accept, when they asked you" },
+        { keys: "d", label: "decline their request" },
+        { keys: "x", label: "unfriend, or withdraw — pressed twice to confirm" },
+        { keys: "c", label: "challenge them" },
+        { keys: "r", label: "refresh" },
+      ],
+    },
+  ],
+};
 
 const WIDTH = 56;
 /** Label column width; values line up in a second column. */
@@ -42,6 +62,8 @@ export function Profile() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   const username = (location.state as { username?: string } | null)?.username;
 

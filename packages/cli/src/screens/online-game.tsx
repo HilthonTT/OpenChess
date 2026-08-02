@@ -44,6 +44,8 @@ import { subscribeToGame } from "../lib/game-events";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 import { homeSquare, useBoardCursor } from "../hooks/use-board-cursor";
@@ -218,6 +220,21 @@ export function OnlineGame() {
   );
 }
 
+const QUEUE_KEYMAP: Keymap = {
+  title: "Online 1v1 — the queue",
+  sections: [
+    {
+      title: "Pick a clock — you are only paired with a like-for-like one",
+      keys: [
+        { keys: "1", label: "untimed" },
+        { keys: "2", label: "bullet" },
+        { keys: "3", label: "blitz" },
+        { keys: "4", label: "rapid" },
+      ],
+    },
+  ],
+};
+
 /** Pick the clock to queue for. You are only paired with a like-for-like one. */
 function QueueSetup({
   onChoose,
@@ -226,6 +243,8 @@ function QueueSetup({
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(QUEUE_KEYMAP);
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID)) {
@@ -411,6 +430,60 @@ function OnlineMatch({
   const theirDrawOffer =
     server.drawOfferFrom !== null && server.drawOfferFrom !== human;
   const myDrawOffer = server.drawOfferFrom === human;
+
+  // `d` and `n` mean three different pairs of things depending on whose offer
+  // is on the board, and the footer only has room to say so in four words. The
+  // overlay describes whichever reading is live, exactly as the footer does.
+  useKeymap(
+    useMemo<Keymap>(
+      () => ({
+        title: "Online 1v1",
+        escape: BOARD_ESCAPE,
+        sections: [
+          { title: "At the board", keys: BOARD_KEYS },
+          {
+            title: "The draw",
+            keys: theirDrawOffer
+              ? [
+                  { keys: "d", label: `accept ${opponentName}'s draw offer` },
+                  { keys: "n", label: "decline it" },
+                ]
+              : myDrawOffer
+                ? [
+                    { keys: "n", label: "withdraw your draw offer" },
+                    { keys: "d", label: "your offer is already with them" },
+                  ]
+                : [
+                    {
+                      keys: "d",
+                      label: "offer a draw — pressed twice to confirm",
+                    },
+                  ],
+          },
+          {
+            title: "The game",
+            keys: [
+              { keys: "x", label: "resign — pressed twice to confirm" },
+              { keys: "t", label: "say one of nine phrases" },
+              { keys: "c", label: "claim the win from an opponent who left" },
+              { keys: "r", label: "back to the queue, once the game is over" },
+              { keys: "p", label: "offer a rematch, once the game is over" },
+              { keys: "a", label: "review the game, once it is over" },
+              { keys: "u", label: "no undo in a rated game" },
+            ],
+          },
+          {
+            title: "Copy out",
+            keys: [
+              ...COPY_KEYS,
+              { keys: "", label: "both held back until the game is settled" },
+            ],
+          },
+        ],
+      }),
+      [myDrawOffer, opponentName, theirDrawOffer],
+    ),
+  );
 
   const selection = useMoveSelection({
     game,

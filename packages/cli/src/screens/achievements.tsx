@@ -6,8 +6,15 @@ import { HintBar } from "../components/hint-bar";
 import { fetchAchievements, type AchievementEntry } from "../lib/achievements";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
+import { useKeymap, type Keymap } from "../providers/keymap";
+import { LIST_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
 import { errorMessage } from "../lib/utils";
+
+const KEYMAP: Keymap = {
+  title: "Achievements",
+  sections: [{ keys: [...LIST_KEYS, { keys: "r", label: "refresh" }] }],
+};
 
 const WIDTH = 64;
 /** Rows in the viewport. Sized so the list plus its chrome fits 80x24. */
@@ -63,6 +70,8 @@ export function Achievements() {
   const last = Math.max(0, count - 1);
 
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || !signedIn) {

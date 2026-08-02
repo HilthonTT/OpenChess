@@ -3,6 +3,7 @@ import type { Theme } from "../theme";
 import { ThemeProvider } from "./theme";
 import { KeyboardLayerProvider } from "./keyboard-layer";
 import { DialogProvider } from "./dialog";
+import { KeymapProvider } from "./keymap";
 import { ToastProvider } from "./toast";
 import { AuthProvider } from "./auth";
 
@@ -17,9 +18,12 @@ export function AppProviders({ children, initialTheme }: Props) {
     <ThemeProvider initialTheme={initialTheme}>
       <KeyboardLayerProvider>
         <DialogProvider>
-          <ToastProvider>
-            <AuthProvider>{children}</AuthProvider>
-          </ToastProvider>
+          {/* Inside the dialog provider, since `?` opens one. */}
+          <KeymapProvider>
+            <ToastProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </ToastProvider>
+          </KeymapProvider>
         </DialogProvider>
       </KeyboardLayerProvider>
     </ThemeProvider>

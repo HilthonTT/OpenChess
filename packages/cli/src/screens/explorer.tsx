@@ -17,6 +17,7 @@ import { HintBar } from "../components/hint-bar";
 import { MoveList } from "../components/game-panels";
 import { useDialog } from "../providers/dialog";
 import { BASE_LAYER_ID, useKeyboardLayer } from "../providers/keyboard-layer";
+import { isHelpKey, useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 
 const TITLE = "Opening Explorer";
@@ -26,6 +27,23 @@ const WIDTH = 64;
 const VISIBLE_MOVES = 8;
 /** Cells in the share bar beside each continuation. */
 const BAR_W = 8;
+
+const KEYMAP: Keymap = {
+  title: "Opening Explorer",
+  sections: [
+    {
+      title: "Walk the book",
+      keys: [
+        { keys: "↑↓ / jk", label: "pick a continuation" },
+        { keys: "enter / → / l", label: "play it" },
+        { keys: "← / h / u", label: "take one back" },
+        { keys: "home / r", label: "back to the starting position" },
+        { keys: "f", label: "flip the board" },
+        { keys: "/", label: "jump to a line by name or ECO code" },
+      ],
+    },
+  ],
+};
 
 /** Pad or ellipsize to exactly `width`, so the columns stay columns. */
 function fit(text: string, width: number): string {
@@ -58,6 +76,8 @@ export function Explorer() {
   const theme = useUITheme();
   const dialog = useDialog();
   const { isTopLayer } = useKeyboardLayer();
+
+  useKeymap(KEYMAP);
 
   const [game, setGame] = useState<Game>(() => createGame());
   const [index, setIndex] = useState(0);
@@ -135,6 +155,12 @@ export function Explorer() {
         setFlipped((value) => !value);
         break;
       case "/":
+        // A terminal on the kitty protocol spells `?` as a shifted `/`, and
+        // that one belongs to the help overlay — without this the search would
+        // open behind it every time somebody asked for the keys.
+        if (isHelpKey(key)) {
+          break;
+        }
         dialog.open({
           title: "Jump to an opening",
           children: <OpeningDialogContent onSelect={jumpTo} />,
