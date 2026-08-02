@@ -20,6 +20,13 @@ export type LaunchOptions = {
    * not write to the preferences file the picker writes to.
    */
   theme?: Theme;
+  /**
+   * Whether the terminal is rung when the queue pairs you or the opponent
+   * moves. Undefined leaves whatever `OPENCHESS_BELL` said, which is the usual
+   * case: the flags exist to overrule that setting for one session, in either
+   * direction, so `--bell` is as necessary as `--no-bell`.
+   */
+  bell?: boolean;
 };
 
 /**
@@ -32,6 +39,8 @@ export type ParsedArgs =
   | { kind: "print"; text: string; code: number };
 
 const THEME_FLAG = "--theme";
+const BELL_FLAG = "--bell";
+const NO_BELL_FLAG = "--no-bell";
 
 function fail(text: string): ParsedArgs {
   return { kind: "print", text, code: 1 };
@@ -113,6 +122,8 @@ ${screens}
 Options
   ${THEME_FLAG} <name>  Use a theme for this session, without saving it
   --themes        List the names ${THEME_FLAG} accepts
+  ${NO_BELL_FLAG}       Don't ring the terminal for a match or a move
+  ${BELL_FLAG}          Ring it even where OPENCHESS_BELL turned it off
   -v, --version   Print the version
   -h, --help      Print this
 
@@ -164,6 +175,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let screen: ScreenName | undefined;
   let screenArg: string | undefined;
   let theme: Theme | undefined;
+  let bell: boolean | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] as string;
@@ -189,6 +201,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       }
 
       theme = found;
+      continue;
+    }
+
+    // Read before the general flag branch below, which would otherwise take
+    // these for misspelled screens. The last one on the line wins, as the last
+    // `--theme` does.
+    if (arg === BELL_FLAG || arg === NO_BELL_FLAG) {
+      bell = arg === BELL_FLAG;
       continue;
     }
 
@@ -230,7 +250,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
   // No screen named: the menu, which is where the game starts anyway.
   if (screen === undefined) {
-    return { kind: "launch", options: { path: "/", theme } };
+    return { kind: "launch", options: { path: "/", theme, bell } };
   }
 
   const entry = screenByName(screen);
@@ -246,7 +266,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         `The ${screen} screen takes no argument, but got "${screenArg}".`,
       );
     }
-    return { kind: "launch", options: { path: entry.path, theme } };
+    return { kind: "launch", options: { path: entry.path, theme, bell } };
   }
 
   if (screenArg === undefined) {
@@ -257,6 +277,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
   return {
     kind: "launch",
-    options: { path: entry.path, state: { username: screenArg }, theme },
+    options: { path: entry.path, state: { username: screenArg }, theme, bell },
   };
 }

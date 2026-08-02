@@ -133,6 +133,49 @@ describe("--theme", () => {
   });
 });
 
+describe("the bell", () => {
+  test("is left to OPENCHESS_BELL when neither flag is given", () => {
+    // Undefined rather than true: the parse has no opinion to impose, and the
+    // environment's answer is read where the bell itself is.
+    expect(launch().bell).toBeUndefined();
+    expect(launch("online").bell).toBeUndefined();
+  });
+
+  test("--no-bell turns it off, --bell back on", () => {
+    expect(launch("--no-bell").bell).toBe(false);
+    expect(launch("--bell").bell).toBe(true);
+  });
+
+  test("goes with a screen, in either order", () => {
+    expect(launch("online", "--no-bell")).toMatchObject({
+      path: "/online",
+      bell: false,
+    });
+    expect(launch("--no-bell", "profile", "hikaru")).toMatchObject({
+      path: "/profile",
+      state: { username: "hikaru" },
+      bell: false,
+    });
+  });
+
+  test("the last one on the line wins", () => {
+    expect(launch("--bell", "--no-bell").bell).toBe(false);
+    expect(launch("--no-bell", "--bell").bell).toBe(true);
+  });
+
+  test("is not mistaken for a screen", () => {
+    // The flag branch under it reads "--no-bell" as a screen called "no-bell",
+    // which is the failure this ordering exists to prevent.
+    expect(launch("--no-bell").path).toBe("/");
+  });
+
+  test("--help says both spellings", () => {
+    const { text } = printed("--help");
+    expect(text).toContain("--no-bell");
+    expect(text).toContain("OPENCHESS_BELL");
+  });
+});
+
 describe("messages", () => {
   test("--help lists every screen and leaves with 0", () => {
     const { text, code } = printed("--help");

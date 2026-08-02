@@ -40,7 +40,9 @@ import {
 } from "../lib/games";
 import { offerRematch } from "../lib/challenges";
 import { serverPgnDetails } from "../lib/copy-game";
+import { alertFor } from "../lib/game-alerts";
 import { subscribeToGame } from "../lib/game-events";
+import { notify } from "../lib/notify";
 import { errorMessage } from "../lib/utils";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -320,6 +322,12 @@ function Searching({
         }
 
         if (result.status === "matched" && result.game !== null) {
+          // Nobody sits and watches a queue. Being left is what this screen is
+          // for, so the pairing is rung for unconditionally — there is no
+          // "they answered quickly" case here, only a wait that just ended.
+          notify(
+            `Matched with ${result.game.opponent?.username ?? "an opponent"}`,
+          );
           onMatched(result.game);
           return;
         }
@@ -535,6 +543,27 @@ function OnlineMatch({
   const latest = useRef(server);
   latest.current = server;
 
+  /**
+   * Whether a request of ours is waiting on the server, read from that same
+   * callback. A change landing while one is in flight is most likely its echo,
+   * and our own resignation is not news worth ringing a bell about.
+   */
+  const awaitingOurOwn = useRef(pending);
+  awaitingOurOwn.current = pending;
+
+  /**
+   * When the opponent's turn began, by this terminal's clock rather than the
+   * game's — an untimed game has no clock, and the question the bell asks is
+   * how long *this* terminal has been sitting there with nothing happening in
+   * it.
+   *
+   * Written from the effect below rather than from here, which is what makes it
+   * hold the right value when it is read: the effect runs after the render that
+   * applied a state, so at the moment the next one arrives it still says when
+   * the turn that state ends began.
+   */
+  const theirTurnSince = useRef<number | null>(null);
+
   // The opponent's moves, resignations, draw offers and messages arrive pushed,
   // not polled. Only a changed board is *applied* — `apply` clears the current
   // selection, and having a square picked up must survive an event that says
@@ -574,6 +603,23 @@ function OnlineMatch({
           state.result !== current.result ||
           state.drawOfferFrom !== current.drawOfferFrom
         ) {
+          // Ring the terminal first, while the state that is about to be
+          // applied can still be compared with the one it replaces. Most of
+          // these changes are not worth a bell and `alertFor` says which.
+          const alert = alertFor({
+            state,
+            previous: current,
+            you: human,
+            opponent: opponentName,
+            theirTurnSince: theirTurnSince.current,
+            now: Date.now(),
+            awaitingOurOwn: awaitingOurOwn.current !== null,
+          });
+
+          if (alert !== null) {
+            notify(alert);
+          }
+
           apply(state);
           return;
         }
@@ -583,17 +629,20 @@ function OnlineMatch({
         }
       },
     });
-  }, [apply, server.id, wasLiveOnOpen]);
+  }, [apply, human, opponentName, server.id, wasLiveOnOpen]);
 
-  // Arms the claim offer while the opponent sits on their turn. Keyed on ply,
-  // not the turn value: only an actual move resets the clock, the same event
-  // the server measures from.
+  // Arms the claim offer while the opponent sits on their turn, and starts the
+  // shorter count the bell reads. Keyed on ply, not the turn value: only an
+  // actual move resets the clock, the same event the server measures from.
   useEffect(() => {
     setClaimAvailable(false);
 
     if (over || position.turn === human) {
+      theirTurnSince.current = null;
       return;
     }
+
+    theirTurnSince.current = Date.now();
 
     const timer = setTimeout(() => setClaimAvailable(true), CLAIM_AFTER_MS);
 

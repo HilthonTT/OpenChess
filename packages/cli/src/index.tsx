@@ -2,6 +2,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { RouterProvider } from "react-router";
 import { parseArgs } from "./lib/cli-args";
+import { setNotificationsEnabled } from "./lib/notify";
 import { createAppRouter } from "./router";
 
 // Read the command line before anything takes over the terminal, so `--help`
@@ -16,6 +17,12 @@ if (parsed.kind === "print") {
     console.error(parsed.text);
   }
   process.exit(parsed.code);
+}
+
+// `--bell` and `--no-bell` overrule OPENCHESS_BELL for this session. Nothing
+// says so when neither was given, which is the ordinary case.
+if (parsed.options.bell !== undefined) {
+  setNotificationsEnabled(parsed.options.bell);
 }
 
 const router = createAppRouter(parsed.options);
