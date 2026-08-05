@@ -1,0 +1,20 @@
+# Who gets asked to review what. GitHub requests a review from the owner of
+# every path a pull request touches.
+#
+# One maintainer today, so the catch-all does the work. The lines under it are
+# not redundant: they are where a second reviewer goes when there is one, and
+# they mark the paths worth being deliberate about in the meantime.
+
+*                       @HilthonTT
+
+# The engine and the progression rules — every package depends on both, and a
+# change here moves numbers players have earned.
+/packages/shared/       @HilthonTT
+
+# Schema and migrations run against real data.
+/packages/database/     @HilthonTT
+
+# CI, templates, and the policies this repo publishes.
+/.github/               @HilthonTT
+/SECURITY.md            @HilthonTT
+/CODE_OF_CONDUCT.md     @HilthonTT

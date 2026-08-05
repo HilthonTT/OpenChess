@@ -2,6 +2,7 @@
 
 Chess, in your terminal.
 
+[![CI](https://github.com/HilthonTT/OpenChess/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HilthonTT/OpenChess/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev)
@@ -547,6 +548,17 @@ piece-square evaluation, with a
 fixed horizon — without which a depth-3 search that stops right after `RxN`
 counts the knight, never sees the pawn recapture, and walks into losing trades
 believing they were winning ones. The same search backs Analysis.
+
+## Contributing
+
+Bugs and small fixes can go straight to a pull request; anything that adds a
+screen or a key is worth an issue first, since the keymap is crowded.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the two checks CI runs, and
+the conventions that are not obvious from the outside — how a screen declares
+its keys, and which providers a dialog cannot reach.
+
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md) — report privately, not in an issue
 
 ## License
 

@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  # The actions in .github/workflows are pinned by major tag, so this is what
+  # notices when a pinned major goes end of life or picks up a security fix.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+
+  # Bun has been a first-class ecosystem since February 2025, and reads the
+  # text-format `bun.lock` this repo uses. Note that updating a lockfile inside
+  # an npm workspace is a known rough edge (dependabot-core#14223) — if a PR
+  # arrives with a changed package.json and an untouched bun.lock, run
+  # `bun install` on the branch before merging.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    # A chess CLI does not need fifteen dependency PRs at once.
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+    labels:
+      - dependencies
+    groups:
+      # Patch and minor bumps land as one PR that CI either passes or does not,
+      # rather than as a queue of PRs that each need the same review.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
