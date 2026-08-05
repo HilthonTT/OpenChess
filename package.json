@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
-    "inngest-cli": "^1.39.0",
+    "inngest-cli": "^1.40.0",
     "typescript": "^7.0.2"
   },
   "trustedDependencies": [
