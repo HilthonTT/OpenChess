@@ -1,5 +1,6 @@
 import { Outlet } from "react-router";
 import type { Theme } from "../theme";
+import { GlobalKeys } from "../components/global-keys";
 import { AppProviders } from "../providers";
 import { ThemeRoot } from "./themed-root";
 
@@ -12,6 +13,7 @@ export function RootLayout({ initialTheme }: RootLayoutProps = {}) {
   return (
     <AppProviders initialTheme={initialTheme}>
       <ThemeRoot>
+        <GlobalKeys />
         <Outlet />
       </ThemeRoot>
     </AppProviders>

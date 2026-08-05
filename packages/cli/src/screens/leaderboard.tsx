@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
+import { SignedOut } from "../components/signed-out";
 import {
   MAX_PAGE,
   SORTS,
@@ -186,7 +187,10 @@ export function Leaderboard() {
   if (!signedIn) {
     return (
       <Frame>
-        <Notice text="Sign in from the menu to see the leaderboard." />
+        <SignedOut
+          title="The leaderboard needs an account"
+          message="Ranks cover every player the server has."
+        />
       </Frame>
     );
   }

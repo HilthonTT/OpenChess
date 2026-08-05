@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import { AuthStatus } from "../components/auth-status";
 import { Header } from "../components/header";
 import { HintBar } from "../components/hint-bar";
-import { Menu } from "../components/menu";
+import { Menu, QUICK_PICK_LIMIT } from "../components/menu";
 import { createAuthMenuItem, MENU_ITEMS } from "../components/menu/menu-items";
 import type { MenuItem } from "../components/menu/types";
 import { ThemeDialogContent } from "../components/dialogs/theme-dialog";
@@ -31,6 +31,7 @@ const KEYMAP: Keymap = {
         { keys: "↑↓ / jk", label: "move" },
         { keys: "enter", label: "open the highlighted screen" },
         { keys: "1-9", label: "open a screen by the number beside it" },
+        { keys: "ctrl+k", label: "open one by name — including the rest" },
       ],
     },
     {
@@ -106,9 +107,13 @@ export function Home() {
     }
   });
 
-  // Rows are numbered by position and the account row is last, so the highest
-  // number worth advertising is the count of selectable rows.
-  const highestQuickPick = items.filter((item) => !item.disabled).length;
+  // Rows are numbered by position, but only the first nine can be reached by a
+  // number key, so that — not the length of the list — is what the footer can
+  // honestly advertise. Everything below the ninth row is what ctrl+k is for.
+  const highestQuickPick = Math.min(
+    QUICK_PICK_LIMIT,
+    items.filter((item) => !item.disabled).length,
+  );
 
   const accountLabel =
     auth.status === "signed-in"
@@ -150,6 +155,9 @@ export function Home() {
             { key: "↑↓", label: "move" },
             { key: "enter", label: "select" },
             { key: `1-${highestQuickPick}`, label: "quick pick" },
+            // Sits beside the numbers on purpose: it is where the rows past
+            // the ninth went.
+            { key: "ctrl+k", label: "jump" },
             { key: "?", label: "keys" },
           ]}
         />

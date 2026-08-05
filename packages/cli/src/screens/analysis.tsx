@@ -32,6 +32,7 @@ import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
 import { Board } from "../components/board";
 import { MoveList } from "../components/game-panels";
+import { SignedOut } from "../components/signed-out";
 import {
   listFinishedGames,
   fetchGame,
@@ -70,17 +71,6 @@ const HISTORY_KEYMAP: Keymap = {
         { keys: "e", label: `write it out as a PGN, to ${DEFAULT_EXPORT_DIR}` },
         { keys: "i", label: "read a PGN file back in" },
         { keys: "r", label: "refresh" },
-      ],
-    },
-  ],
-};
-
-const SIGNED_OUT_KEYMAP: Keymap = {
-  title: "Analysis",
-  sections: [
-    {
-      keys: [
-        { keys: "i", label: "review a PGN file — this one needs no account" },
       ],
     },
   ],
@@ -184,14 +174,6 @@ export function Analysis() {
     return <ReviewBoard source={imported} onBack={back} />;
   }
 
-  if (auth.status === "checking") {
-    return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <text fg={theme.dim}>Checking your session…</text>
-      </GameScreen>
-    );
-  }
-
   // Importing is the one thing here that works signed out: the file is the
   // whole game, and the engine that reviews it is running locally anyway.
   if (auth.status !== "signed-in") {
@@ -208,10 +190,7 @@ export function Analysis() {
 }
 
 function SignedOutAnalysis({ onImport }: { onImport: () => void }) {
-  const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
-
-  useKeymap(SIGNED_OUT_KEYMAP);
 
   useKeyboard((key) => {
     if (isTopLayer(BASE_LAYER_ID) && key.name === "i") {
@@ -221,17 +200,17 @@ function SignedOutAnalysis({ onImport }: { onImport: () => void }) {
 
   return (
     <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-      <box flexDirection="column" alignItems="center" gap={1}>
-        <text fg={theme.gold}>Analysis needs an account</text>
-        <text fg={theme.dim}>
-          Your finished games live on the server; sign in to review them.
-        </text>
-        <text fg={theme.dim}>
-          A PGN file needs no account — the engine runs here.
-        </text>
-      </box>
-
-      <HintBar hints={[{ key: "i", label: "import a PGN" }]} />
+      {/* `i` still works here, so it is handed to the notice to advertise
+          alongside the sign-in key rather than sitting in a second footer. */}
+      <SignedOut
+        title="Analysis needs an account"
+        message="Your finished games live on the server."
+        note="A PGN file needs no account — the engine runs here."
+        extraKeys={[
+          { keys: "i", label: "review a PGN file — this one needs no account" },
+        ]}
+        extraHints={[{ key: "i", label: "import a PGN" }]}
+      />
     </GameScreen>
   );
 }

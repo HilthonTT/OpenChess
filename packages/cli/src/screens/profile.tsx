@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
+import { SignedOut } from "../components/signed-out";
 import {
   acceptFriend,
   addFriend,
@@ -233,7 +234,10 @@ export function Profile() {
       footer={<FriendKeys state={friendship?.state} />}
     >
       {!signedIn ? (
-        <text fg={theme.dim}>Sign in from the menu to look players up.</text>
+        <SignedOut
+          title="Profiles need an account"
+          message="Looking a player up asks the server."
+        />
       ) : username === undefined ? (
         // The screen is only ever reached with a name in tow; without one there
         // is nothing to show and nowhere useful to guess.

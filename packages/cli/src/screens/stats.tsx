@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
+import { SignedOut } from "../components/signed-out";
 import {
   fetchProfile,
   fetchRatingHistory,
@@ -108,7 +109,10 @@ export function Stats() {
   return (
     <GameScreen title="Stats" subtitle="Your record and rating" width={WIDTH}>
       {!signedIn ? (
-        <Notice text="Sign in from the menu to see your stats." />
+        <SignedOut
+          title="Stats need an account"
+          message="Your record and rating are the server's."
+        />
       ) : error ? (
         <ErrorNotice title="Couldn't load your stats" message={error} />
       ) : !data ? (

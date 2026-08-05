@@ -21,6 +21,7 @@ import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { MatchView, orientClocks } from "../components/match-view";
 import { describeStatus } from "../components/game-panels";
+import { SignedOut } from "../components/signed-out";
 import {
   GameConflictError,
   abortGame,
@@ -168,23 +169,13 @@ export function OnlineGame() {
   // A rematch drops back into the same queue, keeping the chosen clock.
   const onRequeue = useCallback(() => setMatch(null), []);
 
-  if (auth.status === "checking") {
-    return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE}>
-        <text fg={theme.dim}>Checking your session…</text>
-      </GameScreen>
-    );
-  }
-
   if (auth.status !== "signed-in") {
     return (
       <GameScreen title={TITLE} subtitle={SUBTITLE}>
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Online play needs an account</text>
-          <text fg={theme.dim}>
-            Sign in from the home screen, then come back.
-          </text>
-        </box>
+        <SignedOut
+          title="Online play needs an account"
+          message="These are the games that move your Elo."
+        />
       </GameScreen>
     );
   }

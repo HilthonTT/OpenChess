@@ -16,6 +16,7 @@ import { PuzzleThemeDialogContent } from "../components/dialogs/puzzle-theme-dia
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { MoveList, PromotionPrompt } from "../components/game-panels";
+import { SignedOut } from "../components/signed-out";
 import {
   fetchDailyPuzzle,
   fetchNextPuzzle,
@@ -161,23 +162,13 @@ export function Puzzles() {
   const themeLabel =
     themes.find((entry) => entry.key === themeKey)?.label ?? themeKey;
 
-  if (auth.status === "checking") {
-    return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <text fg={theme.dim}>Checking your session…</text>
-      </GameScreen>
-    );
-  }
-
   if (auth.status !== "signed-in") {
     return (
       <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Puzzles need an account</text>
-          <text fg={theme.dim}>
-            Your puzzle rating and streak live on the server; sign in to start.
-          </text>
-        </box>
+        <SignedOut
+          title="Puzzles need an account"
+          message="Your rating and streak are the server's."
+        />
       </GameScreen>
     );
   }

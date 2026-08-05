@@ -11,6 +11,7 @@ import { GameScreen } from "../components/game-screen";
 import { CapturedSummary, MoveList, describeStatus } from "../components/game-panels";
 import { HintBar } from "../components/hint-bar";
 import { ClockLine, orientClocks } from "../components/match-view";
+import { SignedOut } from "../components/signed-out";
 import { copyFen, copyPgn, serverPgnDetails } from "../lib/copy-game";
 import { subscribeToSpectatorGame } from "../lib/game-events";
 import {
@@ -73,24 +74,15 @@ const LIST_POLL_MS = 10_000;
  */
 export function Watch() {
   const auth = useAuth();
-  const theme = useUITheme();
   const [watching, setWatching] = useState<string | null>(null);
-
-  if (auth.status === "checking") {
-    return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <text fg={theme.dim}>Checking your session…</text>
-      </GameScreen>
-    );
-  }
 
   if (auth.status !== "signed-in") {
     return (
       <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Watching needs an account</text>
-          <text fg={theme.dim}>Sign in from the home screen, then come back.</text>
-        </box>
+        <SignedOut
+          title="Watching needs an account"
+          message="Live games come down the server's stream."
+        />
       </GameScreen>
     );
   }

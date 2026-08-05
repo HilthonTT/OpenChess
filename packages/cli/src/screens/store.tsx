@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
+import { SignedOut } from "../components/signed-out";
 import { equipTitle } from "../lib/profile";
 import { fetchTitles, purchaseTitle, type Title } from "../lib/store";
 import { useAuth } from "../providers/auth";
@@ -263,7 +264,10 @@ export function Store() {
   if (!signedIn) {
     return (
       <Frame onEscape={onEscape}>
-        <Notice text="Sign in from the menu to browse the store." />
+        <SignedOut
+          title="The store needs an account"
+          message="Coins and titles belong to an account."
+        />
       </Frame>
     );
   }

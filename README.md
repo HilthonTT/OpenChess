@@ -51,6 +51,8 @@ terminal.
   by asking the terminal, so it works over SSH
 - **A bell** — the terminal is rung when the queue pairs you or the opponent
   finally moves, the same way
+- **Go anywhere** — `ctrl+k` opens any screen by name from any other one, and a
+  screen that needs an account signs you in where you stand
 - **30+ themes** — the whole UI and board repaint from one picker
 
 All the rules are enforced: castling, en passant, promotion, checkmate,
@@ -198,11 +200,17 @@ openchess --local --theme nord  # a screen may also be written as a flag
 
 In the workspace, arguments go after `--`: `bun run dev:cli -- puzzles --theme nord`.
 
-Pick a screen with `↑↓` and `enter`, or press the number beside it. `ctrl + .`
-opens the theme picker, `ctrl + l` signs you in or out, `q` quits. Online
-features need an account; sign-in opens your browser and hands the token back.
-Reviewing a PGN file is the exception — the file is the whole game and the
-engine is local, so it works signed out.
+Pick a screen with `↑↓` and `enter`, or press the number beside it — the first
+nine carry one. **`ctrl + k` opens any screen by name**, from wherever you
+already are, which is how you reach the rest of them without going back to the
+menu. `ctrl + .` opens the theme picker, `ctrl + l` signs you in or out, `q`
+quits.
+
+Online features need an account, and a screen that wants one says so and takes
+`enter` to sign in on the spot — the browser opens, hands the token back, and
+the screen fills in behind it. Reviewing a PGN file is the exception that needs
+no account at all: the file is the whole game and the engine is local, so `i`
+works signed out.
 
 **`?` lists the keys of whatever screen you are on**, which is why what follows
 is a summary rather than the manual. Each screen answers to a different set —

@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
+import { SignedOut } from "../components/signed-out";
 import { fetchAchievements, type AchievementEntry } from "../lib/achievements";
 import { useAuth } from "../providers/auth";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -106,7 +107,10 @@ export function Achievements() {
   if (!signedIn) {
     return (
       <Frame>
-        <Notice text="Sign in from the menu to see your achievements." />
+        <SignedOut
+          title="Achievements need an account"
+          message="The server keeps the ones you earn."
+        />
       </Frame>
     );
   }

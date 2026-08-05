@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
+import { SignedOut } from "../components/signed-out";
 import {
   acceptChallenge,
   cancelChallenge,
@@ -104,25 +105,14 @@ const POLL_MS = 3_000;
 
 export function Challenges() {
   const auth = useAuth();
-  const theme = useUITheme();
-
-  if (auth.status === "checking") {
-    return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <text fg={theme.dim}>Checking your session…</text>
-      </GameScreen>
-    );
-  }
 
   if (auth.status !== "signed-in") {
     return (
       <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Challenges need an account</text>
-          <text fg={theme.dim}>
-            Sign in from the home screen, then come back.
-          </text>
-        </box>
+        <SignedOut
+          title="Challenges need an account"
+          message="A challenge is between two named players."
+        />
       </GameScreen>
     );
   }

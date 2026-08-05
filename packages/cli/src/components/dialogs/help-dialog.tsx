@@ -192,7 +192,10 @@ function layout(
  * in fifteen places at once.
  */
 function sectionsWithUniversal(keymap: Keymap): KeymapSection[] {
-  const keys = [{ keys: "?", label: "this list" }];
+  const keys = [
+    { keys: "?", label: "this list" },
+    { keys: "ctrl+k", label: "jump to any screen by name" },
+  ];
 
   if (keymap.escape !== null) {
     keys.push({ keys: "esc", label: keymap.escape ?? "back to the menu" });

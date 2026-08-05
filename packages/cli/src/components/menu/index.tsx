@@ -9,6 +9,13 @@ import type { MenuItem } from "./types";
 import { TEXT_PRESENTATION } from "../pieces";
 import { RuleBorderChars } from "../border";
 
+/**
+ * How many rows a number key can reach. There are only nine of them, and the
+ * rows past that are what `ctrl+k` is for — numbering a row the keyboard has
+ * no way to send you to is a promise the menu can't keep.
+ */
+export const QUICK_PICK_LIMIT = 9;
+
 interface MenuProps {
   items: MenuItem[];
   onSelect: (item: MenuItem) => void;
@@ -108,9 +115,11 @@ export function Menu({ items, onSelect, initialSelectedId }: MenuProps) {
                 </span>
               </text>
               <box flexGrow={1} />
-              {/* A disabled row has nothing to quick-pick, so it shows no number. */}
+              {/* A row only shows a number when that number actually opens it:
+                  a disabled row has nothing to pick, and past the ninth there
+                  is no key left to press. */}
               <text fg={selected && !dim ? theme.walnut : theme.faint}>
-                {dim ? " " : String(i + 1)}
+                {dim || i >= QUICK_PICK_LIMIT ? " " : String(i + 1)}
               </text>
             </box>
           </Fragment>

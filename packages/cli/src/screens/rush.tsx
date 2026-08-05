@@ -14,6 +14,7 @@ import { Board } from "../components/board";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { PromotionPrompt } from "../components/game-panels";
+import { SignedOut } from "../components/signed-out";
 import {
   endRush,
   fetchRushBests,
@@ -99,7 +100,6 @@ const MODES: Array<{ mode: RushMode; key: string; label: string; blurb: string }
 
 export function Rush() {
   const auth = useAuth();
-  const theme = useUITheme();
 
   const [run, setRun] = useState<RushRun | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,23 +117,13 @@ export function Rush() {
     }
   }, []);
 
-  if (auth.status === "checking") {
-    return (
-      <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <text fg={theme.dim}>Checking your session…</text>
-      </GameScreen>
-    );
-  }
-
   if (auth.status !== "signed-in") {
     return (
       <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.gold}>Puzzle Rush needs an account</text>
-          <text fg={theme.dim}>
-            The clock and the score are the server's; sign in to run.
-          </text>
-        </box>
+        <SignedOut
+          title="Puzzle Rush needs an account"
+          message="The clock and the score are the server's."
+        />
       </GameScreen>
     );
   }
