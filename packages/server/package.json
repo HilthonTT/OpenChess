@@ -24,7 +24,7 @@
     "@sentry/hono": "^10.69.0",
     "@upstash/redis": "^1.38.1",
     "dotenv": "^17.4.2",
-    "dotenv-expand": "^13.0.0",
+    "dotenv-expand": "^1000.0.0",
     "hono": "^4.12.33",
     "hono-pino": "^0.10.3",
     "inngest": "^4.14.0",
