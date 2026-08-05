@@ -9,7 +9,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pinned so a Bun release can't change the toolchain under CI; keep in
       # step with the "Bun 1.3 or newer" the README promises.
