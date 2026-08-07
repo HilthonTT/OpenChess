@@ -14,18 +14,16 @@ export function createEnvironmentBasedCORS(): CORSManager {
 
   return new CORSManager({
     origins: (origin) => {
-      // Always allow same-origin requests
+      // Same-origin requests carry no Origin header.
       if (!origin) {
         return true;
       }
 
-      // Check whitelist
       return allowedOrigins.some((allowed) => {
         if (allowed === origin) {
           return true;
         }
 
-        // Support wildcard subdomains
         if (allowed.startsWith("*.")) {
           return wildcardOriginRegExp(allowed).test(origin);
         }

@@ -117,7 +117,6 @@ export async function performLogin() {
           return new Response("Bad request", { status: 400 });
         }
 
-        // Verify nonce from state
         try {
           const payload = decodeState(state);
 
@@ -135,7 +134,6 @@ export async function performLogin() {
         settled = true;
 
         try {
-          // Exchange authorization code for Clerk tokens
           const redirectUri = `${apiUrl}/auth/callback`;
 
           const tokenRes = await fetch(`${clerkFrontendApi}/oauth/token`, {
@@ -182,7 +180,6 @@ export async function performLogin() {
       },
     });
 
-    // Build state with port and nonce
     const port = server.port;
     if (typeof port !== "number") {
       server.stop();

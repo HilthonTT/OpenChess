@@ -79,7 +79,6 @@ export class CORSManager {
         }
       }
 
-      // Handle preflight requests
       if (c.req.method === "OPTIONS" && !this.options.preflightContinue) {
         return c.body(
           null,
@@ -96,12 +95,10 @@ export class CORSManager {
       return this.options.origins(origin);
     }
 
-    // Check exact match
     if (this.allowedOrigins.has(origin)) {
       return true;
     }
 
-    // Check wildcard subdomain matching
     for (const allowed of this.allowedOrigins) {
       if (allowed.startsWith("*.")) {
         const regex = wildcardOriginRegExp(
@@ -148,7 +145,6 @@ export class CORSManager {
     }
   }
 
-  // Dynamic origin validation
   static createDynamicOriginValidator(config: {
     allowedDomains: string[];
     allowLocalhost?: boolean;
@@ -170,12 +166,10 @@ export class CORSManager {
           return false;
         }
 
-        // Allow localhost in development
         if (config.allowLocalhost && isLocalhost) {
           return true;
         }
 
-        // Check allowed domains
         for (const domain of config.allowedDomains) {
           if (config.allowSubdomains) {
             if (
@@ -199,7 +193,6 @@ export class CORSManager {
   }
 }
 
-// Development CORS configuration
 export const developmentCORS = new CORSManager({
   origins: CORSManager.createDynamicOriginValidator({
     allowedDomains: ["localhost", "127.0.0.1"],
