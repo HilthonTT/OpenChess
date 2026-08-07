@@ -176,6 +176,120 @@ describe("the bell", () => {
   });
 });
 
+describe("--fen", () => {
+  const MATE = "6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1";
+
+  test("opens analysis on the position", () => {
+    expect(launch("--fen", MATE)).toMatchObject({
+      path: "/analysis",
+      state: { fen: MATE },
+    });
+  });
+
+  test("takes its value joined as well as separate", () => {
+    expect(launch(`--fen=${MATE}`).state).toEqual({ fen: MATE });
+  });
+
+  test("reads a FEN the shell was not asked to keep together", () => {
+    // What someone pasting a position from another tool actually types: six
+    // fields, six arguments, no quotes anywhere.
+    expect(launch("--fen", ...MATE.split(" ")).state).toEqual({ fen: MATE });
+  });
+
+  test("stops gathering fields at the next flag", () => {
+    const short = "8/8/8/8/8/8/8/K6k w - -";
+    expect(launch("--fen", ...short.split(" "), "--theme", "nord")).toMatchObject({
+      path: "/analysis",
+      state: { fen: short },
+      theme: expect.objectContaining({ name: "Nord" }),
+    });
+  });
+
+  test("stops gathering fields at a screen name", () => {
+    // Gathered greedily but never past a screen, so the conflict below is
+    // reported rather than "rush" disappearing into the position.
+    const { text, code } = printed("--fen", "8/8/8/8/8/8/8/K6k", "w", "-", "-", "rush");
+    expect(code).toBe(1);
+    expect(text).toContain("analysis");
+    expect(text).toContain("rush");
+  });
+
+  test("names the analysis screen explicitly without conflicting", () => {
+    expect(launch("analysis", "--fen", MATE).path).toBe("/analysis");
+  });
+
+  test("a position the engine cannot read is refused", () => {
+    const { text, code } = printed("--fen", "not-a-position");
+    expect(code).toBe(1);
+    expect(text).toContain("isn't a position I can read");
+  });
+
+  test("a missing value is refused", () => {
+    expect(printed("--fen").code).toBe(1);
+    expect(printed("--fen=").code).toBe(1);
+  });
+
+  test("goes with the bell and theme flags", () => {
+    expect(launch("--fen", MATE, "--no-bell")).toMatchObject({
+      path: "/analysis",
+      state: { fen: MATE },
+      bell: false,
+    });
+  });
+});
+
+describe("--pgn", () => {
+  test("opens analysis on the file", () => {
+    expect(launch("--pgn", "game.pgn")).toMatchObject({
+      path: "/analysis",
+      state: { pgnPath: "game.pgn" },
+    });
+  });
+
+  test("takes its value joined as well as separate", () => {
+    expect(launch("--pgn=game.pgn").state).toEqual({ pgnPath: "game.pgn" });
+  });
+
+  test("the joined form does not swallow the screen after it", () => {
+    // Nothing else may be opened alongside it, so the screen it would have
+    // eaten is reported as the conflict it is.
+    expect(printed("--pgn=game.pgn", "rush").code).toBe(1);
+  });
+
+  test("a path is taken as written, spaces and all", () => {
+    expect(launch("--pgn", "my games/one.pgn").state).toEqual({
+      pgnPath: "my games/one.pgn",
+    });
+  });
+
+  test("a missing value is refused rather than read as a screen", () => {
+    expect(printed("--pgn").code).toBe(1);
+    expect(printed("--pgn", "").code).toBe(1);
+  });
+
+  test("another screen alongside it is refused", () => {
+    const { text, code } = printed("--pgn", "game.pgn", "--rush");
+    expect(code).toBe(1);
+    expect(text).toContain("analysis");
+  });
+
+  test("a position and a file together are refused", () => {
+    const { text, code } = printed(
+      "--pgn",
+      "game.pgn",
+      "--fen=6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1",
+    );
+    expect(code).toBe(1);
+    expect(text).toContain("Pick one");
+  });
+
+  test("--help says both spellings and what they need", () => {
+    const { text } = printed("--help");
+    expect(text).toContain("--fen");
+    expect(text).toContain("--pgn");
+  });
+});
+
 describe("messages", () => {
   test("--help lists every screen and leaves with 0", () => {
     const { text, code } = printed("--help");

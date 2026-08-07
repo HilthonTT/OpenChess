@@ -1,3 +1,4 @@
+import { parseFen, STARTING_FEN } from "@openchess/shared";
 import pkg from "../../package.json";
 import { THEMES, type Theme } from "../theme";
 import {
@@ -8,12 +9,21 @@ import {
   type ScreenName,
 } from "./screens";
 
+/**
+ * Router state for the route being opened. A screen that takes a name carries
+ * one; Analysis carries whichever of a position or a file it was pointed at,
+ * since `--fen` and `--pgn` open it on something that was never a game here.
+ */
+export type LaunchState =
+  | { username: string }
+  | { fen: string }
+  | { pgnPath: string };
+
 /** Where a successful parse lands the app. */
 export type LaunchOptions = {
   /** The route to open on. */
   path: string;
-  /** Router state for that route; only the screens that take a name have any. */
-  state?: { username: string };
+  state?: LaunchState;
   /**
    * The theme for this session, or undefined to keep the saved one. `--theme`
    * is a look at one, not a change to the one you keep: it deliberately does
@@ -41,6 +51,14 @@ export type ParsedArgs =
 const THEME_FLAG = "--theme";
 const BELL_FLAG = "--bell";
 const NO_BELL_FLAG = "--no-bell";
+const FEN_FLAG = "--fen";
+const PGN_FLAG = "--pgn";
+
+/** The screen `--fen` and `--pgn` are shorthand for. */
+const ANALYSIS_SCREEN = "analysis";
+
+/** The most fields a FEN has: placement, turn, castling, en passant, two clocks. */
+const FEN_FIELDS = 6;
 
 function fail(text: string): ParsedArgs {
   return { kind: "print", text, code: 1 };
@@ -92,6 +110,73 @@ function unknownScreenText(name: string): string {
   ].join("\n");
 }
 
+/**
+ * The value written after a flag, and the last argument index it spent.
+ *
+ * `--flag=value` carries its own and must not eat the word after it; the
+ * separate spelling spends the argument that follows.
+ */
+function flagValue(
+  argv: readonly string[],
+  index: number,
+  flag: string,
+): { value: string | undefined; last: number } {
+  const arg = argv[index] as string;
+
+  return arg.startsWith(`${flag}=`)
+    ? { value: arg.slice(flag.length + 1), last: index }
+    : { value: argv[index + 1], last: index + 1 };
+}
+
+/**
+ * The FEN written after `--fen`, and the last argument index it spent.
+ *
+ * A FEN is six space-separated fields, so one the shell was not asked to keep
+ * together arrives as six arguments rather than one — and typing the quotes is
+ * exactly what someone pasting a position from another tool forgets. Fields are
+ * gathered until the line runs out, another flag starts, or a screen is named,
+ * which is what lets both spellings work without either being able to swallow
+ * the rest of the command line.
+ */
+function readFen(
+  argv: readonly string[],
+  index: number,
+): { fen: string; last: number } {
+  const arg = argv[index] as string;
+
+  if (arg.startsWith(`${FEN_FLAG}=`)) {
+    return { fen: arg.slice(FEN_FLAG.length + 1), last: index };
+  }
+
+  const fields: string[] = [];
+  let last = index;
+
+  while (fields.length < FEN_FIELDS) {
+    const next = argv[last + 1];
+    if (next === undefined || next.startsWith("--") || isScreenName(next)) {
+      break;
+    }
+    fields.push(next);
+    last += 1;
+  }
+
+  return { fen: fields.join(" "), last };
+}
+
+/**
+ * Whether `fen` is one the engine can set a board up from. Checked here rather
+ * than on the screen so a mistyped position prints a line and leaves, instead
+ * of clearing the terminal to say so.
+ */
+function isValidFen(fen: string): boolean {
+  try {
+    parseFen(fen);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The label a screen is invoked by, with its placeholder when it needs one. */
 function screenUsage(name: ScreenName): string {
   const screen = screenByName(name);
@@ -122,15 +207,22 @@ ${screens}
 Options
   ${THEME_FLAG} <name>  Use a theme for this session, without saving it
   --themes        List the names ${THEME_FLAG} accepts
+  ${FEN_FLAG} <fen>     Review a position — quotes optional
+  ${PGN_FLAG} <file>    Review a game from a PGN file
   ${NO_BELL_FLAG}       Don't ring the terminal for a match or a move
   ${BELL_FLAG}          Ring it even where OPENCHESS_BELL turned it off
   -v, --version   Print the version
   -h, --help      Print this
 
+${FEN_FLAG} and ${PGN_FLAG} open Analysis on something you never played here,
+and neither needs an account: the engine runs locally.
+
 Examples
   openchess puzzles
   openchess profile hikaru
-  openchess --local --theme nord`;
+  openchess --local --theme nord
+  openchess ${PGN_FLAG} game.pgn
+  openchess ${FEN_FLAG} "${STARTING_FEN}"`;
 }
 
 function themeListText(): string {
@@ -176,21 +268,49 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let screenArg: string | undefined;
   let theme: Theme | undefined;
   let bell: boolean | undefined;
+  let fen: string | undefined;
+  let pgnPath: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] as string;
 
-    if (arg === THEME_FLAG || arg.startsWith(`${THEME_FLAG}=`)) {
-      // Only the separate spelling spends the argument after it; the joined
-      // one carries its value and must not eat the screen that follows.
-      let value: string | undefined;
-      if (arg.startsWith(`${THEME_FLAG}=`)) {
-        value = arg.slice(THEME_FLAG.length + 1);
-      } else {
-        index += 1;
-        value = argv[index];
+    if (arg === FEN_FLAG || arg.startsWith(`${FEN_FLAG}=`)) {
+      const read = readFen(argv, index);
+      index = read.last;
+
+      if (read.fen === "") {
+        return fail(`${FEN_FLAG} needs a position, e.g. ${FEN_FLAG} "${STARTING_FEN}".`);
+      }
+      if (!isValidFen(read.fen)) {
+        return fail(
+          [
+            `That isn't a position I can read: "${read.fen}".`,
+            `A FEN looks like "${STARTING_FEN}".`,
+          ].join("\n"),
+        );
       }
 
+      fen = read.fen;
+      continue;
+    }
+
+    if (arg === PGN_FLAG || arg.startsWith(`${PGN_FLAG}=`)) {
+      const read = flagValue(argv, index, PGN_FLAG);
+      index = read.last;
+
+      if (read.value === undefined || read.value === "") {
+        return fail(`${PGN_FLAG} needs a path, e.g. ${PGN_FLAG} game.pgn.`);
+      }
+
+      pgnPath = read.value;
+      continue;
+    }
+
+    if (arg === THEME_FLAG || arg.startsWith(`${THEME_FLAG}=`)) {
+      const read = flagValue(argv, index, THEME_FLAG);
+      index = read.last;
+
+      const value = read.value;
       if (value === undefined || value === "") {
         return fail(`${THEME_FLAG} needs a theme name, e.g. ${THEME_FLAG} nord.`);
       }
@@ -246,6 +366,37 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
 
     return fail(`Unexpected argument "${arg}".`);
+  }
+
+  // Both name a position to open Analysis on, and the screen shows one game at
+  // a time, so there is no reading of the two together worth guessing at.
+  if (fen !== undefined && pgnPath !== undefined) {
+    return fail(`Pick one: ${FEN_FLAG} or ${PGN_FLAG}, not both.`);
+  }
+
+  const position = fen !== undefined ? { fen } : pgnPath !== undefined ? { pgnPath } : undefined;
+
+  if (position) {
+    const flag = fen !== undefined ? FEN_FLAG : PGN_FLAG;
+
+    if (screen !== undefined && screen !== ANALYSIS_SCREEN) {
+      return fail(
+        `${flag} opens the ${ANALYSIS_SCREEN} screen, so it cannot also open "${screen}".`,
+      );
+    }
+    if (screenArg !== undefined) {
+      return fail(`Unexpected argument "${screenArg}".`);
+    }
+
+    const entry = screenByName(ANALYSIS_SCREEN);
+    if (entry === undefined) {
+      return fail(unknownScreenText(ANALYSIS_SCREEN));
+    }
+
+    return {
+      kind: "launch",
+      options: { path: entry.path, state: position, theme, bell },
+    };
   }
 
   // No screen named: the menu, which is where the game starts anyway.

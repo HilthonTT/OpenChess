@@ -163,14 +163,24 @@ openchess                       # the menu
 openchess puzzles               # straight to the tactics trainer
 openchess profile hikaru        # somebody's record, by name
 openchess --local --theme nord  # a screen may also be written as a flag
+openchess --pgn game.pgn        # review a game from a file
+openchess --fen 8/8/8/8/8/8/8/K6k w - - 0 1   # or a bare position
 ```
 
 | Flag | What it does |
 | --- | --- |
 | `--theme <name>` | Any name from `--themes`, spelled however you like — `nord`, `tokyo-night`, `Rosé Pine`. This session only; it does not touch what the picker saved |
+| `--fen <fen>` | Open Analysis on a position. Quotes optional — an unquoted FEN arrives as six arguments and is read back into one |
+| `--pgn <file>` | Open Analysis on a game in a PGN file, without typing the path in |
 | `--no-bell` | Don't ring the terminal for a match or a move |
 | `--bell` | Ring it even where `OPENCHESS_BELL` turned it off |
 | `--help` | Every screen; `--version` prints the version |
+
+`--fen` and `--pgn` are the two ways into Analysis that need no account: the
+position or the file is the whole of it, and the engine runs here. A FEN it
+cannot read is refused on the command line rather than by clearing the terminal
+to say so, so `openchess --fen "$(pbpaste)"` either opens a board or prints one
+line.
 
 In the workspace, arguments go after `--`: `bun run dev:cli -- puzzles --theme nord`.
 

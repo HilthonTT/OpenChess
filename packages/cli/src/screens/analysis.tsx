@@ -137,26 +137,83 @@ type ReviewSource = {
 };
 
 /**
+ * A bare position to review, as `--fen` hands one over.
+ *
+ * A position is a game with no moves in it, which the review board already
+ * draws: one frame, the engine's read on it, and nothing to step through. The
+ * board is oriented for whoever is to move, since a position handed over on the
+ * command line is nearly always one somebody is asking about from that side.
+ */
+function positionSource(fen: string): ReviewSource {
+  const turn = createGame(fen).position.turn;
+
+  return {
+    history: [],
+    startingFen: fen,
+    orientation: turn,
+    subtitle: `A position — ${turn === "w" ? "White" : "Black"} to move`,
+    gameId: null,
+    // No players to name and no result to claim — it was a position, not a
+    // game. The FEN itself is written from `startingFen`, as it is for any
+    // game that did not begin from the standard array.
+    pgn: { result: "*", tags: { event: "Position" } },
+  };
+}
+
+/**
  * The review screen. Reached from the menu — which lists your finished games to
  * pick from — or straight from a game that just ended, which passes its id in
- * the navigation state so the board opens on it.
+ * the navigation state so the board opens on it. `--fen` and `--pgn` open it on
+ * something that was never played here at all.
  */
 export function Analysis() {
   const auth = useAuth();
   const theme = useUITheme();
   const location = useLocation();
 
-  const initialGameId =
-    (location.state as { gameId?: string } | null)?.gameId ?? null;
-  const [selected, setSelected] = useState<string | null>(initialGameId);
+  const state = location.state as {
+    gameId?: string;
+    fen?: string;
+    pgnPath?: string;
+  } | null;
+
+  const [selected, setSelected] = useState<string | null>(state?.gameId ?? null);
   /** A game read out of a PGN file, which needs no account at all. */
-  const [imported, setImported] = useState<ReviewSource | null>(null);
+  const [imported, setImported] = useState<ReviewSource | null>(
+    // `--fen` is already a whole position, so it opens the board directly
+    // rather than going through the loading a file needs.
+    state?.fen === undefined ? null : positionSource(state.fen),
+  );
   const [importing, setImporting] = useState(false);
+  /**
+   * The file `--pgn` named, until it has been read or given up on. Held as
+   * state rather than read off the location every render, so escaping out of a
+   * file that would not open lands on the game list instead of being handed
+   * straight back to the same failure.
+   */
+  const [launchPgn, setLaunchPgn] = useState<string | null>(
+    state?.pgnPath ?? null,
+  );
 
   const back = useCallback(() => {
     setSelected(null);
     setImported(null);
   }, []);
+
+  // `--pgn` is the import screen's job, done without the typing. Its failures
+  // land in the same place a typed path's would.
+  if (launchPgn !== null) {
+    return (
+      <ImportPgn
+        path={launchPgn}
+        onCancel={() => setLaunchPgn(null)}
+        onImported={(source) => {
+          setLaunchPgn(null);
+          setImported(source);
+        }}
+      />
+    );
+  }
 
   if (importing) {
     return (
@@ -439,9 +496,12 @@ function HistoryTable({
 function ImportPgn({
   onImported,
   onCancel,
+  path: given,
 }: {
   onImported: (source: ReviewSource) => void;
   onCancel: () => void;
+  /** A path from `--pgn`, read on arrival instead of being typed. */
+  path?: string;
 }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
@@ -449,7 +509,7 @@ function ImportPgn({
   useKeymap(IMPORT_KEYMAP);
 
   const inputRef = useRef<InputRenderable>(null);
-  const [path, setPath] = useState("");
+  const [path, setPath] = useState(given ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -484,6 +544,18 @@ function ImportPgn({
     }
   }, [onImported, path]);
 
+  // A path from `--pgn` is read on arrival: the flag already named the file,
+  // and asking for it again would be asking twice. It stays in the input, so
+  // one that would not open can be corrected rather than retyped.
+  const launched = useRef(false);
+  useEffect(() => {
+    if (given === undefined || launched.current) {
+      return;
+    }
+    launched.current = true;
+    void load();
+  }, [given, load]);
+
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID) || pending) {
       return;
@@ -506,6 +578,7 @@ function ImportPgn({
       <box flexDirection="column" width={WIDTH - 6} gap={1}>
         <input
           ref={inputRef}
+          value={given ?? ""}
           placeholder={`path to a .pgn file (exports land in ${DEFAULT_EXPORT_DIR})`}
           focused
           onContentChange={() => setPath(inputRef.current?.value ?? "")}
