@@ -8,6 +8,7 @@ import {
 } from "@openchess/shared";
 import type { Board as BoardState, Move } from "@openchess/shared";
 import { useBoardTheme } from "../providers/theme";
+import { usePieceSet } from "../providers/pieces";
 import { renderPiece } from "./pieces";
 
 /**
@@ -69,6 +70,7 @@ export function Board({
   flipped,
 }: BoardProps) {
   const theme = useBoardTheme();
+  const pieceSet = usePieceSet();
 
   const moveTargets = new Set(targets.map((move) => move.to));
   const captureTargets = new Set(
@@ -86,7 +88,8 @@ export function Board({
 
     // An empty square the selected piece can reach shows a dot; an occupied one
     // keeps its glyph and is recolored to read as capturable.
-    const glyph = isTarget && !isPiece(piece) ? "." : renderPiece(piece);
+    const glyph =
+      isTarget && !isPiece(piece) ? "." : renderPiece(piece, pieceSet);
 
     let fg = isPiece(piece)
       ? pieceColor(piece) === "w"

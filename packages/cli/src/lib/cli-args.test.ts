@@ -95,6 +95,48 @@ describe("screen arguments", () => {
   });
 });
 
+describe("--pieces", () => {
+  test("names a piece set for the session", () => {
+    expect(launch("--pieces", "letters").pieceSet).toBe("letters");
+    expect(launch("--pieces", "unicode").pieceSet).toBe("unicode");
+  });
+
+  test("takes its value joined as well as separate", () => {
+    expect(launch("--pieces=letters").pieceSet).toBe("letters");
+  });
+
+  test("ignores case in the name", () => {
+    expect(launch("--pieces", "LETTERS").pieceSet).toBe("letters");
+  });
+
+  test("keeps the saved set when it is not given", () => {
+    expect(launch("rush").pieceSet).toBeUndefined();
+  });
+
+  test("combines with a screen, in either order", () => {
+    expect(launch("--pieces", "letters", "rush").path).toBe("/rush");
+    expect(launch("rush", "--pieces", "letters").pieceSet).toBe("letters");
+  });
+
+  test("a set nobody has lists the ones there are", () => {
+    const { text, code } = printed("--pieces", "figurine");
+    expect(code).toBe(1);
+    expect(text).toContain('Unknown piece set "figurine"');
+    expect(text).toContain("letters");
+    expect(text).toContain("unicode");
+  });
+
+  test("the flag on its own says what it wants", () => {
+    const { text, code } = printed("--pieces");
+    expect(code).toBe(1);
+    expect(text).toContain("needs a set");
+  });
+
+  test("the help lists it", () => {
+    expect(printed("--help").text).toContain("--pieces");
+  });
+});
+
 describe("--theme", () => {
   test("names a theme for the session", () => {
     expect(launch("--theme", "nord").theme?.name).toBe("Nord");

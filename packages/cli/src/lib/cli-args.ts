@@ -2,6 +2,12 @@ import { parseFen, STARTING_FEN } from "@openchess/shared";
 import pkg from "../../package.json";
 import { THEMES, type Theme } from "../theme";
 import {
+  PIECE_SETS,
+  PIECE_SET_DESCRIPTIONS,
+  isPieceSet,
+  type PieceSet,
+} from "../components/pieces";
+import {
   SCREENS,
   isScreenName,
   screenArgument,
@@ -37,6 +43,11 @@ export type LaunchOptions = {
    * direction, so `--bell` is as necessary as `--no-bell`.
    */
   bell?: boolean;
+  /**
+   * The piece set for this session, or undefined to keep the saved one. Like
+   * `--theme`, it does not write to the preferences file the picker writes to.
+   */
+  pieceSet?: PieceSet;
 };
 
 /**
@@ -51,6 +62,7 @@ export type ParsedArgs =
 const THEME_FLAG = "--theme";
 const BELL_FLAG = "--bell";
 const NO_BELL_FLAG = "--no-bell";
+const PIECES_FLAG = "--pieces";
 const FEN_FLAG = "--fen";
 const PGN_FLAG = "--pgn";
 
@@ -101,6 +113,22 @@ function unknownThemeText(query: string): string {
   lines.push(`Run "openchess --themes" for the full list.`);
 
   return lines.join("\n");
+}
+
+/** The sets there are, with what each is for, for `--pieces` and its errors. */
+function pieceSetListText(): string {
+  const width = Math.max(...PIECE_SETS.map((set) => set.length));
+  return PIECE_SETS.map(
+    (set) => `  ${set.padEnd(width)}  ${PIECE_SET_DESCRIPTIONS[set]}`,
+  ).join("\n");
+}
+
+function unknownPieceSetText(query: string): string {
+  return [
+    `Unknown piece set "${query}".`,
+    "There are:",
+    pieceSetListText(),
+  ].join("\n");
 }
 
 function unknownScreenText(name: string): string {
@@ -209,6 +237,7 @@ Options
   --themes        List the names ${THEME_FLAG} accepts
   ${FEN_FLAG} <fen>     Review a position — quotes optional
   ${PGN_FLAG} <file>    Review a game from a PGN file
+  ${PIECES_FLAG} <set>  Draw the pieces as figurines or as letters
   ${NO_BELL_FLAG}       Don't ring the terminal for a match or a move
   ${BELL_FLAG}          Ring it even where OPENCHESS_BELL turned it off
   -v, --version   Print the version
@@ -216,6 +245,11 @@ Options
 
 ${FEN_FLAG} and ${PGN_FLAG} open Analysis on something you never played here,
 and neither needs an account: the engine runs locally.
+
+${PIECES_FLAG} takes one of:
+${pieceSetListText()}
+Use "letters" if the figurines come out clipped — most monospace fonts have no
+chess glyphs, so the terminal borrows them from a font whose metrics do not fit.
 
 Examples
   openchess puzzles
@@ -268,6 +302,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let screenArg: string | undefined;
   let theme: Theme | undefined;
   let bell: boolean | undefined;
+  let pieceSet: PieceSet | undefined;
   let fen: string | undefined;
   let pgnPath: string | undefined;
 
@@ -325,6 +360,26 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       }
 
       theme = found;
+      continue;
+    }
+
+    if (arg === PIECES_FLAG || arg.startsWith(`${PIECES_FLAG}=`)) {
+      const read = flagValue(argv, index, PIECES_FLAG);
+      index = read.last;
+
+      const value = read.value;
+      if (value === undefined || value === "") {
+        return fail(
+          `${PIECES_FLAG} needs a set. There are:\n${pieceSetListText()}`,
+        );
+      }
+
+      const wanted = value.toLowerCase();
+      if (!isPieceSet(wanted)) {
+        return fail(unknownPieceSetText(value));
+      }
+
+      pieceSet = wanted;
       continue;
     }
 
@@ -404,13 +459,13 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
     return {
       kind: "launch",
-      options: { path: entry.path, state: position, theme, bell },
+      options: { path: entry.path, state: position, theme, bell, pieceSet },
     };
   }
 
   // No screen named: the menu, which is where the game starts anyway.
   if (screen === undefined) {
-    return { kind: "launch", options: { path: "/", theme, bell } };
+    return { kind: "launch", options: { path: "/", theme, bell, pieceSet } };
   }
 
   const entry = screenByName(screen);
@@ -426,7 +481,10 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         `The ${screen} screen takes no argument, but got "${screenArg}".`,
       );
     }
-    return { kind: "launch", options: { path: entry.path, theme, bell } };
+    return {
+      kind: "launch",
+      options: { path: entry.path, theme, bell, pieceSet },
+    };
   }
 
   if (screenArg === undefined) {
@@ -437,6 +495,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
   return {
     kind: "launch",
-    options: { path: entry.path, state: { username: screenArg }, theme, bell },
+    options: {
+      path: entry.path,
+      state: { username: screenArg },
+      theme,
+      bell,
+      pieceSet,
+    },
   };
 }

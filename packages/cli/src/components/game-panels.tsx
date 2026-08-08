@@ -12,6 +12,7 @@ import type {
   Piece,
   PromotionPiece,
 } from "@openchess/shared";
+import { usePieceSet } from "../providers/pieces";
 import { renderPiece } from "./pieces";
 
 export const PROMOTION_CHOICES: Array<[PromotionPiece, string]> = [
@@ -87,6 +88,7 @@ function CapturedRow({
   pieceFg: string;
 }) {
   const theme = useUITheme();
+  const pieceSet = usePieceSet();
 
   return (
     <text>
@@ -94,7 +96,12 @@ function CapturedRow({
       {pieces.length === 0 ? (
         <span fg={theme.faint}>—</span>
       ) : (
-        <span fg={pieceFg}>{pieces.map(renderPiece).join(" ")}</span>
+        // Called through an arrow rather than passed by reference: `map` hands
+        // its callback the index as a second argument, which `renderPiece` now
+        // reads as the piece set.
+        <span fg={pieceFg}>
+          {pieces.map((piece) => renderPiece(piece, pieceSet)).join(" ")}
+        </span>
       )}
       {advantage > 0 ? <span fg={theme.gold}>{`  +${advantage}`}</span> : null}
     </text>

@@ -172,6 +172,7 @@ openchess --fen 8/8/8/8/8/8/8/K6k w - - 0 1   # or a bare position
 | `--theme <name>` | Any name from `--themes`, spelled however you like — `nord`, `tokyo-night`, `Rosé Pine`. This session only; it does not touch what the picker saved |
 | `--fen <fen>` | Open Analysis on a position. Quotes optional — an unquoted FEN arrives as six arguments and is read back into one |
 | `--pgn <file>` | Open Analysis on a game in a PGN file, without typing the path in |
+| `--pieces <set>` | `unicode` for figurines, `letters` for `K Q R B N P`. This session only, like `--theme` |
 | `--no-bell` | Don't ring the terminal for a match or a move |
 | `--bell` | Ring it even where `OPENCHESS_BELL` turned it off |
 | `--help` | Every screen; `--version` prints the version |
@@ -181,6 +182,14 @@ position or the file is the whole of it, and the engine runs here. A FEN it
 cannot read is refused on the command line rather than by clearing the terminal
 to say so, so `openchess --fen "$(pbpaste)"` either opens a board or prints one
 line.
+
+**If the pieces come out clipped or half-drawn, use `--pieces letters`.** Most
+monospace fonts carry no chess figurines — Cascadia Mono among them — so the
+terminal borrows them from whatever fallback font does, and a fallback glyph cut
+to fit a cell it was not measured for is what you see. The letters set is `K Q R
+B N P`, uppercase for white and lowercase for black the way a FEN spells it, and
+it renders in any font. `ctrl + k` → "Piece set" switches between them and
+remembers which you picked.
 
 In the workspace, arguments go after `--`: `bun run dev:cli -- puzzles --theme nord`.
 

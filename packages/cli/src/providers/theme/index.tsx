@@ -1,6 +1,3 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import {
   createContext,
   useContext,
@@ -11,46 +8,17 @@ import {
 import type { ReactNode } from "react";
 import type { BoardTheme, ThemeColors, Theme, UITheme } from "../../theme";
 import { DEFAULT_THEME, THEMES, toBoardTheme, toUITheme } from "../../theme";
-
-const CONFIG_DIR = join(homedir(), ".openchess");
-const THEME_PREFERENCES_PATH = join(CONFIG_DIR, "preferences.json");
-
-type ThemePreferences = {
-  themeName: string;
-};
+import { readPreferences, updatePreferences } from "../../lib/preferences";
 
 function getInitialTheme(): Theme {
-  try {
-    const preferences = JSON.parse(
-      readFileSync(THEME_PREFERENCES_PATH, { encoding: "utf-8" }),
-    ) as Partial<ThemePreferences>;
-
-    const savedTheme = THEMES.find(
-      (theme) => theme.name === preferences.themeName,
-    );
-
-    return savedTheme ?? DEFAULT_THEME;
-  } catch {
-    // Missing or unreadable preferences file - fall back to the default.
-    return DEFAULT_THEME;
-  }
+  const savedName = readPreferences().themeName;
+  return THEMES.find((theme) => theme.name === savedName) ?? DEFAULT_THEME;
 }
 
 function persistTheme(theme: Theme): void {
-  try {
-    mkdirSync(CONFIG_DIR, { recursive: true });
-    writeFileSync(
-      THEME_PREFERENCES_PATH,
-      JSON.stringify(
-        { themeName: theme.name } satisfies ThemePreferences,
-        null,
-        2,
-      ),
-      { encoding: "utf-8" },
-    );
-  } catch {
-    // Ignore preference write failures so theme switching still works for this session.
-  }
+  // Through `updatePreferences` rather than a write of its own: the piece set
+  // lives in the same file, and writing only `themeName` would erase it.
+  updatePreferences({ themeName: theme.name });
 }
 
 type ThemeContextValue = {

@@ -50,12 +50,17 @@ const SCREEN_ELEMENTS: Record<ScreenName, ReactNode> = {
  * replacing it, so escaping out of one opened with `openchess puzzles` lands
  * where escaping out of one opened from the menu does.
  */
-export function createAppRouter({ path, state, theme }: LaunchOptions) {
+export function createAppRouter({
+  path,
+  state,
+  theme,
+  pieceSet,
+}: LaunchOptions) {
   return createMemoryRouter(
     [
       {
         path: "/",
-        element: <RootLayout initialTheme={theme} />,
+        element: <RootLayout initialTheme={theme} initialPieceSet={pieceSet} />,
         children: [
           { index: true, element: <Home /> },
           ...SCREENS.map((screen) => ({

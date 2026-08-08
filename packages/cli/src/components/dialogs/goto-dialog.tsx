@@ -6,6 +6,7 @@ import { DialogSearchList } from "../dialog-search-list";
 import { createAuthMenuItem, MENU_ITEMS } from "../menu/menu-items";
 import type { MenuItem, MenuItemContext } from "../menu/types";
 import { TEXT_PRESENTATION } from "../pieces";
+import { PieceSetDialogContent } from "./piece-set-dialog";
 import { ThemeDialogContent } from "./theme-dialog";
 
 /** Width of the title column, sized to the longest of them plus a gap. */
@@ -59,6 +60,18 @@ const GLOBAL_ITEMS: MenuItem[] = [
       ctx.dialog.open({
         title: "Select Theme",
         children: <ThemeDialogContent />,
+      });
+    },
+  },
+  {
+    id: "goto-pieces",
+    icon: "♟",
+    title: "Piece set",
+    description: "Figurines, or letters if they render wrong",
+    action(ctx) {
+      ctx.dialog.open({
+        title: "Select Piece Set",
+        children: <PieceSetDialogContent />,
       });
     },
   },
