@@ -52,7 +52,12 @@ const base = createPlayerRouter();
 // Puzzles are a per-player resource that pays out, so the same auth and metering
 // the game routes carry applies here. The limit is generous: solving is a round
 // trip per move, and a fast solver on a five-move line is still nowhere near it.
-base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 120 }));
+base.use(
+  "*",
+  requireAuth,
+  requireUser,
+  rateLimit({ windowMs: 60_000, max: 120 }),
+);
 
 const unauthorized = problemDetailsContent("Not authenticated");
 const notFound = problemDetailsContent("No such puzzle");
@@ -142,9 +147,14 @@ const rushStart = createRoute({
     "As many puzzles as you can solve before the clock or your third mistake stops you. The run is timed by the server, gets harder as your score climbs, and is kept off the puzzle ladder entirely — it writes no attempt, moves no rating, and spends none of the puzzles the rated queue is saving for you. Starting one closes any run you left open.",
   request: { body: jsonContentRequired(rushStartSchema, "The mode to run") },
   responses: {
-    [HttpStatusCodes.CREATED]: jsonContent(rushRunSchema, "The run, and its first puzzle"),
+    [HttpStatusCodes.CREATED]: jsonContent(
+      rushRunSchema,
+      "The run, and its first puzzle",
+    ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
-    [HttpStatusCodes.CONFLICT]: problemDetailsContent("There are no puzzles to rush"),
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "There are no puzzles to rush",
+    ),
   },
 });
 
@@ -175,13 +185,17 @@ const rushMove = createRoute({
     body: jsonContentRequired(puzzleSubmitSchema, "The moves played so far"),
   },
   responses: {
-    [HttpStatusCodes.OK]: jsonContent(rushMoveResultSchema, "What the move did"),
+    [HttpStatusCodes.OK]: jsonContent(
+      rushMoveResultSchema,
+      "What the move did",
+    ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
     [HttpStatusCodes.NOT_FOUND]: noSuchRun,
     [HttpStatusCodes.CONFLICT]: problemDetailsContent(
       "The puzzle is already over, or another request settled the run",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: problemDetailsContent("No move was sent"),
+    [HttpStatusCodes.UNPROCESSABLE_ENTITY]:
+      problemDetailsContent("No move was sent"),
   },
 });
 
@@ -268,9 +282,8 @@ const submit = createRoute({
     [HttpStatusCodes.CONFLICT]: problemDetailsContent(
       "The puzzle is already over, or another request settled it",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: problemDetailsContent(
-      "No move was sent",
-    ),
+    [HttpStatusCodes.UNPROCESSABLE_ENTITY]:
+      problemDetailsContent("No move was sent"),
   },
 });
 
@@ -286,7 +299,10 @@ const hint = createRoute({
     body: jsonContentRequired(puzzleRevealSchema, "The moves played so far"),
   },
   responses: {
-    [HttpStatusCodes.OK]: jsonContent(puzzleHintSchema, "The square to look at"),
+    [HttpStatusCodes.OK]: jsonContent(
+      puzzleHintSchema,
+      "The square to look at",
+    ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
     [HttpStatusCodes.NOT_FOUND]: notFound,
     [HttpStatusCodes.CONFLICT]: problemDetailsContent(
@@ -389,7 +405,12 @@ const router = base
     });
 
     return c.json(
-      { ...withRushPuzzleLinks(result), outcome: result.outcome, reply: result.reply, solution: result.solution },
+      {
+        ...withRushPuzzleLinks(result),
+        outcome: result.outcome,
+        reply: result.reply,
+        solution: result.solution,
+      },
       HttpStatusCodes.OK,
     );
   })

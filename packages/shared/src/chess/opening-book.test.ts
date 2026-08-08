@@ -185,6 +185,7 @@ describe("openingOf", () => {
   });
 
   test("keeps the name after the game leaves the book", () => {
+    // biome-ignore format: grouped in move pairs so the out-of-book comment lands in place
     const game = line(
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6",
       // Out of book from here, but it is still a Najdorf.

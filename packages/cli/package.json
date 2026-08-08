@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
-    "build": "bun build src/index.tsx --outdir dist --target bun"
+    "build": "bun build src/index.tsx --outdir dist --target bun --external \"@opentui/core-*\""
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

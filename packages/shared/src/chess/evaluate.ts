@@ -1,4 +1,11 @@
-import { fileOf, isPiece, pieceAt, pieceColor, rankOf, squareAt } from "./board";
+import {
+  fileOf,
+  isPiece,
+  pieceAt,
+  pieceColor,
+  rankOf,
+  squareAt,
+} from "./board";
 import type { Color, PieceType, Position } from "./types";
 
 /**
@@ -29,7 +36,7 @@ const MATERIAL: Record<PieceType, number> = {
  * directly and a black piece reads the vertical mirror (`square ^ 56`).
  */
 const MIDGAME_TABLES: Record<PieceType, number[]> = {
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   p: [
       0,   0,   0,   0,   0,   0,   0,   0,
      50,  50,  50,  50,  50,  50,  50,  50,
@@ -40,7 +47,7 @@ const MIDGAME_TABLES: Record<PieceType, number[]> = {
       5,  10,  10, -20, -20,  10,  10,   5,
       0,   0,   0,   0,   0,   0,   0,   0,
   ],
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   n: [
     -50, -40, -30, -30, -30, -30, -40, -50,
     -40, -20,   0,   0,   0,   0, -20, -40,
@@ -51,7 +58,7 @@ const MIDGAME_TABLES: Record<PieceType, number[]> = {
     -40, -20,   0,   5,   5,   0, -20, -40,
     -50, -40, -30, -30, -30, -30, -40, -50,
   ],
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   b: [
     -20, -10, -10, -10, -10, -10, -10, -20,
     -10,   0,   0,   0,   0,   0,   0, -10,
@@ -62,7 +69,7 @@ const MIDGAME_TABLES: Record<PieceType, number[]> = {
     -10,   5,   0,   0,   0,   0,   5, -10,
     -20, -10, -10, -10, -10, -10, -10, -20,
   ],
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   r: [
       0,   0,   0,   0,   0,   0,   0,   0,
       5,  10,  10,  10,  10,  10,  10,   5,
@@ -73,7 +80,7 @@ const MIDGAME_TABLES: Record<PieceType, number[]> = {
      -5,   0,   0,   0,   0,   0,   0,  -5,
       0,   0,   0,   5,   5,   0,   0,   0,
   ],
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   q: [
     -20, -10, -10,  -5,  -5, -10, -10, -20,
     -10,   0,   0,   0,   0,   0,   0, -10,
@@ -84,7 +91,7 @@ const MIDGAME_TABLES: Record<PieceType, number[]> = {
     -10,   0,   5,   0,   0,   0,   0, -10,
     -20, -10, -10,  -5,  -5, -10, -10, -20,
   ],
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   k: [
     -30, -40, -40, -50, -50, -40, -40, -30,
     -30, -40, -40, -50, -50, -40, -40, -30,
@@ -104,7 +111,7 @@ const MIDGAME_TABLES: Record<PieceType, number[]> = {
  * reading the middlegame table rather than carrying a near-identical copy.
  */
 const ENDGAME_TABLES: Record<PieceType, number[]> = {
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   p: [
       0,   0,   0,   0,   0,   0,   0,   0,
      90,  90,  90,  90,  90,  90,  90,  90,
@@ -119,7 +126,7 @@ const ENDGAME_TABLES: Record<PieceType, number[]> = {
   b: MIDGAME_TABLES.b,
   r: MIDGAME_TABLES.r,
   q: MIDGAME_TABLES.q,
-  // prettier-ignore
+  // biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
   k: [
     -50, -40, -30, -20, -20, -30, -40, -50,
     -30, -20, -10,   0,   0, -10, -20, -30,
@@ -150,9 +157,7 @@ const PHASE_WEIGHTS: Record<PieceType, number> = {
 const TOTAL_PHASE = 24;
 
 /** A passed pawn's bonus by how far it has come, indexed by rank from its own side. */
-// prettier-ignore
 const PASSED_PAWN_MIDGAME = [0, 5, 10, 20, 35, 60, 100, 0];
-// prettier-ignore
 const PASSED_PAWN_ENDGAME = [0, 10, 25, 45, 80, 130, 190, 0];
 
 const DOUBLED_PAWN_MIDGAME = -12;
@@ -175,7 +180,7 @@ const SHIELD_HOLE = -14;
  * mating with pieces alone needs to know: the defending king has to be walked to
  * an edge, and preferably a corner, before any mate exists.
  */
-// prettier-ignore
+// biome-ignore format: the 8x8 layout is the board itself; collapsing it hides the shape
 const DISTANCE_FROM_CENTRE = [
   6, 5, 4, 3, 3, 4, 5, 6,
   5, 4, 3, 2, 2, 3, 4, 5,
@@ -319,7 +324,11 @@ function isIsolated(onFile: Int8Array, file: number): boolean {
  * queens are off, a king walled in behind pawns is a liability rather than a
  * safe one, and that is what the endgame table already says.
  */
-function kingShield(position: Position, square: number, white: boolean): number {
+function kingShield(
+  position: Position,
+  square: number,
+  white: boolean,
+): number {
   const rank = rankOf(square);
   const home = white ? rank <= 1 : rank >= 6;
   if (!home) {
@@ -338,8 +347,14 @@ function kingShield(position: Position, square: number, white: boolean): number 
 
     const near = rank + forward;
     const far = rank + forward * 2;
-    const hasNear = near >= 0 && near <= 7 && pieceAt(position.board, squareAt(f, near)) === pawn;
-    const hasFar = far >= 0 && far <= 7 && pieceAt(position.board, squareAt(f, far)) === pawn;
+    const hasNear =
+      near >= 0 &&
+      near <= 7 &&
+      pieceAt(position.board, squareAt(f, near)) === pawn;
+    const hasFar =
+      far >= 0 &&
+      far <= 7 &&
+      pieceAt(position.board, squareAt(f, far)) === pawn;
 
     if (!hasNear && !hasFar) {
       holes += 1;
@@ -391,9 +406,11 @@ export function evaluate(
     const material = MATERIAL[type];
     const scaled = material * weights.material;
     midgame +=
-      sign * (scaled + MIDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
+      sign *
+      (scaled + MIDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
     endgame +=
-      sign * (scaled + ENDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
+      sign *
+      (scaled + ENDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
 
     if (white) {
       whiteMaterial += material;

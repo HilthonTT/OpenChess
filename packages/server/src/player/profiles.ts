@@ -1,4 +1,4 @@
-import { type GameResult, type User } from "@openchess/database";
+import type { GameResult, User } from "@openchess/database";
 import { db } from "@openchess/database/client";
 import { levelProgress } from "@openchess/shared";
 import * as HttpStatusCodes from "stoker/http-status-codes";
@@ -312,7 +312,9 @@ export async function searchPlayers(input: {
   // Both resolved for the whole page at once. A per-row query for either would
   // make a ten-name search eleven round trips.
   const [presence, standings] = await Promise.all([
-    presenceFor(rows.map((row) => ({ id: row.id, lastSeenAt: row.lastSeenAt }))),
+    presenceFor(
+      rows.map((row) => ({ id: row.id, lastSeenAt: row.lastSeenAt })),
+    ),
     db.friendship.findMany({
       where: {
         OR: [

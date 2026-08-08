@@ -106,7 +106,12 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
   }, []);
 
   const value = useMemo<ThemeContextValue>(
-    () => ({ colors: currentTheme.colors, currentTheme, setTheme, previewTheme }),
+    () => ({
+      colors: currentTheme.colors,
+      currentTheme,
+      setTheme,
+      previewTheme,
+    }),
     [currentTheme, setTheme, previewTheme],
   );
 

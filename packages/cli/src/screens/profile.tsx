@@ -35,7 +35,10 @@ const KEYMAP: Keymap = {
       keys: [
         { keys: "f", label: "ask them — or accept, when they asked you" },
         { keys: "d", label: "decline their request" },
-        { keys: "x", label: "unfriend, or withdraw — pressed twice to confirm" },
+        {
+          keys: "x",
+          label: "unfriend, or withdraw — pressed twice to confirm",
+        },
         { keys: "c", label: "challenge them" },
         { keys: "r", label: "refresh" },
       ],
@@ -260,7 +263,11 @@ export function Profile() {
 }
 
 /** The footer, written as whatever the friend keys currently mean. */
-function FriendKeys({ state }: { state?: PublicProfile["friendship"]["state"] }) {
+function FriendKeys({
+  state,
+}: {
+  state?: PublicProfile["friendship"]["state"];
+}) {
   const theme = useUITheme();
 
   if (state === undefined || state === "self") {
@@ -302,13 +309,12 @@ function Card({ profile }: { profile: PublicProfile }) {
     profile.ratingHistory.length > 1 ? sparkline(profile.ratingHistory) : null;
 
   const span = profile.xpIntoLevel + profile.xpToNextLevel;
-  const filled = span > 0 ? Math.round((profile.xpIntoLevel / span) * BAR_W) : 0;
+  const filled =
+    span > 0 ? Math.round((profile.xpIntoLevel / span) * BAR_W) : 0;
 
   return (
     <box flexDirection="column" width={WIDTH - 6} gap={1}>
-      {profile.title ? (
-        <text fg={theme.gold}>{profile.title}</text>
-      ) : null}
+      {profile.title ? <text fg={theme.gold}>{profile.title}</text> : null}
 
       <box flexDirection="column">
         <Row label={`Level ${profile.level}`}>
@@ -317,7 +323,8 @@ function Card({ profile }: { profile: PublicProfile }) {
         </Row>
         <Row label="Rating">
           <span fg={theme.cream}>{String(profile.rating)}</span>
-          {profile.peakRating !== null && profile.peakRating > profile.rating ? (
+          {profile.peakRating !== null &&
+          profile.peakRating > profile.rating ? (
             <span fg={theme.dim}>{`  peak ${profile.peakRating}`}</span>
           ) : null}
           {line ? <span fg={theme.gold}>{`  ${line}`}</span> : null}

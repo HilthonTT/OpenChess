@@ -111,7 +111,8 @@ export const awardPremiumCoins = inngest.createFunction(
     // first attempt got. Only reached when the event lacks a period, and that
     // depends on the event alone, so the step sequence stays deterministic.
     const periodKey =
-      period ?? (await step.run("resolve-period", () => isoWeekKey(new Date())));
+      period ??
+      (await step.run("resolve-period", () => isoWeekKey(new Date())));
 
     const premium = await step.run("check-premium", () =>
       // Polar customers are keyed by our own User.id (see billing/checkout).

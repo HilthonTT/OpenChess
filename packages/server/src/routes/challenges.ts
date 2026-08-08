@@ -32,7 +32,12 @@ const base = createPlayerRouter();
 // Sending a challenge writes to someone else's inbox, so the limit here is
 // tighter than the game routes': 30/min is far beyond any human, and well short
 // of what it would take to flood anyone.
-base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 30 }));
+base.use(
+  "*",
+  requireAuth,
+  requireUser,
+  rateLimit({ windowMs: 60_000, max: 30 }),
+);
 
 const unauthorized = problemDetailsContent("Not authenticated");
 const notFound = problemDetailsContent("No such challenge");

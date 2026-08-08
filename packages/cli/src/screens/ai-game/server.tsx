@@ -7,7 +7,7 @@ import {
   timeControlFor,
   toAlgebraic,
 } from "@openchess/shared";
-import type { Color, PromotionPiece } from "@openchess/shared";
+import type { PromotionPiece } from "@openchess/shared";
 import { ErrorNotice } from "../../components/error-notice";
 import { GameScreen } from "../../components/game-screen";
 import { MatchView, orientClocks } from "../../components/match-view";
@@ -51,7 +51,10 @@ const MATCH_KEYMAP: Keymap = {
       keys: [
         { keys: "x", label: "resign — pressed twice to confirm" },
         { keys: "r", label: "a new game, once this one is over" },
-        { keys: "a", label: "review the game with the engine, once it is over" },
+        {
+          keys: "a",
+          label: "review the game with the engine, once it is over",
+        },
         { keys: "u", label: "no undo here — this one is on your record" },
       ],
     },
@@ -80,7 +83,7 @@ export function ServerAIGame() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [offline, setOffline] = useState(false);
   /** Bumped to run the resume lookup again after an error. */
-  const [attempt, setAttempt] = useState(0);
+  const [_attempt, setAttempt] = useState(0);
 
   // An unfinished game on the server is yours to finish, not to strand: resume
   // the newest one instead of quietly opening another.
@@ -118,7 +121,7 @@ export function ServerAIGame() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, offline]);
+  }, [offline]);
 
   const start = useCallback((choice: SetupChoice) => {
     setPhase({ kind: "creating" });
@@ -388,7 +391,15 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     } finally {
       setPending(false);
     }
-  }, [clearSelection, cursor.resetCursor, human, server.difficulty, setMessage]);
+  }, [
+    clearSelection,
+    cursor.resetCursor,
+    human,
+    setMessage,
+    server.timeControl,
+    server.variant,
+    server.personality,
+  ]);
 
   /**
    * Give up the game. Before the first move it is an abort — settled with no
@@ -526,9 +537,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   return (
     <GameScreen
       title={`Play vs AI · ${
-        server.personality
-          ? PERSONALITIES[server.personality].name
-          : "Engine"
+        server.personality ? PERSONALITIES[server.personality].name : "Engine"
       }${server.variant === "CHESS960" ? " · Chess960" : ""}`}
       width={58}
       onEscape={handleEscape}

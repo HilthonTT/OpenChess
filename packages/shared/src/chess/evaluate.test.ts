@@ -121,9 +121,7 @@ describe("pawn structure", () => {
     const passed = parseFen("4k3/8/p7/3P4/8/8/8/4K3 w - - 0 1");
     const stopped = parseFen("4k3/8/4p3/3P4/8/8/8/4K3 w - - 0 1");
 
-    expect(evaluatePosition(passed)).toBeGreaterThan(
-      evaluatePosition(stopped),
-    );
+    expect(evaluatePosition(passed)).toBeGreaterThan(evaluatePosition(stopped));
   });
 
   test("doubling a pawn costs, with everything else held equal", () => {

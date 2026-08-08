@@ -38,15 +38,40 @@ You can work on the CLI without a server: Local 1v1, Play vs AI and Analysis of
 a PGN file all run entirely on your machine. Everything else needs both halves
 and an account.
 
-## The two checks
+## The three checks
 
 ```sh
+bun run lint        # Biome: formatting and lint in one pass
 bun run typecheck
 bun test
 ```
 
-Both run in CI on every pull request, and both have to pass. There is no linter
-and no formatter config — match the file you are editing.
+All three run in CI on every pull request, and all three have to pass. The
+tests run on Linux, macOS and Windows — the CLI is a terminal application, and
+the clipboard, the desktop notifier and PGN path handling all differ per
+platform.
+
+`bun run lint:fix` applies everything Biome can fix on its own, and
+`bun run format` formats without touching lint. Configuration lives in
+[`biome.jsonc`](biome.jsonc), which records why each rule is off where it is.
+
+Two things worth knowing before you fight the formatter:
+
+- **Line endings are LF**, pinned by `.gitattributes`. If you are on Windows and
+  have `core.autocrlf=true`, a fresh clone still gets LF here — without that,
+  Biome would report every file in the repo as unformatted on your machine and
+  none of them in CI.
+- **Some layouts are deliberate.** The piece-square tables in
+  `chess/evaluate.ts` are 8×8 because the grid *is* the board, and the opening
+  lines are wrapped in move pairs so they read like a score sheet. Those carry a
+  `// biome-ignore format:` with the reason. If you are adding data whose shape
+  is the documentation, do the same rather than letting it collapse into a run
+  of numbers.
+
+Lint warnings do not block a merge. Errors do. The warnings that remain today
+are mostly `useExhaustiveDependencies` on the CLI's hooks — real questions about
+stale closures, each needing a judgement about what its effect is meant to
+observe, and left visible rather than silenced.
 
 ## Writing the code
 

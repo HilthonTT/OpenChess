@@ -86,7 +86,9 @@ function pawnRanks(color: Color): { start: number; last: number; dir: number } {
  * million times a move; naming the fields here means every `Move` in the program
  * has one layout and those reads stay cheap.
  */
-function move(partial: Partial<Move> & Pick<Move, "from" | "to" | "piece">): Move {
+function move(
+  partial: Partial<Move> & Pick<Move, "from" | "to" | "piece">,
+): Move {
   return {
     from: partial.from,
     to: partial.to,
@@ -180,7 +182,12 @@ export function isInCheck(position: Position, color: Color): boolean {
   return isSquareAttacked(position.board, king, opposite(color));
 }
 
-function addPawnMoves(position: Position, from: number, piece: Piece, out: Move[]) {
+function addPawnMoves(
+  position: Position,
+  from: number,
+  piece: Piece,
+  out: Move[],
+) {
   const color = pieceColor(piece);
   const { start, last, dir } = pawnRanks(color);
   const x = fileOf(from);
@@ -272,7 +279,9 @@ function addStepMoves(
       continue;
     }
 
-    out.push(move({ from, to, piece, captured: isPiece(target) ? target : null }));
+    out.push(
+      move({ from, to, piece, captured: isPiece(target) ? target : null }),
+    );
   }
 }
 
@@ -331,7 +340,11 @@ function castlingRightKey(
 }
 
 /** Where the rook that castles to `side` began, for `color`. */
-export function castlingRookSquare(position: Position, color: Color, side: CastleSide): number {
+export function castlingRookSquare(
+  position: Position,
+  color: Color,
+  side: CastleSide,
+): number {
   const files = position.castlingFiles[color];
   return squareAt(
     side === "king" ? files.kingRook : files.queenRook,
@@ -445,8 +458,22 @@ function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
     // the rule cares about — including b1/b8, which only the rook crosses and
     // which the king is therefore allowed to be attacked on.
     if (
-      !fileRangeIsClear(board, homeRank, files.king, kingToFile, kingFrom, rookFrom) ||
-      !fileRangeIsClear(board, homeRank, rookFile, rookToFile, kingFrom, rookFrom)
+      !fileRangeIsClear(
+        board,
+        homeRank,
+        files.king,
+        kingToFile,
+        kingFrom,
+        rookFrom,
+      ) ||
+      !fileRangeIsClear(
+        board,
+        homeRank,
+        rookFile,
+        rookToFile,
+        kingFrom,
+        rookFrom,
+      )
     ) {
       continue;
     }

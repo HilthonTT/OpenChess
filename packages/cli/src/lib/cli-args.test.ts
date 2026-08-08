@@ -15,7 +15,9 @@ function launch(...argv: string[]) {
 function printed(...argv: string[]) {
   const parsed = parseArgs(argv);
   if (parsed.kind !== "print") {
-    throw new Error(`expected a message, got a launch at ${parsed.options.path}`);
+    throw new Error(
+      `expected a message, got a launch at ${parsed.options.path}`,
+    );
   }
   return parsed;
 }
@@ -105,7 +107,9 @@ describe("--theme", () => {
   test("ignores case, spacing and accents in the name", () => {
     expect(launch("--theme", "TOKYO-NIGHT").theme?.name).toBe("Tokyo Night");
     expect(launch("--theme", "rose-pine").theme?.name).toBe("Rosé Pine");
-    expect(launch("--theme", "rosepinemoon").theme?.name).toBe("Rosé Pine Moon");
+    expect(launch("--theme", "rosepinemoon").theme?.name).toBe(
+      "Rosé Pine Moon",
+    );
   });
 
   test("combines with a screen, in either order", () => {
@@ -198,7 +202,9 @@ describe("--fen", () => {
 
   test("stops gathering fields at the next flag", () => {
     const short = "8/8/8/8/8/8/8/K6k w - -";
-    expect(launch("--fen", ...short.split(" "), "--theme", "nord")).toMatchObject({
+    expect(
+      launch("--fen", ...short.split(" "), "--theme", "nord"),
+    ).toMatchObject({
       path: "/analysis",
       state: { fen: short },
       theme: expect.objectContaining({ name: "Nord" }),
@@ -208,7 +214,14 @@ describe("--fen", () => {
   test("stops gathering fields at a screen name", () => {
     // Gathered greedily but never past a screen, so the conflict below is
     // reported rather than "rush" disappearing into the position.
-    const { text, code } = printed("--fen", "8/8/8/8/8/8/8/K6k", "w", "-", "-", "rush");
+    const { text, code } = printed(
+      "--fen",
+      "8/8/8/8/8/8/8/K6k",
+      "w",
+      "-",
+      "-",
+      "rush",
+    );
     expect(code).toBe(1);
     expect(text).toContain("analysis");
     expect(text).toContain("rush");

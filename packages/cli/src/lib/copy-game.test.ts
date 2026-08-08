@@ -81,8 +81,9 @@ describe("copying a game", () => {
 
   test("a game still being played is copied as unfinished", () => {
     expect(pgnResultOf(played("e4"))).toBe("*");
-    expect(pgnResultOf(played("e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6", "Qxf7#")))
-      .toBe("1-0");
+    expect(
+      pgnResultOf(played("e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6", "Qxf7#")),
+    ).toBe("1-0");
   });
 });
 

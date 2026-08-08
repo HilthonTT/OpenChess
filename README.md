@@ -279,6 +279,8 @@ include `detail` and `stack` — convenient locally, a leak if it ever shipped, 
 ```sh
 bun test             # engine, screens, and API error handling
 bun run typecheck
+bun run lint         # Biome — formatting and lint in one pass
+bun run lint:fix     # ...and fix what can be fixed automatically
 bun run db:seed      # reseed the catalogs after editing them
 ```
 
@@ -294,7 +296,7 @@ ones. The same search backs Analysis.
 
 Bugs and small fixes can go straight to a pull request; anything that adds a screen or a
 key is worth an issue first, since the keymap is crowded.
-[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the two checks CI runs, and the
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the three checks CI runs, and the
 conventions that are not obvious from the outside.
 
 - [Code of Conduct](CODE_OF_CONDUCT.md)

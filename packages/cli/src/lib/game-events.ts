@@ -60,8 +60,7 @@ function parseFrame(raw: string): ParsedEvent | null {
     const field = colon === -1 ? line : line.slice(0, colon);
     // One optional leading space after the colon is part of the framing, not
     // the value — stripping more would corrupt indented JSON.
-    const value =
-      colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
+    const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
 
     if (field === "event") {
       event = value;
@@ -216,10 +215,7 @@ function subscribe<T extends { result: string | null }>(
         return;
       }
 
-      await delay(
-        Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS),
-        signal,
-      );
+      await delay(Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS), signal);
       attempt += 1;
     }
   };

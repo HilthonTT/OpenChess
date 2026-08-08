@@ -50,9 +50,9 @@ describe("alertFor", () => {
     expect(
       ask(state, previous, { theirTurnSince: NOW - (QUIET_REPLY_MS - 1) }),
     ).toBeNull();
-    expect(
-      ask(state, previous, { theirTurnSince: NOW - QUIET_REPLY_MS }),
-    ).toBe("hikaru played Nf3 — your move");
+    expect(ask(state, previous, { theirTurnSince: NOW - QUIET_REPLY_MS })).toBe(
+      "hikaru played Nf3 — your move",
+    );
   });
 
   test("says nothing about our own move coming back to us", () => {

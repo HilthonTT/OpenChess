@@ -216,8 +216,12 @@ describe("what a bot values", () => {
   test("and the bots are set up to disagree about all three", () => {
     const { gambiteer, fortress, grinder } = PERSONALITIES;
 
-    expect(fortress.weights.material).toBeGreaterThan(gambiteer.weights.material);
-    expect(fortress.weights.kingSafety).toBeGreaterThan(gambiteer.weights.kingSafety);
+    expect(fortress.weights.material).toBeGreaterThan(
+      gambiteer.weights.material,
+    );
+    expect(fortress.weights.kingSafety).toBeGreaterThan(
+      gambiteer.weights.kingSafety,
+    );
     expect(grinder.weights.passedPawns).toBeGreaterThan(
       DEFAULT_EVAL_WEIGHTS.passedPawns,
     );
@@ -227,7 +231,10 @@ describe("what a bot values", () => {
     // Only ratios matter, which is worth pinning: it is the property that makes
     // these numbers tunable one at a time.
     const doubled = Object.fromEntries(
-      Object.entries(DEFAULT_EVAL_WEIGHTS).map(([key, value]) => [key, value * 2]),
+      Object.entries(DEFAULT_EVAL_WEIGHTS).map(([key, value]) => [
+        key,
+        value * 2,
+      ]),
     ) as typeof DEFAULT_EVAL_WEIGHTS;
 
     expect(evaluate(gambit, doubled)).toBe(evaluate(gambit) * 2);
@@ -294,7 +301,9 @@ describe("opening taste", () => {
   }
 
   test("the position after 1.e4 e5 really does offer a gambit", () => {
-    expect(bookMoves(openGame.position).map((entry) => entry.san)).toContain("f4");
+    expect(bookMoves(openGame.position).map((entry) => entry.san)).toContain(
+      "f4",
+    );
   });
 
   test("asking for gambits pulls the book towards the King's Gambit", () => {

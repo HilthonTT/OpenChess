@@ -42,7 +42,11 @@ export const SCREENS = [
     path: "/challenges",
     summary: "Challenge a friend, or take one on",
   },
-  { name: "friends", path: "/friends", summary: "Who's around, and who's asked" },
+  {
+    name: "friends",
+    path: "/friends",
+    summary: "Who's around, and who's asked",
+  },
   { name: "watch", path: "/watch", summary: "Look in on a game in progress" },
   { name: "leaderboard", path: "/leaderboard", summary: "See where you rank" },
   {

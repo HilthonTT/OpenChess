@@ -108,7 +108,7 @@ export class SecurityHeaders {
     res: Response,
     options?: SecurityHeadersOptions,
   ): void {
-    const headers = this.getProductionHeaders();
+    const headers = SecurityHeaders.getProductionHeaders();
 
     for (const [name, value] of Object.entries(headers)) {
       if (
@@ -127,14 +127,16 @@ export class SecurityHeaders {
     ) {
       res.headers.set(
         "Content-Security-Policy",
-        this.buildContentSecurityPolicy(
+        SecurityHeaders.buildContentSecurityPolicy(
           options?.contentSecurityPolicy ?? DEFAULT_CSP_DIRECTIVES,
         ),
       );
     }
 
     if (options?.reportingEndpoints) {
-      for (const [name, value] of Object.entries(this.getReportingEndpoints())) {
+      for (const [name, value] of Object.entries(
+        SecurityHeaders.getReportingEndpoints(),
+      )) {
         res.headers.set(name, value);
       }
     }

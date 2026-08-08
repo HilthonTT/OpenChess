@@ -25,9 +25,9 @@ describe("findBestMove", () => {
     const move = findBestMove(position, "rookie");
     expect(move).not.toBeNull();
     const legal = generateLegalMoves(position);
-    expect(
-      legal.some((m) => m.from === move?.from && m.to === move.to),
-    ).toBe(true);
+    expect(legal.some((m) => m.from === move?.from && m.to === move.to)).toBe(
+      true,
+    );
   });
 
   test("a mid-tier bot grabs a hanging queen", () => {
@@ -50,9 +50,7 @@ describe("findBestMove", () => {
 
   test("a top-tier bot does not hang its queen to a pawn", () => {
     // Qxe5 would win a pawn but lose the queen to d6xe5.
-    const position = parseFen(
-      "k7/8/3p4/4p3/8/8/1Q6/K7 w - - 0 1",
-    );
+    const position = parseFen("k7/8/3p4/4p3/8/8/1Q6/K7 w - - 0 1");
     const move = findBestMove(position, "maestro", [], steady);
     expect(move).not.toBeNull();
     expect(toAlgebraic(move!.to)).not.toBe("e5");

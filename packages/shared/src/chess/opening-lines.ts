@@ -125,6 +125,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "C89",
     name: "Ruy López: Marshall Attack",
     style: "gambit",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6",
       "O-O", "Be7", "Re1", "b5", "Bb3", "O-O", "c3", "d5",
@@ -170,6 +171,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "C57",
     name: "Two Knights Defence: Fried Liver Attack",
     style: "gambit",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6",
       "Ng5", "d5", "exd5", "Nxd5", "Nxf7",
@@ -251,9 +253,24 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "e5", "Nf3", "Nf6"],
     weight: 2,
   },
-  { eco: "C41", name: "Philidor Defence", style: "solid", moves: ["e4", "e5", "Nf3", "d6"] },
-  { eco: "C40", name: "Latvian Gambit", style: "gambit", moves: ["e4", "e5", "Nf3", "f5"] },
-  { eco: "C40", name: "Elephant Gambit", style: "gambit", moves: ["e4", "e5", "Nf3", "d5"] },
+  {
+    eco: "C41",
+    name: "Philidor Defence",
+    style: "solid",
+    moves: ["e4", "e5", "Nf3", "d6"],
+  },
+  {
+    eco: "C40",
+    name: "Latvian Gambit",
+    style: "gambit",
+    moves: ["e4", "e5", "Nf3", "f5"],
+  },
+  {
+    eco: "C40",
+    name: "Elephant Gambit",
+    style: "gambit",
+    moves: ["e4", "e5", "Nf3", "d5"],
+  },
 
   // Second-move alternatives for white
   {
@@ -275,15 +292,31 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     style: "gambit",
     moves: ["e4", "e5", "f4", "d5"],
   },
-  { eco: "C25", name: "Vienna Game", style: "classical", moves: ["e4", "e5", "Nc3"], weight: 2 },
+  {
+    eco: "C25",
+    name: "Vienna Game",
+    style: "classical",
+    moves: ["e4", "e5", "Nc3"],
+    weight: 2,
+  },
   {
     eco: "C29",
     name: "Vienna Gambit",
     style: "gambit",
     moves: ["e4", "e5", "Nc3", "Nf6", "f4"],
   },
-  { eco: "C23", name: "Bishop's Opening", style: "classical", moves: ["e4", "e5", "Bc4"] },
-  { eco: "C21", name: "Centre Game", style: "gambit", moves: ["e4", "e5", "d4"] },
+  {
+    eco: "C23",
+    name: "Bishop's Opening",
+    style: "classical",
+    moves: ["e4", "e5", "Bc4"],
+  },
+  {
+    eco: "C21",
+    name: "Centre Game",
+    style: "gambit",
+    moves: ["e4", "e5", "d4"],
+  },
   {
     eco: "C22",
     name: "Centre Game Accepted",
@@ -328,6 +361,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "B90",
     name: "Sicilian Defence: Najdorf Variation",
     style: "sharp",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6",
     ],
@@ -337,6 +371,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "B70",
     name: "Sicilian Defence: Dragon Variation",
     style: "sharp",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "g6",
     ],
@@ -346,6 +381,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "B80",
     name: "Sicilian Defence: Scheveningen Variation",
     style: "sharp",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "e6",
     ],
@@ -354,6 +390,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "B60",
     name: "Sicilian Defence: Richter-Rauzer Attack",
     style: "sharp",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "d6", "Bg5",
     ],
@@ -362,6 +399,7 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     eco: "B33",
     name: "Sicilian Defence: Sveshnikov Variation",
     style: "sharp",
+    // biome-ignore format: laid out in move pairs, so the line reads like a score sheet
     moves: [
       "e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "e5",
     ],
@@ -421,7 +459,13 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   },
 
   // Caro-Kann
-  { eco: "B10", name: "Caro-Kann Defence", style: "solid", moves: ["e4", "c6"], weight: 3 },
+  {
+    eco: "B10",
+    name: "Caro-Kann Defence",
+    style: "solid",
+    moves: ["e4", "c6"],
+    weight: 3,
+  },
   {
     eco: "B12",
     name: "Caro-Kann Defence: Advance Variation",
@@ -467,7 +511,12 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     name: "Scandinavian Defence: Main Line",
     moves: ["e4", "d5", "exd5", "Qxd5", "Nc3", "Qa5"],
   },
-  { eco: "B02", name: "Alekhine's Defence", style: "sharp", moves: ["e4", "Nf6"] },
+  {
+    eco: "B02",
+    name: "Alekhine's Defence",
+    style: "sharp",
+    moves: ["e4", "Nf6"],
+  },
   { eco: "B06", name: "Modern Defence", style: "sharp", moves: ["e4", "g6"] },
   {
     eco: "B07",
@@ -483,7 +532,13 @@ export const OPENING_LINES: readonly OpeningLine[] = [
 
   // 1.d4 d5
   { eco: "D00", name: "Queen's Pawn Game", moves: ["d4", "d5"], weight: 4 },
-  { eco: "D06", name: "Queen's Gambit", style: "classical", moves: ["d4", "d5", "c4"], weight: 4 },
+  {
+    eco: "D06",
+    name: "Queen's Gambit",
+    style: "classical",
+    moves: ["d4", "d5", "c4"],
+    weight: 4,
+  },
   {
     eco: "D20",
     name: "Queen's Gambit Accepted",
@@ -510,7 +565,13 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     style: "solid",
     moves: ["d4", "d5", "c4", "e6", "Nc3", "Nf6", "Nf3", "Be7"],
   },
-  { eco: "D10", name: "Slav Defence", style: "solid", moves: ["d4", "d5", "c4", "c6"], weight: 3 },
+  {
+    eco: "D10",
+    name: "Slav Defence",
+    style: "solid",
+    moves: ["d4", "d5", "c4", "c6"],
+    weight: 3,
+  },
   {
     eco: "D43",
     name: "Semi-Slav Defence",
@@ -534,7 +595,12 @@ export const OPENING_LINES: readonly OpeningLine[] = [
 
   // 1.d4 Nf6 — the Indian defences
   { eco: "A45", name: "Indian Defence", moves: ["d4", "Nf6"], weight: 5 },
-  { eco: "A45", name: "Trompowsky Attack", style: "sharp", moves: ["d4", "Nf6", "Bg5"] },
+  {
+    eco: "A45",
+    name: "Trompowsky Attack",
+    style: "sharp",
+    moves: ["d4", "Nf6", "Bg5"],
+  },
   {
     eco: "A46",
     name: "Indian Defence: Knights Variation",
@@ -588,7 +654,12 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["d4", "Nf6", "c4", "g6", "Nc3", "d5"],
     weight: 2,
   },
-  { eco: "A56", name: "Benoni Defence", style: "sharp", moves: ["d4", "Nf6", "c4", "c5"] },
+  {
+    eco: "A56",
+    name: "Benoni Defence",
+    style: "sharp",
+    moves: ["d4", "Nf6", "c4", "c5"],
+  },
   {
     eco: "A57",
     name: "Benko Gambit",
@@ -601,7 +672,13 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   { eco: "A40", name: "Queen's Pawn: Modern Defence", moves: ["d4", "g6"] },
 
   // ── Flank openings ──────────────────────────────────────────────────────
-  { eco: "A04", name: "Réti Opening", style: "solid", moves: ["Nf3"], weight: 3 },
+  {
+    eco: "A04",
+    name: "Réti Opening",
+    style: "solid",
+    moves: ["Nf3"],
+    weight: 3,
+  },
   {
     eco: "A09",
     name: "Réti Opening: Main Line",

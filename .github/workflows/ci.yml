@@ -5,17 +5,31 @@ on:
     branches: [main]
   pull_request:
 
+# A second push to a pull request makes the first run's answer irrelevant, and
+# the matrix below means each run is now several jobs rather than one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned so a Bun release can't change the toolchain under CI; keep in step
+  # with the "Bun 1.3 or newer" the README promises.
+  BUN_VERSION: 1.3.14
+  # prisma.config.ts requires DATABASE_URL to be set; generate never connects.
+  PRISMA_PLACEHOLDER_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+
 jobs:
-  ci:
+  # Everything whose answer cannot depend on the operating system. Split out
+  # from `test` so it runs once rather than three times.
+  check:
+    name: Lint, types and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      # Pinned so a Bun release can't change the toolchain under CI; keep in
-      # step with the "Bun 1.3 or newer" the README promises.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -24,11 +38,82 @@ jobs:
         run: bun run db:generate
         working-directory: packages/database
         env:
-          # prisma.config.ts requires DATABASE_URL to be set; generate never connects to it.
-          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          DATABASE_URL: ${{ env.PRISMA_PLACEHOLDER_URL }}
+
+      # Formatting and lint in one pass. Fails on errors; the warnings that
+      # remain (mostly `useExhaustiveDependencies`) are printed but do not
+      # block, so the backlog stays visible without gating every PR on it.
+      - name: Lint and format
+        run: bunx biome ci .
 
       - name: Typecheck
         run: bun run typecheck
 
+      # The CLI is the product, and a bundle that no longer builds is a release
+      # blocker rather than something to discover at publish time.
+      - name: Build the CLI
+        run: bun run build:cli
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing is a result about that platform, not a reason to
+      # abandon the other two — which is the comparison you actually want.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+        working-directory: packages/database
+        env:
+          DATABASE_URL: ${{ env.PRISMA_PLACEHOLDER_URL }}
+
+      # The CLI is a terminal application, and the parts most likely to break
+      # per-platform — the clipboard, the notifier, path handling in the PGN
+      # export — are exactly the parts a Linux-only run never exercises.
       - name: Test
         run: bun test
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+        working-directory: packages/database
+        env:
+          DATABASE_URL: ${{ env.PRISMA_PLACEHOLDER_URL }}
+
+      # No threshold to fail against yet: `game/service.ts` — the largest and
+      # most consequential file in the tree — has no tests at all, so any
+      # number low enough to pass today would be one nobody defends. The report
+      # is published so the gap is a number someone can watch move.
+      - name: Test with coverage
+        run: bun test --coverage --coverage-reporter=text --coverage-reporter=lcov
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error

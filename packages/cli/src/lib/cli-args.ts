@@ -279,7 +279,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       index = read.last;
 
       if (read.fen === "") {
-        return fail(`${FEN_FLAG} needs a position, e.g. ${FEN_FLAG} "${STARTING_FEN}".`);
+        return fail(
+          `${FEN_FLAG} needs a position, e.g. ${FEN_FLAG} "${STARTING_FEN}".`,
+        );
       }
       if (!isValidFen(read.fen)) {
         return fail(
@@ -312,7 +314,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
       const value = read.value;
       if (value === undefined || value === "") {
-        return fail(`${THEME_FLAG} needs a theme name, e.g. ${THEME_FLAG} nord.`);
+        return fail(
+          `${THEME_FLAG} needs a theme name, e.g. ${THEME_FLAG} nord.`,
+        );
       }
 
       const found = resolveTheme(value);
@@ -374,7 +378,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     return fail(`Pick one: ${FEN_FLAG} or ${PGN_FLAG}, not both.`);
   }
 
-  const position = fen !== undefined ? { fen } : pgnPath !== undefined ? { pgnPath } : undefined;
+  const position =
+    fen !== undefined
+      ? { fen }
+      : pgnPath !== undefined
+        ? { pgnPath }
+        : undefined;
 
   if (position) {
     const flag = fen !== undefined ? FEN_FLAG : PGN_FLAG;

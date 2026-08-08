@@ -33,10 +33,7 @@ import { homeSquare, useBoardCursor } from "../hooks/use-board-cursor";
 import { useGameKeys } from "../hooks/use-game-keys";
 import { useMoveSelection } from "../hooks/use-move-selection";
 import { useAuth } from "../providers/auth";
-import {
-  useKeyboardLayer,
-  BASE_LAYER_ID,
-} from "../providers/keyboard-layer";
+import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useKeymap, type Keymap } from "../providers/keymap";
 import { BOARD_KEYS } from "../lib/keymaps";
 import { useUITheme } from "../providers/theme";
@@ -92,10 +89,30 @@ const WIDTH = 58;
  * or a slow network cannot buy anyone a longer run.
  */
 
-const MODES: Array<{ mode: RushMode; key: string; label: string; blurb: string }> = [
-  { mode: "THREE_MINUTE", key: "1", label: "3 minutes", blurb: "The classic sprint" },
-  { mode: "FIVE_MINUTE", key: "2", label: "5 minutes", blurb: "A little more room" },
-  { mode: "SURVIVAL", key: "3", label: "Survival", blurb: "No clock — three mistakes" },
+const MODES: Array<{
+  mode: RushMode;
+  key: string;
+  label: string;
+  blurb: string;
+}> = [
+  {
+    mode: "THREE_MINUTE",
+    key: "1",
+    label: "3 minutes",
+    blurb: "The classic sprint",
+  },
+  {
+    mode: "FIVE_MINUTE",
+    key: "2",
+    label: "5 minutes",
+    blurb: "A little more room",
+  },
+  {
+    mode: "SURVIVAL",
+    key: "3",
+    label: "Survival",
+    blurb: "No clock — three mistakes",
+  },
 ];
 
 export function Rush() {
@@ -129,22 +146,10 @@ export function Rush() {
   }
 
   if (run === null) {
-    return (
-      <Lobby
-        onStart={begin}
-        starting={starting}
-        error={error}
-      />
-    );
+    return <Lobby onStart={begin} starting={starting} error={error} />;
   }
 
-  return (
-    <RunBoard
-      key={run.id}
-      initial={run}
-      onAgain={() => setRun(null)}
-    />
-  );
+  return <RunBoard key={run.id} initial={run} onAgain={() => setRun(null)} />;
 }
 
 /** Pick a mode, and see what you and everyone else have managed at it. */
@@ -234,7 +239,9 @@ function Lobby({
         </>
       }
     >
-      {error ? <ErrorNotice title="Couldn't start a run" message={error} /> : null}
+      {error ? (
+        <ErrorNotice title="Couldn't start a run" message={error} />
+      ) : null}
 
       <box flexDirection="column" gap={0}>
         {MODES.map((entry) => {
@@ -266,9 +273,7 @@ function Lobby({
             <text key={`${entry.rank}-${entry.username}`}>
               <span fg={theme.faint}>{`${entry.rank}`.padStart(2)} </span>
               <span fg={theme.cream}>{entry.username.padEnd(18)}</span>
-              <span fg={theme.faint}>
-                {(entry.title ?? "").padEnd(14)}
-              </span>
+              <span fg={theme.faint}>{(entry.title ?? "").padEnd(14)}</span>
               <span fg={theme.gold}>{String(entry.solved)}</span>
             </text>
           ))
@@ -314,9 +319,7 @@ function RunBoard({
 
   const you: Color = useMemo(
     () =>
-      puzzle
-        ? replayLine(puzzle.fen, [puzzle.openingMove]).position.turn
-        : "w",
+      puzzle ? replayLine(puzzle.fen, [puzzle.openingMove]).position.turn : "w",
     [puzzle],
   );
 

@@ -69,9 +69,7 @@ describe("rateLimit", () => {
     const app = appFor({ windowMs: 30, max: 1 });
 
     expect((await request(app)).status).toBe(HttpStatusCodes.OK);
-    expect((await request(app)).status).toBe(
-      HttpStatusCodes.TOO_MANY_REQUESTS,
-    );
+    expect((await request(app)).status).toBe(HttpStatusCodes.TOO_MANY_REQUESTS);
 
     await Bun.sleep(40);
 

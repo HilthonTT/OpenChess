@@ -27,9 +27,7 @@ describe("repetitionKey en passant normalization", () => {
   it("ignores a phantom en passant square with no pawn to capture", () => {
     // Same placement, side, and castling; one has a phantom EP square, one
     // doesn't. FIDE treats these as the same position.
-    const withPhantom = parseFen(
-      "4k3/8/8/8/7P/8/8/4K3 b - h3 0 1",
-    );
+    const withPhantom = parseFen("4k3/8/8/8/7P/8/8/4K3 b - h3 0 1");
     const without = parseFen("4k3/8/8/8/7P/8/8/4K3 b - - 0 1");
     expect(repetitionKey(withPhantom)).toBe(repetitionKey(without));
   });

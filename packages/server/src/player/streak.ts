@@ -79,9 +79,7 @@ export async function checkIn(
           {
             current: stats.currentLoginStreak,
             best: stats.topLoginStreak,
-            lastDay: stats.lastCheckInDay
-              ? utcDay(stats.lastCheckInDay)
-              : null,
+            lastDay: stats.lastCheckInDay ? utcDay(stats.lastCheckInDay) : null,
           },
           today,
         );

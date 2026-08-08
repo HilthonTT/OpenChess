@@ -7,11 +7,7 @@ import {
   classifyMove,
   evaluatePosition,
 } from "./ai";
-import {
-  TIME_CONTROLS,
-  formatClock,
-  timeControlFor,
-} from "./time-control";
+import { TIME_CONTROLS, formatClock, timeControlFor } from "./time-control";
 
 describe("evaluatePosition", () => {
   test("the start position is level", () => {

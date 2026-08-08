@@ -87,11 +87,7 @@ describe("buildGameReport", () => {
     ]);
 
     expect(report.plies.map((entry) => entry.ply)).toEqual([1, 2, 3]);
-    expect(report.plies.map((entry) => entry.san)).toEqual([
-      "e4",
-      "e5",
-      "Nf3",
-    ]);
+    expect(report.plies.map((entry) => entry.san)).toEqual(["e4", "e5", "Nf3"]);
   });
 
   // Without the clamp, converting a won game into a merely-winning one would

@@ -11,10 +11,7 @@ import { getProblemDetails, problemMessage } from "./http-errors";
 
 const byId = apiClient.friends[":id"];
 
-export type FriendLists = InferResponseType<
-  typeof apiClient.friends.$get,
-  200
->;
+export type FriendLists = InferResponseType<typeof apiClient.friends.$get, 200>;
 export type Friend = FriendLists["friends"][number];
 export type Presence = Friend["presence"];
 export type PresenceState = Presence["state"];

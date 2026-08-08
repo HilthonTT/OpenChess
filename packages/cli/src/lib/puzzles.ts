@@ -191,7 +191,10 @@ export async function sendRushMove(
   id: string,
   moves: string[],
 ): Promise<RushMoveResult> {
-  const response = await rushById.moves.$post({ param: { id }, json: { moves } });
+  const response = await rushById.moves.$post({
+    param: { id },
+    json: { moves },
+  });
 
   if (response.status !== 200) {
     throw await toError(response);

@@ -144,7 +144,10 @@ async function pickRushPuzzle(
 }
 
 /** The best score this player has ever posted at `mode`. */
-async function bestScore(userId: string, mode: PuzzleRushMode): Promise<number> {
+async function bestScore(
+  userId: string,
+  mode: PuzzleRushMode,
+): Promise<number> {
   const best = await db.puzzleRushRun.findFirst({
     where: { userId, mode },
     orderBy: { solved: "desc" },
@@ -266,10 +269,7 @@ export async function getRush(user: User, runId: string): Promise<RushRunView> {
  * flight — cannot both pay. The loser sees the run already settled and reports
  * what the winner banked.
  */
-async function finishRun(
-  user: User,
-  run: PuzzleRushRun,
-): Promise<RushRunView> {
+async function finishRun(user: User, run: PuzzleRushRun): Promise<RushRunView> {
   const reward = rushReward(run.solved, run.mode);
 
   try {
@@ -292,7 +292,9 @@ async function finishRun(
           return null;
         }
 
-        const fresh = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
+        const fresh = await tx.user.findUniqueOrThrow({
+          where: { id: user.id },
+        });
 
         const unlocked = await unlockAchievements(
           tx,
@@ -475,10 +477,7 @@ export async function playRushMoves(input: {
 }
 
 /** Give up on the run where it stands. */
-export async function endRush(
-  user: User,
-  runId: string,
-): Promise<RushRunView> {
+export async function endRush(user: User, runId: string): Promise<RushRunView> {
   const run = await loadRun(user, runId);
 
   if (run.endedAt !== null) {

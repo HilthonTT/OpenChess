@@ -8,11 +8,7 @@ import {
   randomChess960Fen,
   undo,
 } from "@openchess/shared";
-import type {
-  Color,
-  PersonalityId,
-  PromotionPiece,
-} from "@openchess/shared";
+import type { Color, PersonalityId, PromotionPiece } from "@openchess/shared";
 import { GameScreen } from "../../components/game-screen";
 import { MatchView } from "../../components/match-view";
 import { useUITheme } from "../../providers/theme";

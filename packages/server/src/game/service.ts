@@ -62,7 +62,6 @@ import {
   timeOf,
   botFor,
   toDrawOfferSide,
-  toEngineDifficulty,
   toOfferColor,
   toStoredDifficulty,
   type ClockState,
@@ -1452,10 +1451,7 @@ async function agreeDraw(
  * accept. Re-offering your own standing offer is a no-op, so a retried request
  * is safe.
  */
-export async function offerDraw(
-  gameId: string,
-  user: User,
-): Promise<GameView> {
+export async function offerDraw(gameId: string, user: User): Promise<GameView> {
   const { result, changed } = await serializable(async (tx) => {
     const { row, game, color, opponent, offer } = await loadForDraw(
       tx,
@@ -2099,10 +2095,7 @@ export async function watchGame(gameId: string): Promise<SpectatorView> {
   }
 
   if (row.mode !== "PVP") {
-    throwProblem(
-      HttpStatusCodes.FORBIDDEN,
-      "Only online games can be watched",
-    );
+    throwProblem(HttpStatusCodes.FORBIDDEN, "Only online games can be watched");
   }
 
   return spectatorView(row, replay(row), await playersOf(row));
@@ -2164,7 +2157,10 @@ export async function listLiveGames(): Promise<LiveGameSummary[]> {
     } | null,
   ): OpponentView | null =>
     player
-      ? { username: player.username, title: player.equippedTitle?.label ?? null }
+      ? {
+          username: player.username,
+          title: player.equippedTitle?.label ?? null,
+        }
       : null;
 
   return rows

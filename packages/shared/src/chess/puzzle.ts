@@ -168,7 +168,11 @@ export function submitPuzzleMove(
   const move = findUciMove(session.game, uci);
 
   if (!move) {
-    return { outcome: "wrong", session: { ...session, status: "failed" }, expected };
+    return {
+      outcome: "wrong",
+      session: { ...session, status: "failed" },
+      expected,
+    };
   }
 
   const played = play(session.game, move);
@@ -306,4 +310,3 @@ export function movesRemaining(session: PuzzleSession): number {
     Math.ceil((session.puzzle.moves.length - session.index) / 2),
   );
 }
-

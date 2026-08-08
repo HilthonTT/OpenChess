@@ -96,9 +96,7 @@ export async function acceptChallenge(id: string): Promise<ServerGame> {
   return game;
 }
 
-export async function declineChallenge(
-  id: string,
-): Promise<ServerChallenge> {
+export async function declineChallenge(id: string): Promise<ServerChallenge> {
   const response = await byId.decline.$post({ param: { id } });
 
   if (response.status !== 200) {

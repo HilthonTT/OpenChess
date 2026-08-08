@@ -58,7 +58,10 @@ function playMoves(fen: string, moves: string[]) {
     const to = square(notation.slice(2, 4));
     const promotion = notation[4] as PromotionPiece | undefined;
     const move = findLegalMove(game, from, to, promotion);
-    expect(move, `${notation} should be legal in ${toFen(game.position)}`).toBeDefined();
+    expect(
+      move,
+      `${notation} should be legal in ${toFen(game.position)}`,
+    ).toBeDefined();
     game = play(game, move!);
   }
   return game;
@@ -104,7 +107,11 @@ describe("perft", () => {
       "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
       [48, 2039, 97862],
     ],
-    ["endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", [14, 191, 2812, 43238]],
+    [
+      "endgame",
+      "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+      [14, 191, 2812, 43238],
+    ],
     [
       "promotion traps",
       "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
@@ -134,13 +141,26 @@ describe("perft", () => {
 
 describe("special moves", () => {
   test("en passant capture removes the passed pawn", () => {
-    const game = playMoves(STARTING_FEN, ["e2e4", "a7a6", "e4e5", "d7d5", "e5d6"]);
+    const game = playMoves(STARTING_FEN, [
+      "e2e4",
+      "a7a6",
+      "e4e5",
+      "d7d5",
+      "e5d6",
+    ]);
     expect(game.position.board[square("d5")]).toBe("");
     expect(game.position.board[square("d6")]).toBe("P");
   });
 
   test("en passant is only available immediately", () => {
-    const game = playMoves(STARTING_FEN, ["e2e4", "a7a6", "e4e5", "d7d5", "a2a3", "a6a5"]);
+    const game = playMoves(STARTING_FEN, [
+      "e2e4",
+      "a7a6",
+      "e4e5",
+      "d7d5",
+      "a2a3",
+      "a6a5",
+    ]);
     expect(findLegalMove(game, square("e5"), square("d6"))).toBeUndefined();
   });
 
@@ -151,7 +171,15 @@ describe("special moves", () => {
   });
 
   test("castling moves the rook and clears rights", () => {
-    const game = playMoves(STARTING_FEN, ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "e1g1"]);
+    const game = playMoves(STARTING_FEN, [
+      "e2e4",
+      "e7e5",
+      "g1f3",
+      "b8c6",
+      "f1c4",
+      "f8c5",
+      "e1g1",
+    ]);
     expect(game.position.board[square("g1")]).toBe("K");
     expect(game.position.board[square("f1")]).toBe("R");
     expect(game.position.castling.whiteKingSide).toBe(false);
@@ -161,22 +189,38 @@ describe("special moves", () => {
   test("cannot castle through, out of, or into check", () => {
     // Black rook on e8 attacks e1 — the king is in check.
     expect(
-      findLegalMove(createGame("4r3/8/8/8/8/8/8/R3K2R w KQ - 0 1"), square("e1"), square("g1")),
+      findLegalMove(
+        createGame("4r3/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
+        square("e1"),
+        square("g1"),
+      ),
     ).toBeUndefined();
 
     // Black rook on f8 attacks f1, which the king would cross.
     expect(
-      findLegalMove(createGame("5r2/8/8/8/8/8/8/R3K2R w KQ - 0 1"), square("e1"), square("g1")),
+      findLegalMove(
+        createGame("5r2/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
+        square("e1"),
+        square("g1"),
+      ),
     ).toBeUndefined();
 
     // Black rook on g8 attacks g1, the king's destination.
     expect(
-      findLegalMove(createGame("6r1/8/8/8/8/8/8/R3K2R w KQ - 0 1"), square("e1"), square("g1")),
+      findLegalMove(
+        createGame("6r1/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
+        square("e1"),
+        square("g1"),
+      ),
     ).toBeUndefined();
 
     // b1 attacked does not prevent queenside castling; the king never crosses it.
     expect(
-      findLegalMove(createGame("1r6/8/8/8/8/8/8/R3K2R w KQ - 0 1"), square("e1"), square("c1")),
+      findLegalMove(
+        createGame("1r6/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
+        square("e1"),
+        square("c1"),
+      ),
     ).toBeDefined();
   });
 
@@ -206,7 +250,9 @@ describe("special moves", () => {
   test("a pinned piece cannot move", () => {
     // White knight on e2 is pinned to the king on e1 by the rook on e8.
     const game = createGame("4r2k/8/8/8/8/8/4N3/4K3 w - - 0 1");
-    expect(game.legalMoves.filter((move) => move.from === square("e2"))).toHaveLength(0);
+    expect(
+      game.legalMoves.filter((move) => move.from === square("e2")),
+    ).toHaveLength(0);
   });
 });
 
@@ -231,20 +277,38 @@ describe("game results", () => {
   });
 
   test("insufficient material", () => {
-    expect(isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/8 w - - 0 1"))).toBe(true);
-    expect(isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5B2 w - - 0 1"))).toBe(true);
-    expect(isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5N2 w - - 0 1"))).toBe(true);
+    expect(
+      isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/8 w - - 0 1")),
+    ).toBe(true);
+    expect(
+      isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5B2 w - - 0 1")),
+    ).toBe(true);
+    expect(
+      isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5N2 w - - 0 1")),
+    ).toBe(true);
     // Bishops on the same square color (f8 and c1 are both light) can never mate.
-    expect(isInsufficientMaterial(parseFen("5b2/8/4k3/8/8/4K3/8/2B5 w - - 0 1"))).toBe(true);
+    expect(
+      isInsufficientMaterial(parseFen("5b2/8/4k3/8/8/4K3/8/2B5 w - - 0 1")),
+    ).toBe(true);
     // Opposite square colors (f8 light, f1 dark): mate is possible.
-    expect(isInsufficientMaterial(parseFen("5b2/8/4k3/8/8/4K3/8/5B2 w - - 0 1"))).toBe(false);
-    expect(isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5R2 w - - 0 1"))).toBe(false);
-    expect(isInsufficientMaterial(parseFen("8/4p3/4k3/8/8/4K3/8/8 w - - 0 1"))).toBe(false);
+    expect(
+      isInsufficientMaterial(parseFen("5b2/8/4k3/8/8/4K3/8/5B2 w - - 0 1")),
+    ).toBe(false);
+    expect(
+      isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5R2 w - - 0 1")),
+    ).toBe(false);
+    expect(
+      isInsufficientMaterial(parseFen("8/4p3/4k3/8/8/4K3/8/8 w - - 0 1")),
+    ).toBe(false);
   });
 
   test("fifty-move rule draws at 100 plies", () => {
-    expect(createGame("4k3/8/8/8/8/8/4R3/4K3 w - - 99 60").status).toBe("playing");
-    expect(createGame("4k3/8/8/8/8/8/4R3/4K3 w - - 100 60").status).toBe("draw-fifty-move");
+    expect(createGame("4k3/8/8/8/8/8/4R3/4K3 w - - 99 60").status).toBe(
+      "playing",
+    );
+    expect(createGame("4k3/8/8/8/8/8/4R3/4K3 w - - 100 60").status).toBe(
+      "draw-fifty-move",
+    );
   });
 
   test("threefold repetition draws", () => {
@@ -281,14 +345,29 @@ describe("captures and material", () => {
   test("captured pieces are tracked per side, most valuable first", () => {
     // 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qd8 4. Nb5 a6 5. Nxc7+ Qxc7
     const game = playMoves(STARTING_FEN, [
-      "e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5d8", "c3b5", "a7a6", "b5c7", "d8c7",
+      "e2e4",
+      "d7d5",
+      "e4d5",
+      "d8d5",
+      "b1c3",
+      "d5d8",
+      "c3b5",
+      "a7a6",
+      "b5c7",
+      "d8c7",
     ]);
     expect(capturedPieces(game).byWhite).toEqual(["p", "p"]);
     expect(capturedPieces(game).byBlack).toEqual(["N", "P"]);
   });
 
   test("en passant captures count the passed pawn", () => {
-    const game = playMoves(STARTING_FEN, ["e2e4", "a7a6", "e4e5", "d7d5", "e5d6"]);
+    const game = playMoves(STARTING_FEN, [
+      "e2e4",
+      "a7a6",
+      "e4e5",
+      "d7d5",
+      "e5d6",
+    ]);
     expect(capturedPieces(game).byWhite).toEqual(["p"]);
   });
 
@@ -300,7 +379,9 @@ describe("captures and material", () => {
   test("material balance counts the board, including promotions", () => {
     expect(materialBalance(parseFen(STARTING_FEN))).toBe(0);
     expect(materialBalance(parseFen("4k3/8/8/8/8/8/8/Q3K3 w - - 0 1"))).toBe(9);
-    expect(materialBalance(parseFen("4k3/8/8/2n5/8/8/8/4K2R b - - 0 1"))).toBe(2);
+    expect(materialBalance(parseFen("4k3/8/8/2n5/8/8/8/4K2R b - - 0 1"))).toBe(
+      2,
+    );
 
     // A pawn promoting swings the balance by queen-minus-pawn.
     const promoted = playMoves("8/P6k/8/8/8/8/8/K7 w - - 0 1", ["a7a8q"]);
@@ -309,7 +390,12 @@ describe("captures and material", () => {
 });
 
 describe("san", () => {
-  function san(fen: string, from: string, to: string, promotion?: PromotionPiece) {
+  function san(
+    fen: string,
+    from: string,
+    to: string,
+    promotion?: PromotionPiece,
+  ) {
     const position = parseFen(fen);
     const moves = generateLegalMoves(position);
     const move = moves.find(
@@ -334,7 +420,9 @@ describe("san", () => {
 
   test("castling", () => {
     expect(san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "e1", "g1")).toBe("O-O");
-    expect(san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "e1", "c1")).toBe("O-O-O");
+    expect(san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "e1", "c1")).toBe(
+      "O-O-O",
+    );
   });
 
   test("promotion and mate", () => {

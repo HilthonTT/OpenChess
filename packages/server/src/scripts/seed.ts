@@ -328,9 +328,6 @@ for (const puzzle of PUZZLE_CATALOG) {
 console.log(`Seeded ${PUZZLE_CATALOG.length} puzzles.`);
 
 // Both catalogs just changed under any running server; drop its cached copies.
-await Promise.all([
-  invalidateCache("achievements"),
-  invalidateCache("titles"),
-]);
+await Promise.all([invalidateCache("achievements"), invalidateCache("titles")]);
 
 await db.$disconnect();

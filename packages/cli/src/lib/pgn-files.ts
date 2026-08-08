@@ -50,9 +50,15 @@ export function safeExportFilename(candidate: string): string | null {
 
   // "." and ".." survive the split above and both still name a directory;
   // control characters are unprintable in a file listing at best.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point — this is the filter that keeps them out
   const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
-  if (base === "" || base === "." || base === ".." || CONTROL_CHARS.test(base)) {
+  if (
+    base === "" ||
+    base === "." ||
+    base === ".." ||
+    CONTROL_CHARS.test(base)
+  ) {
     return null;
   }
 

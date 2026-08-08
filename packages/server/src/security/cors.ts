@@ -57,7 +57,9 @@ export class CORSManager {
     };
 
     if (Array.isArray(options.origins)) {
-      options.origins.forEach((origin) => this.allowedOrigins.add(origin));
+      for (const origin of options.origins) {
+        this.allowedOrigins.add(origin);
+      }
     }
   }
 

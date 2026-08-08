@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  findKing,
-  timeControlFor,
-  type Color,
-} from "@openchess/shared";
+import { findKing, timeControlFor, type Color } from "@openchess/shared";
 import { useKeyboard } from "@opentui/react";
 import { Board } from "../components/board";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
-import { CapturedSummary, MoveList, describeStatus } from "../components/game-panels";
+import {
+  CapturedSummary,
+  MoveList,
+  describeStatus,
+} from "../components/game-panels";
 import { HintBar } from "../components/hint-bar";
 import { ClockLine, orientClocks } from "../components/match-view";
 import { SignedOut } from "../components/signed-out";
@@ -350,7 +350,9 @@ function SpectatorBoard({
         over,
         flipped,
         labelFor: (color: Color) =>
-          color === "w" ? faceName(game?.white ?? null) : faceName(game?.black ?? null),
+          color === "w"
+            ? faceName(game?.white ?? null)
+            : faceName(game?.black ?? null),
       }),
     [flipped, game?.black, game?.clock?.running, game?.white, live, over],
   );

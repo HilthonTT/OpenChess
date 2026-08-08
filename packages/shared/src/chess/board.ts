@@ -222,13 +222,13 @@ function readCastlingField(
       if (candidates.length === 0) {
         return null;
       }
-      return kingSide
-        ? candidates[candidates.length - 1]!
-        : candidates[0]!;
+      return kingSide ? candidates[candidates.length - 1]! : candidates[0]!;
     };
 
     for (const char of field) {
-      const isOurs = white ? char === char.toUpperCase() : char === char.toLowerCase();
+      const isOurs = white
+        ? char === char.toUpperCase()
+        : char === char.toLowerCase();
       if (!isOurs) {
         continue;
       }
@@ -451,8 +451,10 @@ export function enPassantIsCapturable(position: Position): boolean {
   const capturer: Piece = position.turn === "w" ? "P" : "p";
 
   for (const file of [epFile - 1, epFile + 1]) {
-    if (isOnBoard(file, capturerRank) &&
-      pieceAt(position.board, squareAt(file, capturerRank)) === capturer) {
+    if (
+      isOnBoard(file, capturerRank) &&
+      pieceAt(position.board, squareAt(file, capturerRank)) === capturer
+    ) {
       return true;
     }
   }

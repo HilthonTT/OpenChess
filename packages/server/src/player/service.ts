@@ -76,9 +76,7 @@ export async function getStats(user: User) {
     // already broken, and only the server's calendar can say.
     currentLoginStreak: stats.currentLoginStreak,
     topLoginStreak: stats.topLoginStreak,
-    lastCheckInDay: stats.lastCheckInDay
-      ? utcDay(stats.lastCheckInDay)
-      : null,
+    lastCheckInDay: stats.lastCheckInDay ? utcDay(stats.lastCheckInDay) : null,
     loginStreakAlive: streakIsAlive(
       stats.lastCheckInDay ? utcDay(stats.lastCheckInDay) : null,
       utcDay(new Date()),

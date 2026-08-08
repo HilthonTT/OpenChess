@@ -90,7 +90,9 @@ describe("the numbering", () => {
   test("the bishops always land on opposite colours", () => {
     for (const index of ALL) {
       const rank = chess960BackRank(index);
-      const bishops = rank.flatMap((piece, file) => (piece === "b" ? [file] : []));
+      const bishops = rank.flatMap((piece, file) =>
+        piece === "b" ? [file] : [],
+      );
 
       expect(bishops.length, `#${index}`).toBe(2);
       expect(bishops[0]! % 2, `#${index}`).not.toBe(bishops[1]! % 2);
@@ -243,8 +245,12 @@ describe("castling from a shuffled array", () => {
         expect(castles[0]!.isCastle, label).toBe(side);
 
         const after = applyMove(position, castles[0]!);
-        expect(after.board[square(side === "king" ? "g1" : "c1")], label).toBe("K");
-        expect(after.board[square(side === "king" ? "f1" : "d1")], label).toBe("R");
+        expect(after.board[square(side === "king" ? "g1" : "c1")], label).toBe(
+          "K",
+        );
+        expect(after.board[square(side === "king" ? "f1" : "d1")], label).toBe(
+          "R",
+        );
 
         // And nothing is left behind. A king or rook duplicated onto its own
         // origin is exactly the bug that overlapping squares invite.
@@ -294,9 +300,10 @@ describe("castling from a shuffled array", () => {
 
         // A bare rank means a castle often gives check; that decoration is not
         // what is being asked about here.
-        expect(toSan(position, castle, legal).replace(/[+#]$/, ""), `#${index}`).toBe(
-          side === "king" ? "O-O" : "O-O-O",
-        );
+        expect(
+          toSan(position, castle, legal).replace(/[+#]$/, ""),
+          `#${index}`,
+        ).toBe(side === "king" ? "O-O" : "O-O-O");
       }
     }
   });
@@ -400,21 +407,33 @@ describe("the rules castling still has to obey", () => {
 
 describe("the castling setup a FEN carries", () => {
   test("an ordinary FEN reads as the ordinary setup", () => {
-    expect(isStandardCastlingSetup(parseFen(STARTING_FEN).castlingFiles)).toBe(true);
+    expect(isStandardCastlingSetup(parseFen(STARTING_FEN).castlingFiles)).toBe(
+      true,
+    );
   });
 
   test("KQkq on a shuffled array means the outermost rooks", () => {
     // Same array written both ways: `KQkq` has to resolve to the same files the
     // Shredder spelling names outright.
-    const shredder = parseFen("bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w HFhf - 0 1");
-    const plain = parseFen("bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1");
+    const shredder = parseFen(
+      "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w HFhf - 0 1",
+    );
+    const plain = parseFen(
+      "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1",
+    );
 
     expect(plain.castlingFiles).toEqual(shredder.castlingFiles);
-    expect(plain.castlingFiles.w).toEqual({ king: 6, queenRook: 5, kingRook: 7 });
+    expect(plain.castlingFiles.w).toEqual({
+      king: 6,
+      queenRook: 5,
+      kingRook: 7,
+    });
   });
 
   test("a FEN with no rights still parses, and castles nowhere", () => {
-    const game = createGame("bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w - - 0 1");
+    const game = createGame(
+      "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w - - 0 1",
+    );
     expect(game.legalMoves.some((move) => move.isCastle)).toBe(false);
     expect(toFen(game.position).split(" ")[2]).toBe("-");
   });

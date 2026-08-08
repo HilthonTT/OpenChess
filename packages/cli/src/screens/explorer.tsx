@@ -91,16 +91,13 @@ export function Explorer() {
   // an effect that would re-render every step.
   const cursor = Math.min(index, Math.max(0, continuations.length - 1));
 
-  const advance = useCallback(
-    (choice: BookMove | undefined) => {
-      if (!choice) {
-        return;
-      }
-      setGame((current) => play(current, choice.move));
-      setIndex(0);
-    },
-    [],
-  );
+  const advance = useCallback((choice: BookMove | undefined) => {
+    if (!choice) {
+      return;
+    }
+    setGame((current) => play(current, choice.move));
+    setIndex(0);
+  }, []);
 
   const back = useCallback(() => {
     setGame((current) => undo(current));
@@ -278,10 +275,7 @@ function Continuations({
   const start =
     moves.length <= VISIBLE_MOVES
       ? 0
-      : Math.max(
-          0,
-          Math.min(cursor - 3, moves.length - VISIBLE_MOVES),
-        );
+      : Math.max(0, Math.min(cursor - 3, moves.length - VISIBLE_MOVES));
   const visible = moves.slice(start, start + VISIBLE_MOVES);
 
   return (
@@ -301,10 +295,7 @@ function Continuations({
             : Math.max(1, Math.round(entry.share * BAR_W));
 
         return (
-          <text
-            key={entry.san}
-            bg={active ? theme.selectionBg : undefined}
-          >
+          <text key={entry.san} bg={active ? theme.selectionBg : undefined}>
             <span fg={active ? theme.gold : theme.faint}>
               {active ? "▸ " : "  "}
             </span>

@@ -202,15 +202,14 @@ export function analyzePosition(
   const result = search(position, { depth, nodes: ANALYSIS_NODES });
 
   // `result.score` is from the side to move's POV; flip it to white's.
-  const whiteScore =
-    position.turn === "w" ? result.score : -result.score;
+  const whiteScore = position.turn === "w" ? result.score : -result.score;
 
   let mateIn: number | null = null;
   if (Math.abs(result.score) >= MATE_THRESHOLD) {
     const plies = MATE_SCORE - Math.abs(result.score);
     const movesToMate = Math.max(1, Math.ceil(plies / 2));
     // The side to move is mating when its score is positive.
-    const whiteMating = (result.score > 0) === (position.turn === "w");
+    const whiteMating = result.score > 0 === (position.turn === "w");
     mateIn = whiteMating ? movesToMate : -movesToMate;
   }
 

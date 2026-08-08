@@ -104,7 +104,7 @@ export function clearAuth() {
 
   try {
     unlinkSync(AUTH_FILE);
-  } catch (error) {
+  } catch {
     // File doesn't exist
   }
 

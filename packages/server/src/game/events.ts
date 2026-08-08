@@ -33,7 +33,10 @@ const listeners = new Map<string, Set<Listener>>();
  * function, which callers must run — a stream that ends without it would leak
  * its listener and, with it, the whole game entry.
  */
-export function subscribeToGame(gameId: string, listener: Listener): () => void {
+export function subscribeToGame(
+  gameId: string,
+  listener: Listener,
+): () => void {
   const forGame = listeners.get(gameId) ?? new Set<Listener>();
   forGame.add(listener);
   listeners.set(gameId, forGame);

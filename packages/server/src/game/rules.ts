@@ -241,10 +241,7 @@ export function clockAfterMove(input: {
 }
 
 /** How `result` went for the player of `color`. Null for a game that was aborted. */
-export function outcomeFor(
-  result: GameResult,
-  color: Color,
-): Outcome | null {
+export function outcomeFor(result: GameResult, color: Color): Outcome | null {
   if (result === "ABORTED") {
     return null;
   }

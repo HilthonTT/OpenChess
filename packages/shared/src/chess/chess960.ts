@@ -103,7 +103,9 @@ export function chess960BackRank(index: number): PieceType[] {
 }
 
 /** Where the king and rooks of `backRank` stand, which is what castling needs. */
-export function castlingFilesFor(backRank: readonly PieceType[]): CastlingSetup {
+export function castlingFilesFor(
+  backRank: readonly PieceType[],
+): CastlingSetup {
   const king = backRank.indexOf("k");
   const queenRook = backRank.indexOf("r");
   const kingRook = backRank.lastIndexOf("r");
@@ -124,7 +126,9 @@ export function chess960Fen(index: number): string {
 
     for (let file = 0; file < 8; file += 1) {
       const piece = backRank[file]!;
-      board[squareAt(file, home)] = white ? (piece.toUpperCase() as never) : piece;
+      board[squareAt(file, home)] = white
+        ? (piece.toUpperCase() as never)
+        : piece;
       board[squareAt(file, pawnRank)] = white ? "P" : "p";
     }
   }
@@ -151,7 +155,9 @@ export function chess960Fen(index: number): string {
 }
 
 /** A random array. `random` is injectable so a test can pin the draw. */
-export function randomChess960Index(random: () => number = Math.random): number {
+export function randomChess960Index(
+  random: () => number = Math.random,
+): number {
   return Math.floor(random() * CHESS960_POSITIONS);
 }
 

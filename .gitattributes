@@ -1,0 +1,11 @@
+# Line endings are LF everywhere, in the repository and in the working tree.
+#
+# Git already stores every text file here with LF. Without this file, a Windows
+# checkout with `core.autocrlf=true` gets CRLF on disk instead, and Biome — which
+# formats to LF — then reports every file in the repo as unformatted. CI, running
+# on Linux, sees none of it. Pinning `eol=lf` keeps the two honest: what a
+# contributor formats is what CI checks, on any platform.
+* text=auto eol=lf
+
+# Generated, and large. Collapsed in diffs and never merged by hand.
+bun.lock linguist-generated=true -diff

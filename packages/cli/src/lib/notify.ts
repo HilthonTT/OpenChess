@@ -67,6 +67,7 @@ export const MAX_MESSAGE_LENGTH = 120;
  * The C1 range goes too. `0x9c` is the string terminator in its own right, and
  * a terminal decoding the stream as Latin-1 would honour it.
  */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point — this is the filter that keeps them out
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 
 /** The body as it is safe to send: no control characters, no runs of space. */

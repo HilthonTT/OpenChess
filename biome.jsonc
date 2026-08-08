@@ -1,0 +1,74 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    // Generated SQL. Prisma owns the formatting, and a migration is immutable
+    // once it has been applied to real data.
+    "includes": ["**", "!packages/database/prisma/migrations"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    // 80 is what the tree was already written to; anything wider would reflow
+    // every file for no reason.
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+
+      // OpenChess renders to a terminal through @opentui/react, not to a DOM.
+      // The JSX elements here are `<box>` and `<text>`, and the a11y rules —
+      // which ask for ARIA roles and keyboard handlers on DOM nodes — have
+      // nothing to say about them. Every hit was a false positive.
+      "a11y": {
+        "recommended": false,
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
+      },
+
+      "style": {
+        // `noUncheckedIndexedAccess` is on in tsconfig.base.json, so every
+        // `board[square]` is `T | undefined` and the `!` that follows it is
+        // load-bearing rather than lazy. Banning the assertion would mean
+        // either turning that check off or wrapping the engine's hot paths in
+        // branches that cannot be taken.
+        "noNonNullAssertion": "off"
+      },
+
+      "correctness": {
+        // Warns rather than errors: the ~20 current hits are real questions
+        // about stale closures in the CLI's hooks, but each needs judgement
+        // about what the effect is meant to observe. Left visible instead of
+        // silenced, and not blocking CI until they have been worked through.
+        "useExhaustiveDependencies": "warn"
+      }
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        // Import order is meaningful in places (see lib/create-app.ts, where
+        // middleware is listed in the order it registers). Sorting all of it
+        // would be churn across 267 files that hides that intent.
+        "organizeImports": "off"
+      }
+    }
+  }
+}

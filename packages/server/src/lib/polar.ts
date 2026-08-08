@@ -98,4 +98,3 @@ export async function listActiveSubscriberExternalIds(): Promise<string[]> {
 
   return [...ids];
 }
-

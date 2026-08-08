@@ -144,8 +144,7 @@ function buildBook(): Book {
 
       const node = nodeAt(key);
       const existing = node.edges.find((edge) => edge.san === wanted);
-      const edge =
-        existing ?? { san: wanted, move, weight: 0, to, styles: {} };
+      const edge = existing ?? { san: wanted, move, weight: 0, to, styles: {} };
       if (!existing) {
         node.edges.push(edge);
       }

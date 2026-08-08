@@ -1,9 +1,4 @@
-import {
-  Prisma,
-  type Friendship as FriendshipRow,
-  type FriendshipStatus,
-  type User,
-} from "@openchess/database";
+import { Prisma, type FriendshipStatus, type User } from "@openchess/database";
 import { db } from "@openchess/database/client";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
@@ -190,7 +185,9 @@ export async function listFriends(user: User): Promise<FriendLists> {
     incoming: rendered.filter(
       (row) => row.status === "PENDING" && !row.outgoing,
     ),
-    outgoing: rendered.filter((row) => row.status === "PENDING" && row.outgoing),
+    outgoing: rendered.filter(
+      (row) => row.status === "PENDING" && row.outgoing,
+    ),
   };
 }
 
@@ -201,7 +198,8 @@ const PRESENCE_RANK: Record<PresenceView["state"], number> = {
 };
 
 function byPresenceThenName(a: FriendView, b: FriendView): number {
-  const rank = PRESENCE_RANK[a.presence.state] - PRESENCE_RANK[b.presence.state];
+  const rank =
+    PRESENCE_RANK[a.presence.state] - PRESENCE_RANK[b.presence.state];
   return rank !== 0 ? rank : a.username.localeCompare(b.username);
 }
 
@@ -386,10 +384,7 @@ export async function declineFriend(input: {
   const row = await load(input.friendshipId);
 
   if (row.addresseeId !== input.user.id) {
-    throwProblem(
-      HttpStatusCodes.FORBIDDEN,
-      "This request was not sent to you",
-    );
+    throwProblem(HttpStatusCodes.FORBIDDEN, "This request was not sent to you");
   }
 
   if (row.status !== "PENDING") {

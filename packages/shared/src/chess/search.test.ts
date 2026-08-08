@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { fromAlgebraic, parseFen, toAlgebraic } from "./board";
 import { createGame, play } from "./game";
-import {
-  applyMove,
-  findMove,
-  generateLegalMoves,
-  isInCheck,
-} from "./moves";
+import { applyMove, findMove, generateLegalMoves, isInCheck } from "./moves";
 import { search, see } from "./search";
 import { hashPosition } from "./zobrist";
 import type { Game } from "./game";
@@ -96,7 +91,8 @@ describe("see", () => {
 
 describe("zobrist keys", () => {
   test("the same position keys the same", () => {
-    const fen = "r1bq1r1k/pp2n1pp/2n1p3/2ppP3/3P4/2PB1N2/PP3PPP/R1BQ1RK1 w - - 0 12";
+    const fen =
+      "r1bq1r1k/pp2n1pp/2n1p3/2ppP3/3P4/2PB1N2/PP3PPP/R1BQ1RK1 w - - 0 12";
     expect(hashPosition(parseFen(fen))).toBe(hashPosition(parseFen(fen)));
   });
 
@@ -260,7 +256,10 @@ describe("search", () => {
         move.to,
         move.promotion ?? undefined,
       );
-      expect(legal, `${toAlgebraic(move.from)}${toAlgebraic(move.to)}`).toBeDefined();
+      expect(
+        legal,
+        `${toAlgebraic(move.from)}${toAlgebraic(move.to)}`,
+      ).toBeDefined();
       current = applyMove(current, move);
     }
   });
@@ -280,7 +279,11 @@ describe("search", () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const result = search(position, { depth: 3, randomize: true });
       expect(
-        findMove(generateLegalMoves(position), result.bestMove!.from, result.bestMove!.to),
+        findMove(
+          generateLegalMoves(position),
+          result.bestMove!.from,
+          result.bestMove!.to,
+        ),
       ).toBeDefined();
     }
   });
@@ -331,7 +334,9 @@ describe("converting a won endgame", () => {
   test(
     "king and queen mate",
     () => {
-      expect(playOut("8/8/8/4k3/8/8/8/K6Q w - - 0 1", 80).status).toBe("checkmate");
+      expect(playOut("8/8/8/4k3/8/8/8/K6Q w - - 0 1", 80).status).toBe(
+        "checkmate",
+      );
     },
     CONVERSION_TIMEOUT_MS,
   );
@@ -339,7 +344,9 @@ describe("converting a won endgame", () => {
   test(
     "king and rook mate",
     () => {
-      expect(playOut("8/8/8/4k3/8/8/8/K6R w - - 0 1", 90).status).toBe("checkmate");
+      expect(playOut("8/8/8/4k3/8/8/8/K6R w - - 0 1", 90).status).toBe(
+        "checkmate",
+      );
     },
     CONVERSION_TIMEOUT_MS,
   );
@@ -349,7 +356,9 @@ describe("converting a won endgame", () => {
     () => {
       // The mate is a dozen moves of technique further off than any search here
       // sees, so this one is carried entirely by the evaluation pointing the way.
-      expect(playOut("8/8/8/4k3/8/8/8/KBB5 w - - 0 1", 95).status).toBe("checkmate");
+      expect(playOut("8/8/8/4k3/8/8/8/KBB5 w - - 0 1", 95).status).toBe(
+        "checkmate",
+      );
     },
     CONVERSION_TIMEOUT_MS,
   );

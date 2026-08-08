@@ -192,7 +192,12 @@ describe("the chat link", () => {
 });
 
 describe("withFriendLinks", () => {
-  const row = { id: "f1", username: "magnus", status: "PENDING", outgoing: false };
+  const row = {
+    id: "f1",
+    username: "magnus",
+    status: "PENDING",
+    outgoing: false,
+  };
 
   test("a request addressed to you can be accepted or declined", () => {
     const links = withFriendLinks(row)._links;
@@ -345,7 +350,9 @@ describe("offsetPageLinks", () => {
       total: 120,
     });
 
-    expect(links.self.href).toBe("/api/leaderboard?sort=rating&limit=50&page=2");
+    expect(links.self.href).toBe(
+      "/api/leaderboard?sort=rating&limit=50&page=2",
+    );
     expect(links.next?.href).toBe(
       "/api/leaderboard?sort=rating&limit=50&page=3",
     );

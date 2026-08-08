@@ -9,7 +9,10 @@ import { useToast } from "../providers/toast";
 import { HintBar, type Hint } from "./hint-bar";
 
 /** The one key the notice itself answers to. */
-const SIGN_IN_KEY: KeyHelp = { keys: "enter", label: "sign in, without leaving" };
+const SIGN_IN_KEY: KeyHelp = {
+  keys: "enter",
+  label: "sign in, without leaving",
+};
 
 /**
  * What a screen shows instead of its contents when there is no account behind

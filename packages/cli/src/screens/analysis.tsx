@@ -19,7 +19,7 @@ import {
   EVAL_CLAMP,
 } from "@openchess/shared";
 import type {
-  Analysis,
+  Analysis as PositionAnalysis,
   AnalyzedPly,
   Color,
   Game,
@@ -93,7 +93,10 @@ const REVIEW_KEYMAP: Keymap = {
     {
       title: "Take it away",
       keys: [
-        { keys: "e", label: `write the game out as a PGN, to ${DEFAULT_EXPORT_DIR}` },
+        {
+          keys: "e",
+          label: `write the game out as a PGN, to ${DEFAULT_EXPORT_DIR}`,
+        },
         { keys: "y", label: "copy the position you are looking at, as a FEN" },
         { keys: "shift+y", label: "copy the whole game as a PGN" },
       ],
@@ -168,7 +171,6 @@ function positionSource(fen: string): ReviewSource {
  */
 export function Analysis() {
   const auth = useAuth();
-  const theme = useUITheme();
   const location = useLocation();
 
   const state = location.state as {
@@ -177,7 +179,9 @@ export function Analysis() {
     pgnPath?: string;
   } | null;
 
-  const [selected, setSelected] = useState<string | null>(state?.gameId ?? null);
+  const [selected, setSelected] = useState<string | null>(
+    state?.gameId ?? null,
+  );
   /** A game read out of a PGN file, which needs no account at all. */
   const [imported, setImported] = useState<ReviewSource | null>(
     // `--fen` is already a whole position, so it opens the board directly
@@ -234,9 +238,7 @@ export function Analysis() {
   // Importing is the one thing here that works signed out: the file is the
   // whole game, and the engine that reviews it is running locally anyway.
   if (auth.status !== "signed-in") {
-    return (
-      <SignedOutAnalysis onImport={() => setImporting(true)} />
-    );
+    return <SignedOutAnalysis onImport={() => setImporting(true)} />;
   }
 
   return selected ? (
@@ -614,10 +616,10 @@ function buildFrames(history: string[], startingFen: string): Game[] {
  * how many are done, for a progress line.
  */
 function useGameAnalysis(frames: Game[]): {
-  analyses: Array<Analysis | null>;
+  analyses: Array<PositionAnalysis | null>;
   done: number;
 } {
-  const [analyses, setAnalyses] = useState<Array<Analysis | null>>(() =>
+  const [analyses, setAnalyses] = useState<Array<PositionAnalysis | null>>(() =>
     frames.map(() => null),
   );
 
@@ -636,9 +638,12 @@ function useGameAnalysis(frames: Game[]): {
         return;
       }
 
-      const batch: Array<{ index: number; analysis: Analysis }> = [];
+      const batch: Array<{ index: number; analysis: PositionAnalysis }> = [];
       for (let n = 0; n < BATCH && next < frames.length; n += 1, next += 1) {
-        batch.push({ index: next, analysis: analyzePosition(frames[next]!.position) });
+        batch.push({
+          index: next,
+          analysis: analyzePosition(frames[next]!.position),
+        });
       }
 
       if (batch.length > 0) {
@@ -677,7 +682,7 @@ function useGameAnalysis(frames: Game[]): {
  */
 function useGameReport(
   frames: Game[],
-  analyses: Array<Analysis | null>,
+  analyses: Array<PositionAnalysis | null>,
   history: string[],
 ): GameReport {
   return useMemo(() => {
@@ -717,7 +722,7 @@ const QUALITY_LABEL: Record<MoveQuality, string> = {
 const BAR_W = 24;
 
 /** A signed pawn reading, or mate notation, from white's point of view. */
-function formatEval(analysis: Analysis): string {
+function formatEval(analysis: PositionAnalysis): string {
   if (analysis.mateIn !== null) {
     if (analysis.mateIn === 0) {
       return "#";
@@ -729,7 +734,7 @@ function formatEval(analysis: Analysis): string {
 }
 
 /** White's share of the eval bar, 0 (black winning) to 1 (white winning). */
-function whiteShare(analysis: Analysis): number {
+function whiteShare(analysis: PositionAnalysis): number {
   if (analysis.mateIn !== null) {
     return analysis.scoreCp >= 0 ? 1 : 0;
   }
@@ -773,13 +778,7 @@ function pgnDetailsFor(game: ServerGame, you: string): PgnDetails {
   });
 }
 
-function Review({
-  gameId,
-  onBack,
-}: {
-  gameId: string;
-  onBack: () => void;
-}) {
+function Review({ gameId, onBack }: { gameId: string; onBack: () => void }) {
   const auth = useAuth();
   const theme = useUITheme();
 
@@ -904,7 +903,9 @@ function ReviewBoard({
           : [...marks].reverse().find((mark) => mark.ply < ply);
 
       if (!next) {
-        setNote(direction === 1 ? "That was the last one" : "That was the first one");
+        setNote(
+          direction === 1 ? "That was the last one" : "That was the first one",
+        );
         return;
       }
 
@@ -990,7 +991,7 @@ function ReviewBoard({
   // The quality of the move that reached this position, once both the position
   // before it and this one have been evaluated.
   const before = ply > 0 ? analyses[ply - 1] : null;
-  const moved = ply > 0 ? source.history[ply - 1] ?? null : null;
+  const moved = ply > 0 ? (source.history[ply - 1] ?? null) : null;
   let quality: { label: string; loss: number | null } | null = null;
   if (ply > 0 && before && analysis) {
     const mover = frames[ply - 1]!.position.turn;
@@ -1009,10 +1010,9 @@ function ReviewBoard({
     };
   }
 
-  const bestSan =
-    analysis && analysis.bestMove
-      ? toSan(position, analysis.bestMove, frame.legalMoves)
-      : null;
+  const bestSan = analysis?.bestMove
+    ? toSan(position, analysis.bestMove, frame.legalMoves)
+    : null;
 
   // Named off the frame rather than the whole game, so stepping through the
   // opening shows it being named a move at a time — and a game that transposed
@@ -1079,7 +1079,9 @@ function ReviewBoard({
             <span fg={theme.faint}>Quality: </span>
             <span fg={theme.gold}>{quality.label}</span>
             {quality.loss !== null && quality.loss > 0 ? (
-              <span fg={theme.dim}>{`  (-${(quality.loss / 100).toFixed(1)})`}</span>
+              <span
+                fg={theme.dim}
+              >{`  (-${(quality.loss / 100).toFixed(1)})`}</span>
             ) : null}
           </text>
         ) : (
@@ -1135,7 +1137,9 @@ function AccuracyRow({ report }: { report: GameReport }) {
         <span fg={theme.cream}>{`${stats.accuracy.toFixed(0)}%`}</span>
         <span fg={theme.faint}>{`  ${Math.round(stats.averageLoss)}cp`}</span>
         {bad > 0 ? (
-          <span fg={theme.gold}>{`  ${stats.counts.blunder}?? ${stats.counts.mistake}? ${stats.counts.inaccuracy}!?`}</span>
+          <span
+            fg={theme.gold}
+          >{`  ${stats.counts.blunder}?? ${stats.counts.mistake}? ${stats.counts.inaccuracy}!?`}</span>
         ) : null}
       </text>
     );
@@ -1150,7 +1154,7 @@ function AccuracyRow({ report }: { report: GameReport }) {
 }
 
 /** The advantage bar: white's share of it grows as white leads. */
-function EvalBar({ analysis }: { analysis: Analysis | null }) {
+function EvalBar({ analysis }: { analysis: PositionAnalysis | null }) {
   const theme = useUITheme();
 
   if (!analysis) {

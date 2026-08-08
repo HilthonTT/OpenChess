@@ -305,7 +305,7 @@ const EXCHANGE_VALUES: Record<PieceType, number> = {
   k: 10_000,
 };
 
-function valueOf(piece: string): number {
+function exchangeValueOf(piece: string): number {
   return EXCHANGE_VALUES[piece.toLowerCase() as PieceType] ?? 0;
 }
 
@@ -433,7 +433,7 @@ export function see(position: Position, move: Move): number {
   // between the pawn that left and the piece that arrived.
   let won = move.isEnPassant
     ? EXCHANGE_VALUES.p
-    : valueOf(exchangeBoard[target] ?? EMPTY);
+    : exchangeValueOf(exchangeBoard[target] ?? EMPTY);
 
   if (move.isEnPassant) {
     exchangeBoard[squareAt(fileOf(move.to), rankOf(move.from))] = EMPTY;
@@ -460,7 +460,8 @@ export function see(position: Position, move: Move): number {
     // Taking on the target square wins whatever is standing there, against
     // everything the other side has already banked.
     exchangeGains[depth] =
-      valueOf(exchangeBoard[target] ?? EMPTY) - exchangeGains[depth - 1]!;
+      exchangeValueOf(exchangeBoard[target] ?? EMPTY) -
+      exchangeGains[depth - 1]!;
 
     const attacker = exchangeBoard[from]!;
     exchangeBoard[from] = EMPTY;
@@ -556,7 +557,7 @@ function rememberHistory(state: SearchState, move: Move, depth: number): void {
 function captureOrder(move: Move): number {
   let score = 0;
   if (move.captured !== null) {
-    score += 100 * valueOf(move.captured) - valueOf(move.piece);
+    score += 100 * exchangeValueOf(move.captured) - exchangeValueOf(move.piece);
   }
   if (move.promotion !== null) {
     score += 100 * EXCHANGE_VALUES[move.promotion];
@@ -773,7 +774,7 @@ function quiescence(
       if (
         move.promotion === null &&
         move.captured !== null &&
-        best + valueOf(move.captured) + DELTA_MARGIN <= alpha
+        best + exchangeValueOf(move.captured) + DELTA_MARGIN <= alpha
       ) {
         continue;
       }
@@ -1142,7 +1143,11 @@ export function search(
 
   const reversible = Math.min(position.halfmoveClock, history.length);
   const before: number[] = [];
-  for (let index = history.length - reversible; index < history.length; index += 1) {
+  for (
+    let index = history.length - reversible;
+    index < history.length;
+    index += 1
+  ) {
     before.push(hashPosition(history[index]!));
   }
 
@@ -1198,13 +1203,40 @@ export function search(
 
       let score: number;
       if (index === 0) {
-        score = -negamax(state, child, depth - 1, -Infinity, -alpha, 1, true, 0);
+        score = -negamax(
+          state,
+          child,
+          depth - 1,
+          -Infinity,
+          -alpha,
+          1,
+          true,
+          0,
+        );
       } else {
-        score = -negamax(state, child, depth - 1, -alpha - 1, -alpha, 1, true, 0);
+        score = -negamax(
+          state,
+          child,
+          depth - 1,
+          -alpha - 1,
+          -alpha,
+          1,
+          true,
+          0,
+        );
         if (!state.aborted && score > alpha) {
           // It beat the best so far, so the cheap answer was not enough: the
           // real score decides whether it takes the place.
-          score = -negamax(state, child, depth - 1, -Infinity, -alpha, 1, true, 0);
+          score = -negamax(
+            state,
+            child,
+            depth - 1,
+            -Infinity,
+            -alpha,
+            1,
+            true,
+            0,
+          );
         }
       }
 

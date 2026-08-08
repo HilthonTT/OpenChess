@@ -90,7 +90,7 @@ export function KeyboardLayerProvider({ children }: Props) {
       }
 
       const responder = responders.current.get(layerId);
-      if (responder && responder()) {
+      if (responder?.()) {
         return;
       }
     }

@@ -85,7 +85,7 @@ export const CHAT_PHRASE_LIST: ChatPhrase[] = CHAT_PHRASE_IDS.map(
 
 /** Whether `value` names a phrase in the catalog. The API's guard at the door. */
 export function isChatPhraseId(value: string): value is ChatPhraseId {
-  return Object.prototype.hasOwnProperty.call(CHAT_PHRASES, value);
+  return Object.hasOwn(CHAT_PHRASES, value);
 }
 
 /**

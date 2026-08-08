@@ -18,7 +18,12 @@ const base = createPlayerRouter();
 // spends currency and races on the coin balance, so a burst of concurrent
 // buys is exactly what must not be free — the balance is protected by
 // Serializable isolation in `purchaseTitle`, and this keeps the burst small.
-base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 60 }));
+base.use(
+  "*",
+  requireAuth,
+  requireUser,
+  rateLimit({ windowMs: 60_000, max: 60 }),
+);
 
 const unauthorized = problemDetailsContent("Not authenticated");
 

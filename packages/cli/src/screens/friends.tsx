@@ -31,18 +31,27 @@ const LIST_KEYMAP: Keymap = {
       title: "Getting around",
       keys: [
         { keys: "↑↓ / jk", label: "browse" },
-        { keys: "←→ / tab", label: "your friends, who asked you, who you asked" },
+        {
+          keys: "←→ / tab",
+          label: "your friends, who asked you, who you asked",
+        },
         { keys: "r", label: "refresh" },
       ],
     },
     {
       title: "The highlighted player",
       keys: [
-        { keys: "enter", label: "open their profile — or accept, on the inbox" },
+        {
+          keys: "enter",
+          label: "open their profile — or accept, on the inbox",
+        },
         { keys: "p", label: "open their profile" },
         { keys: "c", label: "challenge them, with their name filled in" },
         { keys: "d", label: "decline their request, on the inbox" },
-        { keys: "x", label: "unfriend, or withdraw — pressed twice to confirm" },
+        {
+          keys: "x",
+          label: "unfriend, or withdraw — pressed twice to confirm",
+        },
       ],
     },
     {
@@ -132,12 +141,15 @@ function FriendList() {
   /** Removing is one keypress from being irreversible; `x` again confirms it. */
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
-  const apply = useCallback((lists: Awaited<ReturnType<typeof listFriends>>) => {
-    setFriends(lists.friends);
-    setIncoming(lists.incoming);
-    setOutgoing(lists.outgoing);
-    setLoaded(true);
-  }, []);
+  const apply = useCallback(
+    (lists: Awaited<ReturnType<typeof listFriends>>) => {
+      setFriends(lists.friends);
+      setIncoming(lists.incoming);
+      setOutgoing(lists.outgoing);
+      setLoaded(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -267,9 +279,8 @@ function FriendList() {
         // On the inbox, enter is the answer to the question the row is asking;
         // everywhere else there is no question, so it opens the player.
         if (pane === "incoming") {
-          void act(
-            `${selected.username} is now a friend.`,
-            () => acceptFriend(selected.id),
+          void act(`${selected.username} is now a friend.`, () =>
+            acceptFriend(selected.id),
           );
         } else {
           openProfile(selected.username);
@@ -413,7 +424,10 @@ const PRESENCE_MARK: Record<PresenceState, string> = {
   offline: "○",
 };
 
-function presenceColor(state: PresenceState, theme: ReturnType<typeof useUITheme>) {
+function presenceColor(
+  state: PresenceState,
+  theme: ReturnType<typeof useUITheme>,
+) {
   return state === "online"
     ? theme.gold
     : state === "playing"
@@ -478,7 +492,9 @@ function Panel({
       )}
 
       {rows.length > PANEL_ROWS ? (
-        <text fg={theme.faint}>{`  …and ${rows.length - PANEL_ROWS} more`}</text>
+        <text
+          fg={theme.faint}
+        >{`  …and ${rows.length - PANEL_ROWS} more`}</text>
       ) : null}
     </box>
   );

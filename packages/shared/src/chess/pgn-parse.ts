@@ -185,7 +185,9 @@ function tokenize(movetext: string): { moves: string[]; result: PgnResult } {
     }
 
     // `1.e4` with no space is legal, and common from engines that wrap tightly.
-    const stripped = token.replace(/^\d+\.+/, "").replace(ANNOTATION_SUFFIX, "");
+    const stripped = token
+      .replace(/^\d+\.+/, "")
+      .replace(ANNOTATION_SUFFIX, "");
     if (stripped === "" || NOISE.test(stripped)) {
       continue;
     }

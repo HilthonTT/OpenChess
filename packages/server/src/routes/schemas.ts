@@ -298,13 +298,7 @@ export const challengeSchema = z
     color: challengeColorSchema,
     variant: gameVariantSchema,
     timeControl: timeControlKeySchema.nullable(),
-    status: z.enum([
-      "PENDING",
-      "ACCEPTED",
-      "DECLINED",
-      "CANCELLED",
-      "EXPIRED",
-    ]),
+    status: z.enum(["PENDING", "ACCEPTED", "DECLINED", "CANCELLED", "EXPIRED"]),
     /** The game it became, once accepted. */
     gameId: z.string().nullable(),
     createdAt: z.string(),

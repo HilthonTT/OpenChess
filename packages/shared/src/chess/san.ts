@@ -29,9 +29,7 @@ export function toSan(
 
   if (type === "p") {
     const origin = capture ? `${FILES[fileOf(move.from)]}x` : "";
-    const promotion = move.promotion
-      ? `=${move.promotion.toUpperCase()}`
-      : "";
+    const promotion = move.promotion ? `=${move.promotion.toUpperCase()}` : "";
     return `${origin}${target}${promotion}${suffix}`;
   }
 

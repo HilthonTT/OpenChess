@@ -24,7 +24,12 @@ const base = createPlayerRouter();
 // The same limit the challenge routes carry, for the same reason: sending a
 // request writes to someone else's list. 30/min is beyond any human and well
 // short of what it would take to flood anyone.
-base.use("*", requireAuth, requireUser, rateLimit({ windowMs: 60_000, max: 30 }));
+base.use(
+  "*",
+  requireAuth,
+  requireUser,
+  rateLimit({ windowMs: 60_000, max: 30 }),
+);
 
 const unauthorized = problemDetailsContent("Not authenticated");
 const notFound = problemDetailsContent("No such friend request");

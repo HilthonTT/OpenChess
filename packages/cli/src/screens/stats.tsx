@@ -184,9 +184,7 @@ function Card({ data }: { data: Data }) {
           // them, making the line readable as a quantity and not only a shape.
           <Row label="Trend">
             <span fg={theme.gold}>{line}</span>
-            <span fg={theme.dim}>
-              {`  ${swing >= 0 ? "+" : ""}${swing}`}
-            </span>
+            <span fg={theme.dim}>{`  ${swing >= 0 ? "+" : ""}${swing}`}</span>
           </Row>
         )}
         <Row label="Coins">

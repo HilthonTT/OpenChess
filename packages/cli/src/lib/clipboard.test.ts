@@ -16,10 +16,9 @@ function terminal() {
     /** What the last sequence would have put on the clipboard. */
     clipboard: () => {
       const sequence = written.at(-1) ?? "";
-      return Buffer.from(
-        sequence.slice(PREFIX.length, -1),
-        "base64",
-      ).toString("utf8");
+      return Buffer.from(sequence.slice(PREFIX.length, -1), "base64").toString(
+        "utf8",
+      );
     },
   };
 }

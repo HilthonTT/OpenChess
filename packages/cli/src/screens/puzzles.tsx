@@ -374,7 +374,6 @@ function PuzzleBoard({
       } finally {
         setPending(false);
       }
-
     },
     [announce, beginCommit, ourMoves, puzzle.id, setMessage],
   );

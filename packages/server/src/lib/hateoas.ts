@@ -22,7 +22,9 @@ export const linkSchema = z
     href: z
       .string()
       .openapi({ example: "/api/games/clx0h2k9r0000abcd1234efgh" }),
-    method: z.enum(["GET", "POST", "PUT", "DELETE"]).openapi({ example: "GET" }),
+    method: z
+      .enum(["GET", "POST", "PUT", "DELETE"])
+      .openapi({ example: "GET" }),
   })
   .openapi("Link");
 
@@ -162,7 +164,10 @@ export function withGameLinks<T extends GameState>(
 export function withGameSummaryLinks<T extends { id: string }>(
   summary: T,
 ): T & { _links: { self: Link } } {
-  return { ...summary, _links: { self: get(`${API_PATHS.games}/${summary.id}`) } };
+  return {
+    ...summary,
+    _links: { self: get(`${API_PATHS.games}/${summary.id}`) },
+  };
 }
 
 /**

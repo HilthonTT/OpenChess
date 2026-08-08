@@ -130,7 +130,8 @@ export const PERSONALITIES: Record<PersonalityId, Personality> = {
   tactician: {
     id: "tactician",
     name: "Tactician",
-    blurb: "Hunts for the tactic, and keeps the position sharp enough to have one.",
+    blurb:
+      "Hunts for the tactic, and keeps the position sharp enough to have one.",
     elo: 1650,
     tier: "hard",
     weights: weights({

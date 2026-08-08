@@ -1,4 +1,8 @@
-import { Prisma, type Puzzle as PuzzleRow, type User } from "@openchess/database";
+import {
+  Prisma,
+  type Puzzle as PuzzleRow,
+  type User,
+} from "@openchess/database";
 import { db } from "@openchess/database/client";
 import {
   PUZZLE_THEMES,
@@ -220,7 +224,10 @@ async function settleAttempt(input: {
           }),
         );
 
-        const bonusXp = unlocked.reduce((sum, entry) => sum + entry.xpReward, 0);
+        const bonusXp = unlocked.reduce(
+          (sum, entry) => sum + entry.xpReward,
+          0,
+        );
         const bonusCoins = unlocked.reduce(
           (sum, entry) => sum + entry.coinReward,
           0,
@@ -317,7 +324,10 @@ export async function playPuzzleMoves(input: {
     );
   }
 
-  const result = submitPuzzleMove(session, input.moves[input.moves.length - 1]!);
+  const result = submitPuzzleMove(
+    session,
+    input.moves[input.moves.length - 1]!,
+  );
 
   if (result.outcome === "continue") {
     return {
@@ -478,7 +488,11 @@ async function pickPuzzle(
     const unattempted = { attempts: { none: { userId } } };
 
     const above = await db.puzzle.findFirst({
-      where: { rating: { gte: target, lte: band.max }, ...unattempted, ...themed },
+      where: {
+        rating: { gte: target, lte: band.max },
+        ...unattempted,
+        ...themed,
+      },
       orderBy: { rating: "asc" },
     });
 
@@ -487,7 +501,11 @@ async function pickPuzzle(
     }
 
     const below = await db.puzzle.findFirst({
-      where: { rating: { lte: target, gte: band.min }, ...unattempted, ...themed },
+      where: {
+        rating: { lte: target, gte: band.min },
+        ...unattempted,
+        ...themed,
+      },
       orderBy: { rating: "desc" },
     });
 
@@ -710,7 +728,9 @@ async function themeCounts(): Promise<Map<string, number>> {
 }
 
 /** This player's record at each theme they have met. */
-async function themeRecord(userId: string): Promise<Map<string, ThemeRecordRow>> {
+async function themeRecord(
+  userId: string,
+): Promise<Map<string, ThemeRecordRow>> {
   const rows = await db.$queryRaw<ThemeRecordRow[]>`
     SELECT t.theme AS theme,
            COUNT(*) AS attempted,
