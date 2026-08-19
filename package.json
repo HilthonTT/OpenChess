@@ -22,7 +22,7 @@
     "inngest": "inngest-cli dev -u http://localhost:3000/api/inngest"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@types/bun": "^1.3.14",
     "inngest-cli": "^1.41.1",
     "typescript": "^7.0.2"
