@@ -31,6 +31,7 @@ import {
   type GameView,
 } from "../game/service";
 import { createPlayerRouter } from "../lib/create-app";
+import { isShuttingDown, onShutdown } from "../lib/shutdown";
 import type { PlayerEnv } from "../middlewares/require-user";
 import {
   API_PATHS,
@@ -502,6 +503,13 @@ function waitForChange(
 ): Promise<"changed" | "tick"> {
   return new Promise((resolve) => {
     let settled = false;
+    /**
+     * Assigned below rather than declared there: `onShutdown` runs its listener
+     * on the spot if shutdown has already begun, and that listener calls
+     * `finish`, which would reach a `const` still in its dead zone. A no-op
+     * placeholder makes the ordering safe instead of merely unlikely.
+     */
+    let unsubscribeShutdown: () => void = () => {};
 
     const finish = (reason: "changed" | "tick") => {
       if (settled) {
@@ -509,6 +517,7 @@ function waitForChange(
       }
       settled = true;
       unsubscribe();
+      unsubscribeShutdown();
       clearTimeout(timer);
       signal.removeEventListener("abort", onAbort);
       resolve(reason);
@@ -521,6 +530,13 @@ function waitForChange(
     const timer = setTimeout(() => finish("tick"), REVALIDATE_MS);
 
     signal.addEventListener("abort", onAbort, { once: true });
+
+    // Last, so everything `finish` touches is initialised before a shutdown
+    // already under way can fire this listener synchronously. A shutdown
+    // resolves as a tick for the same reason an abort does: the loop owns the
+    // decision to stop and checks `isShuttingDown` on its own condition, so
+    // waking it is all this has to do.
+    unsubscribeShutdown = onShutdown(() => finish("tick"));
   });
 }
 
@@ -570,7 +586,7 @@ function streamGameState<T extends { result: string | null }>(
       }
     };
 
-    while (!stream.aborted && !stream.closed) {
+    while (!stream.aborted && !stream.closed && !isShuttingDown()) {
       const state = await load();
       const current = signature(state);
 
@@ -615,6 +631,7 @@ function streamGameState<T extends { result: string | null }>(
       while (
         !stream.aborted &&
         !stream.closed &&
+        !isShuttingDown() &&
         (hangUpAt === null || Date.now() < hangUpAt)
       ) {
         const reason = await waitForChange(gameId, c.req.raw.signal);
