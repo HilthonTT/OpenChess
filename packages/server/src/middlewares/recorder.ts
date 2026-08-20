@@ -1,4 +1,4 @@
-import { getConnInfo } from "@hono/node-server/conninfo";
+import { getConnInfo } from "hono/bun";
 import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 
@@ -60,7 +60,7 @@ export function normalizeIp(raw: string): string | undefined {
     value = value.slice(0, value.indexOf(":"));
   }
 
-  // Node reports an IPv4 peer of a dual-stack socket as `::ffff:1.2.3.4`;
+  // A dual-stack socket reports an IPv4 peer as `::ffff:1.2.3.4`;
   // logging the two forms of one address as if they were different callers
   // makes them impossible to correlate.
   if (value.toLowerCase().startsWith("::ffff:")) {
@@ -80,10 +80,11 @@ function getPeerIp(c: Context): string | undefined {
     const address = getConnInfo(c).remote.address;
     return address ? normalizeIp(address) : undefined;
   } catch {
-    // The Node adapter reads the address off `c.env.server.incoming.socket`,
-    // which only exists when the request came in over a real socket. Anything
-    // that calls `app.fetch`/`app.request` directly — tests, the Inngest dev
-    // handler — has no peer to report, and that is not an error.
+    // The Bun adapter reads the address off the server handed to `fetch` as its
+    // second argument, which only exists when the request came in over a real
+    // socket. Anything that calls `app.fetch`/`app.request` directly — tests,
+    // the Inngest dev handler — has no peer to report, and that is not an
+    // error: with no `c.env` the adapter throws rather than returning nothing.
     return undefined;
   }
 }
