@@ -15,7 +15,7 @@
     "db:studio": "bunx prisma studio"
   },
   "devDependencies": {
-    "@types/pg": "^8.21.0",
+    "@types/pg": "^8.23.1",
     "prisma": "^7.9.1"
   },
   "dependencies": {
