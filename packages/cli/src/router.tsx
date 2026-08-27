@@ -13,8 +13,10 @@ import { Stats } from "./screens/stats";
 import { Store } from "./screens/store";
 import { Analysis } from "./screens/analysis";
 import { Explorer } from "./screens/explorer";
+import { Repertoire } from "./screens/repertoire";
 import { Puzzles } from "./screens/puzzles";
 import { Rush } from "./screens/rush";
+import { Collections } from "./screens/collections";
 import { Watch } from "./screens/watch";
 import { Challenges } from "./screens/challenges";
 import { Friends } from "./screens/friends";
@@ -31,6 +33,7 @@ const SCREEN_ELEMENTS: Record<ScreenName, ReactNode> = {
   ai: <AIGame />,
   puzzles: <Puzzles />,
   rush: <Rush />,
+  collections: <Collections />,
   challenges: <Challenges />,
   friends: <Friends />,
   watch: <Watch />,
@@ -39,6 +42,7 @@ const SCREEN_ELEMENTS: Record<ScreenName, ReactNode> = {
   stats: <Stats />,
   analysis: <Analysis />,
   explorer: <Explorer />,
+  repertoire: <Repertoire />,
   store: <Store />,
   profile: <Profile />,
 };

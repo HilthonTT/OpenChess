@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { findKing, timeControlFor, type Color } from "@openchess/shared";
+import {
+  chatPhrasesFor,
+  findKing,
+  SPECTATOR_PHRASE_LIST,
+  timeControlFor,
+  type ChatPhraseId,
+  type Color,
+} from "@openchess/shared";
 import { useKeyboard } from "@opentui/react";
 import { Board } from "../components/board";
 import { ErrorNotice } from "../components/error-notice";
@@ -10,6 +17,7 @@ import {
   describeStatus,
 } from "../components/game-panels";
 import { HintBar } from "../components/hint-bar";
+import { ChatLog, PhrasePicker } from "../components/chat-panel";
 import { ClockLine, orientClocks } from "../components/match-view";
 import { SignedOut } from "../components/signed-out";
 import { copyFen, copyPgn, serverPgnDetails } from "../lib/copy-game";
@@ -17,6 +25,7 @@ import { subscribeToSpectatorGame } from "../lib/game-events";
 import {
   fetchSpectatorGame,
   listLiveGames,
+  sendSpectatorChatMessage,
   type LiveGame,
   type SpectatorGame,
 } from "../lib/spectate";
@@ -58,8 +67,31 @@ const BOARD_KEYMAP: Keymap = {
         ...COPY_KEYS,
       ],
     },
+    {
+      title: "The gallery",
+      keys: [
+        { keys: "t", label: "say one of nine phrases" },
+        { keys: "1-9", label: "pick one, while the picker is open" },
+        {
+          keys: "",
+          label:
+            "the two players never see any of it, and you never see theirs",
+        },
+      ],
+    },
   ],
 };
+
+/**
+ * The layer the phrase picker takes while it is open, so `f` and `y` go quiet
+ * underneath it and the digits are unambiguously the picker's.
+ */
+const CHAT_LAYER_ID = "watch-chat";
+
+/** The newest message's id, or "" — how a client tells one transcript from another. */
+function lastMessageId(game: { chat: { id: string }[] }): string {
+  return game.chat.at(-1)?.id ?? "";
+}
 
 /** How often the list of live games is refreshed while it is on screen. */
 const LIST_POLL_MS = 10_000;
@@ -253,7 +285,7 @@ function SpectatorBoard({
   onBack: () => void;
 }) {
   const theme = useUITheme();
-  const { isTopLayer } = useKeyboardLayer();
+  const { push: pushLayer, pop: popLayer, isTopLayer } = useKeyboardLayer();
 
   useKeymap(BOARD_KEYMAP);
 
@@ -262,6 +294,8 @@ function SpectatorBoard({
   const [flipped, setFlipped] = useState(false);
   /** What the last copy did, under the status line. */
   const [note, setNote] = useState<string | null>(null);
+  /** The phrase picker is open and taking the digits. */
+  const [saying, setSaying] = useState(false);
 
   // The first state arrives on the stream, but a fetch gets something on
   // screen without waiting for the connection to come up.
@@ -293,21 +327,100 @@ function SpectatorBoard({
       onState: (state) => {
         const current = latest.current;
         // A draw offer moves neither the ply nor the result, so it is named here
-        // as well — otherwise the one change that is pure negotiation is filtered
-        // out as "nothing new" and the watcher never sees it.
+        // as well — otherwise a change that is pure negotiation is filtered out
+        // as "nothing new" and the watcher never sees it. A takeback request is
+        // the same; the takeback itself moves the ply, backwards, and needs no
+        // naming of its own.
         if (
           !current ||
           state.ply !== current.ply ||
           state.result !== current.result ||
-          state.drawOfferFrom !== current.drawOfferFrom
+          state.drawOfferFrom !== current.drawOfferFrom ||
+          state.takebackOfferFrom !== current.takebackOfferFrom
         ) {
           setGame(state);
+          return;
+        }
+
+        // A message moves nothing on the board, so it takes the narrow path:
+        // the transcript is copied across and everything else — the flipped
+        // orientation, the copy note — is left exactly where it was.
+        if (lastMessageId(state) !== lastMessageId(current)) {
+          setGame((previous) =>
+            previous ? { ...previous, chat: state.chat } : state,
+          );
         }
       },
     });
   }, [gameId]);
 
   const board = useReplayedGame(game?.history ?? [], game?.startFen ?? null);
+  const over = game?.result != null;
+
+  /**
+   * The watchers' nine, led by the ones that fit where the game is.
+   *
+   * A different catalog from the players' — a watcher is commenting rather than
+   * playing, and half of what the two of them can say to each other reads as
+   * somebody else's line when it comes from the gallery.
+   */
+  const phrases = useMemo(
+    () =>
+      chatPhrasesFor(
+        over ? "end" : (game?.ply ?? 0) < 2 ? "start" : "any",
+        SPECTATOR_PHRASE_LIST,
+      ),
+    [game?.ply, over],
+  );
+
+  /**
+   * Say one of them to the rest of the gallery.
+   *
+   * Nothing on this screen is locked while it is in flight: a watcher has no
+   * move to be held up, and the board keeps arriving from the stream either
+   * way.
+   */
+  const say = useCallback(
+    async (phrase: ChatPhraseId) => {
+      setSaying(false);
+
+      try {
+        const chat = await sendSpectatorChatMessage(gameId, phrase);
+        setGame((previous) => (previous ? { ...previous, chat } : previous));
+      } catch (cause) {
+        setNote(errorMessage(cause));
+      }
+    },
+    [gameId],
+  );
+
+  // The picker owns the keyboard while it is open, which is what lets it bind
+  // the digits without the screen underneath having to know they are spoken for.
+  useEffect(() => {
+    if (!saying) {
+      return;
+    }
+
+    pushLayer(CHAT_LAYER_ID);
+    return () => popLayer(CHAT_LAYER_ID);
+  }, [popLayer, pushLayer, saying]);
+
+  useKeyboard((key) => {
+    if (!isTopLayer(CHAT_LAYER_ID)) {
+      return;
+    }
+
+    if (key.name === "escape" || key.name === "t") {
+      setSaying(false);
+      return;
+    }
+
+    const choice = Number(key.name);
+
+    if (Number.isInteger(choice) && choice >= 1 && choice <= phrases.length) {
+      void say(phrases[choice - 1]!.id);
+    }
+  });
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID)) {
@@ -315,6 +428,9 @@ function SpectatorBoard({
     }
     if (key.name === "f") {
       setFlipped((value) => !value);
+    }
+    if (key.name === "t") {
+      setSaying(true);
     }
     // Copying is not held back to the end here as it is on a player's own
     // board: this is a public game somebody else is playing, and the watcher
@@ -336,7 +452,6 @@ function SpectatorBoard({
       );
     }
   });
-  const over = game?.result != null;
 
   // No `onExpire`: a watcher has no standing to settle anyone's game on time.
   // The players' own screens do that; this one just stops counting down.
@@ -357,6 +472,9 @@ function SpectatorBoard({
     [flipped, game?.black, game?.clock?.running, game?.white, live, over],
   );
 
+  // No branch for the open picker: while it is up it holds the keyboard layer,
+  // and `GameScreen` only reads escape on the base one. Escape closes the
+  // picker, and the press after that is the one that leaves the game.
   const handleEscape = useCallback(() => {
     onBack();
     return true;
@@ -415,6 +533,10 @@ function SpectatorBoard({
     }
     // Part of what is happening on the board, like the clock: a watcher who
     // cannot see the offer cannot read the next move.
+    if (game.takebackOfferFrom !== null) {
+      const asker = game.takebackOfferFrom === "w" ? game.white : game.black;
+      return `${faceName(asker)} has asked for their move back`;
+    }
     if (game.drawOfferFrom !== null) {
       const offerer = game.drawOfferFrom === "w" ? game.white : game.black;
       return `${faceName(offerer)} has offered a draw`;
@@ -433,6 +555,8 @@ function SpectatorBoard({
           <span fg={theme.faint}> flip </span>
           <span fg={theme.cream}>y</span>
           <span fg={theme.faint}> copy </span>
+          <span fg={theme.cream}>t</span>
+          <span fg={theme.faint}> say </span>
         </>
       }
     >
@@ -456,6 +580,20 @@ function SpectatorBoard({
       {clocks ? <ClockLine row={clocks.bottom} /> : null}
 
       <text fg={over ? theme.gold : theme.dim}>{status()}</text>
+
+      {/* The gallery, never the players. What the two of them are saying to
+          each other is not on this payload at all. */}
+      {saying ? (
+        <PhrasePicker
+          phrases={phrases}
+          title="Say something to the gallery — esc to close"
+        />
+      ) : (
+        <ChatLog
+          messages={game.chat}
+          nameFor={(message) => (message.mine ? "you" : message.username)}
+        />
+      )}
 
       {note ? <text fg={theme.gold}>{note}</text> : null}
     </GameScreen>

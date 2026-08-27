@@ -18,6 +18,7 @@ import {
   fetchActiveAiGame,
   fetchGame,
   flagGame,
+  offerTakeback,
   resignGame,
   sendMove,
   type ServerGame,
@@ -55,7 +56,10 @@ const MATCH_KEYMAP: Keymap = {
           keys: "a",
           label: "review the game with the engine, once it is over",
         },
-        { keys: "u", label: "no undo here — this one is on your record" },
+        {
+          keys: "u",
+          label: "take your move and the bot's reply back — voids the payout",
+        },
       ],
     },
     {
@@ -240,6 +244,13 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   /** A request is on the wire; the board is read-only until it answers. */
   const [pending, setPending] = useState(false);
   const [confirmingResign, setConfirmingResign] = useState(false);
+  /**
+   * The first takeback is one keypress from being taken, and `u` again takes
+   * it. Only the first: what the confirmation is protecting is the game's
+   * payout, and once that has been spent there is nothing left to warn about —
+   * a second prompt would be a toll on a road already paid for.
+   */
+  const [confirmingTakeback, setConfirmingTakeback] = useState(false);
 
   const game = useReplayedGame(server.history, server.startFen);
   const { position, status } = game;
@@ -423,6 +434,36 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     }
   }, [apply, server.id, server.ply, setMessage]);
 
+  /**
+   * Take the last move back: the bot's reply and the move of ours it answered.
+   *
+   * The server does the rewinding and the charging — this only sends the
+   * request and shows what came back. A conflict means the board is not where
+   * we thought it was (nothing of ours to undo, or the game settled under us),
+   * so we refetch rather than argue.
+   */
+  const takeBack = useCallback(async () => {
+    setConfirmingTakeback(false);
+    setPending(true);
+    setMessage(null);
+
+    try {
+      apply(await offerTakeback(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        try {
+          apply(await fetchGame(server.id));
+        } catch (refetch) {
+          setMessage(errorMessage(refetch));
+        }
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(false);
+    }
+  }, [apply, server.id, setMessage]);
+
   // Escape's extra step here: a pending resign confirmation. Leaving mid-game
   // is fine — the game stays active and is resumed on return.
   const handleEscape = useCallback(
@@ -432,9 +473,13 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
           setConfirmingResign(false);
           return true;
         }
+        if (confirmingTakeback) {
+          setConfirmingTakeback(false);
+          return true;
+        }
         return false;
       }),
-    [confirmingResign, selection.handleEscape],
+    [confirmingResign, confirmingTakeback, selection.handleEscape],
   );
 
   useGameKeys({
@@ -458,16 +503,29 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
       refuse: over ? null : "Not while the game is on — press y once it's over",
       onNote: setMessage,
     },
-    // A pending resign is called off by any key that isn't its own confirm.
+    // A pending confirmation is called off by any key that isn't its own confirm.
     before: (name) => {
       if (confirmingResign && name !== "x") {
         setConfirmingResign(false);
+      }
+      if (confirmingTakeback && name !== "u") {
+        setConfirmingTakeback(false);
       }
     },
     onKey: (name) => {
       switch (name) {
         case "u":
-          setMessage("There's no undo in a rated game");
+          // The first press asks, because the first takeback is what costs the
+          // game its XP and coins; every press after that just takes it, the
+          // forfeit having already happened.
+          if (pending || over) {
+            break;
+          }
+          if (server.takebacks > 0 || confirmingTakeback) {
+            void takeBack();
+          } else {
+            setConfirmingTakeback(true);
+          }
           break;
         case "r":
           if (pending) {
@@ -510,6 +568,10 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         : "Resign this game? Press x again to confirm";
     }
 
+    if (confirmingTakeback) {
+      return "Take that back? It voids this game's XP and coins — u again";
+    }
+
     if (selection.message) {
       return selection.message;
     }
@@ -549,6 +611,12 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
           <span fg={theme.faint}> select </span>
           <span fg={theme.cream}>x</span>
           <span fg={theme.faint}> resign </span>
+          {over ? null : (
+            <>
+              <span fg={theme.cream}>u</span>
+              <span fg={theme.faint}> take back </span>
+            </>
+          )}
           {over ? (
             <>
               <span fg={theme.cream}>a</span>
@@ -575,6 +643,19 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         statusText={statusText()}
         clocks={clocks}
       />
+
+      {/* Said once and then left standing, rather than only at the end: a
+          player who finds out their game paid nothing on the payout line has
+          been told too late to decide anything about it. */}
+      {server.takebacks > 0 && !over ? (
+        <text>
+          <span fg={theme.faint}>
+            {server.takebacks === 1
+              ? "1 move taken back — this game pays no XP or coins"
+              : `${server.takebacks} moves taken back — this game pays no XP or coins`}
+          </span>
+        </text>
+      ) : null}
 
       {rewards ? (
         <text>

@@ -17,6 +17,7 @@ import {
   rushLeaderboard,
   startRush,
 } from "../puzzle/rush";
+import { claimCollection, listCollections } from "../puzzle/collections";
 import {
   dailyPuzzle,
   getPuzzle,
@@ -28,9 +29,11 @@ import {
   takePuzzleHint,
 } from "../puzzle/service";
 import {
+  claimCollectionSchema,
   idParamsSchema,
   nextPuzzleSchema,
   puzzleAttemptSchema,
+  puzzleCollectionSchema,
   puzzleHintSchema,
   puzzleMoveResultSchema,
   puzzleRevealSchema,
@@ -129,6 +132,43 @@ const themes = createRoute({
       "The themes",
     ),
     [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const collections = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "get",
+  path: "/collections",
+  summary: "The collections, and how far along each you are",
+  description:
+    "Every collection, with your progress against each. Progress is not a counter anybody increments: it is the number of distinct puzzles carrying the theme that you have a solved attempt for, so a collection is already part-finished the moment it is added for anyone who has been training that motif. `available` is beside `target` because the target is fixed and the corpus behind it is not — importing more pins raises one and not the other.",
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ collections: z.array(puzzleCollectionSchema) }),
+      "The collections",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+  },
+});
+
+const claim = createRoute({
+  tags: [TAGS.PUZZLES],
+  method: "post",
+  path: "/collections/{id}/claim",
+  summary: "Take the reward for a finished collection",
+  description:
+    "Takes the XP and coins for a collection you have finished. A request rather than something that happens on the solve that completes it: paying automatically would mean every puzzle submission checking every collection on the off-chance, to deliver news you are not looking at. Idempotent — a second claim returns the collection with a null `reward` rather than failing, so a retry whose response was lost is safe. Claiming one you have not finished is a conflict, and it says how far along you are.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      claimCollectionSchema,
+      "The collection, and what it paid",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.NOT_FOUND]: problemDetailsContent("No such collection"),
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "That collection is not finished yet",
+    ),
   },
 });
 
@@ -427,6 +467,18 @@ const router = base
     const run = await getRush(c.get("user"), id);
 
     return c.json(withRushPuzzleLinks(run), HttpStatusCodes.OK);
+  })
+  .openapi(collections, async (c) => {
+    const list = await listCollections(c.get("user"));
+
+    return c.json({ collections: list }, HttpStatusCodes.OK);
+  })
+  .openapi(claim, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const result = await claimCollection(c.get("user"), id);
+
+    return c.json(result, HttpStatusCodes.OK);
   })
   .openapi(read, async (c) => {
     const { id } = c.req.valid("param");

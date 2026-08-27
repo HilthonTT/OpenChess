@@ -257,3 +257,52 @@ export async function listPuzzleAttempts(
   const { attempts } = await response.json();
   return attempts;
 }
+
+export type PuzzleCollectionEntry = InferResponseType<
+  typeof apiClient.puzzles.collections.$get,
+  200
+>["collections"][number];
+
+export type ClaimCollectionResult = InferResponseType<
+  (typeof apiClient.puzzles.collections)[":id"]["claim"]["$post"],
+  200
+>;
+
+/**
+ * Every collection, with how far along each you are.
+ *
+ * Progress is counted server-side off the attempts you already have, so this is
+ * always current with what you have solved — including work done long before a
+ * collection existed.
+ */
+export async function fetchPuzzleCollections(): Promise<
+  PuzzleCollectionEntry[]
+> {
+  const response = await apiClient.puzzles.collections.$get();
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  const { collections } = await response.json();
+  return collections;
+}
+
+/**
+ * Take the reward for a finished one. Idempotent: claiming twice comes back
+ * with a null `reward` rather than an error, so a retry is safe. A 409 means it
+ * is not finished yet, and the message says how far along it is.
+ */
+export async function claimPuzzleCollection(
+  id: string,
+): Promise<ClaimCollectionResult> {
+  const response = await apiClient.puzzles.collections[":id"].claim.$post({
+    param: { id },
+  });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}

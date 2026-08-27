@@ -7,6 +7,7 @@ import friends from "./routes/friends";
 import game from "./routes/game";
 import players from "./routes/players";
 import puzzles from "./routes/puzzles";
+import repertoire from "./routes/repertoire";
 import leaderboard from "./routes/leaderboard";
 import me from "./routes/me";
 import store from "./routes/store";
@@ -26,6 +27,7 @@ const api = createRouter()
   .route("/auth", auth)
   .route("/games", game)
   .route("/puzzles", puzzles)
+  .route("/repertoire", repertoire)
   .route("/challenges", challenges)
   .route("/friends", friends)
   .route("/players", players)

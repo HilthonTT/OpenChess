@@ -3,6 +3,7 @@ export const TAGS = {
   ACHIEVEMENTS: "Achievements",
   GAMES: "Games",
   PUZZLES: "Puzzles",
+  REPERTOIRE: "Repertoire",
   CHALLENGES: "Challenges",
   FRIENDS: "Friends",
   PLAYERS: "Players",

@@ -1,5 +1,7 @@
 import { z } from "@hono/zod-openapi";
 
+import { pliesToTakeBack } from "../game/rules";
+
 /**
  * HATEOAS `_links`.
  *
@@ -35,6 +37,7 @@ export const API_PATHS = {
   root: "/api",
   games: "/api/games",
   puzzles: "/api/puzzles",
+  repertoire: "/api/repertoire",
   challenges: "/api/challenges",
   friends: "/api/friends",
   players: "/api/players",
@@ -77,6 +80,14 @@ export const gameLinksSchema = z
     /** Present whenever an offer stands, from either side: yours to withdraw,
      * or theirs to decline. */
     declineDraw: linkSchema.optional(),
+    /** Present while a live game holds a move of yours to take back — and, in a
+     * PvP game, no request of yours already standing. */
+    takeback: linkSchema.optional(),
+    /** Present only while the opponent's takeback request is yours to grant. */
+    acceptTakeback: linkSchema.optional(),
+    /** Present whenever a takeback request stands, from either side: yours to
+     * withdraw, or theirs to refuse. */
+    declineTakeback: linkSchema.optional(),
     /** Present in any PvP game, settled or not — "good game" is said after the
      * result, not before it. Absent against the bot, which has nothing to say. */
     say: linkSchema.optional(),
@@ -96,6 +107,8 @@ type GameState = {
   clock: object | null;
   /** The side with a draw offer standing, or null when none is. */
   drawOfferFrom: "w" | "b" | null;
+  /** The side with a takeback request standing, or null when none is. */
+  takebackOfferFrom: "w" | "b" | null;
 };
 
 export function gameLinks(game: GameState): GameLinks {
@@ -146,6 +159,29 @@ export function gameLinks(game: GameState): GameLinks {
       : {}),
     ...(live && game.mode === "PVP" && game.drawOfferFrom !== null
       ? { declineDraw: del(`${base}/draw`) }
+      : {}),
+    // Takebacks. The one link here whose availability is a fact about the move
+    // list rather than about the mode: there has to be a move of yours under
+    // the rewind, which at ply 0 and at ply 1-with-you-to-move there is not.
+    // `pliesToTakeBack` is the same function the handler decides with, so the
+    // link and the answer behind it cannot disagree.
+    //
+    // Present against the bot as well as against a person, because there it is
+    // the whole feature — pressed rather than asked, and paid for out of the
+    // game's reward.
+    ...(live &&
+    pliesToTakeBack(game.ply, game.yourColor) !== null &&
+    game.takebackOfferFrom !== game.yourColor
+      ? { takeback: post(`${base}/takeback`) }
+      : {}),
+    ...(live &&
+    game.mode === "PVP" &&
+    game.takebackOfferFrom !== null &&
+    game.takebackOfferFrom !== game.yourColor
+      ? { acceptTakeback: post(`${base}/takeback/accept`) }
+      : {}),
+    ...(live && game.mode === "PVP" && game.takebackOfferFrom !== null
+      ? { declineTakeback: del(`${base}/takeback`) }
       : {}),
     // Not gated on `live`, unlike everything above it. The customary exchange
     // of "good game" happens once the result is in, and a link that vanished at

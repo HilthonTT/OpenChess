@@ -29,6 +29,7 @@ export type AlertGame = {
   ply: number;
   result: "WHITE_WIN" | "BLACK_WIN" | "DRAW" | "ABORTED" | null;
   drawOfferFrom: Color | null;
+  takebackOfferFrom: Color | null;
   /** The moves in SAN, so the newest can be named in the notification. */
   history: string[];
 };
@@ -106,6 +107,18 @@ export function alertFor({
       : null;
   }
 
+  // A takeback runs the ply backwards, which every rule below reads as a move
+  // and none of them reads correctly. It is named first so it cannot be
+  // mistaken for one: "Nimzo played Qxf7" is a bad thing to be told about a
+  // move that has just been unplayed.
+  if (state.ply < previous.ply) {
+    // After the rewind it is the asker's turn. Ours means they granted what we
+    // asked for; theirs means we granted what they did.
+    return state.turn === you
+      ? `${opponent} gave you your move back`
+      : `${opponent} took their move back`;
+  }
+
   if (state.ply !== previous.ply) {
     // Our own move comes back through here whenever the stream beats the
     // response to it. It left the opponent to move, which is how it is told
@@ -133,6 +146,16 @@ export function alertFor({
     state.drawOfferFrom !== you
   ) {
     return `${opponent} offers a draw`;
+  }
+
+  // And a takeback request, for exactly the same reason: it moves nothing on
+  // the board and it is a question only this terminal can answer.
+  if (
+    state.takebackOfferFrom !== previous.takebackOfferFrom &&
+    state.takebackOfferFrom !== null &&
+    state.takebackOfferFrom !== you
+  ) {
+    return `${opponent} asks for their move back`;
   }
 
   return null;

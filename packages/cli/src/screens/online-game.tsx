@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  chatPhraseText,
   chatPhrasesFor,
   isGameOver,
   opposite,
@@ -20,19 +19,23 @@ import { useLocation, useNavigate } from "react-router";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
 import { MatchView, orientClocks } from "../components/match-view";
+import { ChatLog, PhrasePicker } from "../components/chat-panel";
 import { describeStatus } from "../components/game-panels";
 import { SignedOut } from "../components/signed-out";
 import {
   GameConflictError,
   abortGame,
   acceptDraw,
+  acceptTakeback,
   claimVictory,
   declineDraw,
+  declineTakeback,
   fetchGame,
   flagGame,
   joinPvpQueue,
   leavePvpQueue,
   offerDraw,
+  offerTakeback,
   resignGame,
   sendChatMessage,
   sendMove,
@@ -82,9 +85,6 @@ const CLAIM_AFTER_MS = 5 * 60_000;
  * anything the board might one day bind it to.
  */
 const CHAT_LAYER_ID = "online-chat";
-
-/** Messages kept on screen. The server sends a window; this is what fits under a board. */
-const CHAT_LINES = 4;
 
 /** The newest message's id, or "" — how a client tells one transcript from another. */
 function lastMessageId(game: { chat: ChatMessage[] }): string {
@@ -430,6 +430,22 @@ function OnlineMatch({
     server.drawOfferFrom !== null && server.drawOfferFrom !== human;
   const myDrawOffer = server.drawOfferFrom === human;
 
+  /** And the same for the takeback, which stands independently of the draw. */
+  const theirTakeback =
+    server.takebackOfferFrom !== null && server.takebackOfferFrom !== human;
+  const myTakeback = server.takebackOfferFrom === human;
+
+  /**
+   * Whether there is a move of ours to ask back for. The server decides this
+   * too and would refuse, but the footer has to know before the keypress: a
+   * key offered on move one and answered with a complaint is worse than a key
+   * that is simply not there yet.
+   *
+   * One ply in, with us to move, our own first move has not happened.
+   */
+  const canAskTakeback =
+    server.ply >= 1 && !(server.ply === 1 && position.turn === human);
+
   // `d` and `n` mean three different pairs of things depending on whose offer
   // is on the board, and the footer only has room to say so in four words. The
   // overlay describes whichever reading is live, exactly as the footer does.
@@ -460,6 +476,26 @@ function OnlineMatch({
                   ],
           },
           {
+            title: "The takeback",
+            keys: theirTakeback
+              ? [
+                  { keys: "u", label: `give ${opponentName} their move back` },
+                  { keys: "n", label: "refuse it" },
+                ]
+              : myTakeback
+                ? [
+                    { keys: "n", label: "withdraw your takeback request" },
+                    { keys: "u", label: "your request is already with them" },
+                  ]
+                : [
+                    { keys: "u", label: "ask for your last move back" },
+                    {
+                      keys: "",
+                      label: "they have to agree; any move clears the request",
+                    },
+                  ],
+          },
+          {
             title: "The game",
             keys: [
               { keys: "x", label: "resign — pressed twice to confirm" },
@@ -468,7 +504,6 @@ function OnlineMatch({
               { keys: "r", label: "back to the queue, once the game is over" },
               { keys: "p", label: "offer a rematch, once the game is over" },
               { keys: "a", label: "review the game, once it is over" },
-              { keys: "u", label: "no undo in a rated game" },
             ],
           },
           {
@@ -480,7 +515,7 @@ function OnlineMatch({
           },
         ],
       }),
-      [myDrawOffer, opponentName, theirDrawOffer],
+      [myDrawOffer, myTakeback, opponentName, theirDrawOffer, theirTakeback],
     ),
   );
 
@@ -565,8 +600,10 @@ function OnlineMatch({
   // move arriving a moment later matches on ply and result and is ignored.
   //
   // A draw offer moves neither the ply nor the result, so it has to be named here
-  // too or the one board change that is pure negotiation would be filtered out as
-  // "nothing new" — and an offer nobody is told about is not an offer.
+  // too or a board change that is pure negotiation would be filtered out as
+  // "nothing new" — and an offer nobody is told about is not an offer. A
+  // takeback request is the same, and named for the same reason. (The takeback
+  // itself does move the ply, backwards, and needs no special case here.)
   //
   // A message moves none of the three, and is also not a board change at all: it
   // takes the narrow path, which copies the transcript across and leaves
@@ -592,7 +629,8 @@ function OnlineMatch({
         if (
           state.ply !== current.ply ||
           state.result !== current.result ||
-          state.drawOfferFrom !== current.drawOfferFrom
+          state.drawOfferFrom !== current.drawOfferFrom ||
+          state.takebackOfferFrom !== current.takebackOfferFrom
         ) {
           // Ring the terminal first, while the state that is about to be
           // applied can still be compared with the one it replaces. Most of
@@ -799,6 +837,71 @@ function OnlineMatch({
   }, [apply, myDrawOffer, server.id, setMessage]);
 
   /**
+   * Ask for the last move back.
+   *
+   * The server reads this as agreement when their request is already standing,
+   * which is what makes two players pressing `u` at the same instant come out
+   * as one takeback rather than as two requests neither will ever answer — but
+   * the screen does not rely on that, and routes an answer to their request
+   * through `grantTakeback` instead, so the status line can say which of the
+   * two things is happening.
+   *
+   * No confirmation step, unlike the draw. Half a point cannot be given away
+   * with this key: an unwanted request costs the opponent one keypress to
+   * refuse, and costs the asker nothing to withdraw.
+   */
+  const proposeTakeback = useCallback(async () => {
+    setPending("Asking for your move back…");
+    setMessage(null);
+
+    try {
+      apply(await offerTakeback(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        await resync();
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(null);
+    }
+  }, [apply, resync, server.id, setMessage]);
+
+  /** Grant theirs. A conflict means a move has since cleared the request. */
+  const grantTakeback = useCallback(async () => {
+    setPending("Giving the move back…");
+    setMessage(null);
+
+    try {
+      apply(await acceptTakeback(server.id));
+    } catch (error) {
+      if (error instanceof GameConflictError) {
+        await resync();
+      } else {
+        setMessage(errorMessage(error));
+      }
+    } finally {
+      setPending(null);
+    }
+  }, [apply, resync, server.id, setMessage]);
+
+  /** Clear the request on the board: theirs refused, or ours withdrawn. */
+  const refuseTakeback = useCallback(async () => {
+    const mine = myTakeback;
+    setPending(mine ? "Withdrawing your request…" : "Refusing the takeback…");
+    setMessage(null);
+
+    try {
+      apply(await declineTakeback(server.id));
+      setMessage(mine ? "Takeback request withdrawn" : "Takeback refused");
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setPending(null);
+    }
+  }, [apply, myTakeback, server.id, setMessage]);
+
+  /**
    * Offer this opponent another game. It becomes an ordinary challenge in
    * their list — there is nothing to wait on here, so the screen says it was
    * sent and the game, if they take it, arrives from the challenge list.
@@ -953,7 +1056,23 @@ function OnlineMatch({
     onKey: (name) => {
       switch (name) {
         case "u":
-          setMessage("There's no undo in a rated game");
+          // The takeback key, in its three readings — the draw key's shape,
+          // one row down. Answering their request needs no confirmation; nor
+          // does making one, because a request is not a concession.
+          if (busy || over) {
+            break;
+          }
+          if (theirTakeback) {
+            void grantTakeback();
+          } else if (myTakeback) {
+            setMessage(
+              `Your takeback request is with ${opponentName} — n withdraws it`,
+            );
+          } else if (canAskTakeback) {
+            void proposeTakeback();
+          } else {
+            setMessage("There is no move of yours to take back yet");
+          }
           break;
         case "r":
           if (busy) {
@@ -996,11 +1115,27 @@ function OnlineMatch({
           }
           break;
         case "n":
-          // Only ever means "no draw": declining theirs or withdrawing ours.
-          if (busy || over || server.drawOfferFrom === null) {
+          // "No" to whatever is on the table — and up to two things can be,
+          // since a draw offer and a takeback request stand independently. The
+          // order is the one a person would use: answer what was asked of you
+          // before withdrawing what you asked for, and the takeback before the
+          // draw, it being the narrower question and the one the next move
+          // would clear on its own anyway.
+          //
+          // Never a guess as to which: the status line names the thing `n` is
+          // about to answer, and pressing it twice answers both.
+          if (busy || over) {
             break;
           }
-          void refuseDraw();
+          if (theirTakeback) {
+            void refuseTakeback();
+          } else if (theirDrawOffer) {
+            void refuseDraw();
+          } else if (myTakeback) {
+            void refuseTakeback();
+          } else if (myDrawOffer) {
+            void refuseDraw();
+          }
           break;
         case "c":
           if (claimAvailable && !busy && !over) {
@@ -1065,6 +1200,11 @@ function OnlineMatch({
 
     // An offer on the table outranks the position: it is a question addressed to
     // this player, and the turn indicator will still be there once it is answered.
+    // Same order the `n` key answers them in, so the line and the key agree.
+    if (theirTakeback) {
+      return `${opponentName} wants their move back — u grants, n refuses`;
+    }
+
     if (theirDrawOffer) {
       return `${opponentName} offers a draw — d accepts, n declines`;
     }
@@ -1075,6 +1215,10 @@ function OnlineMatch({
 
     if (myDrawOffer) {
       return `Draw offered — waiting on ${opponentName}`;
+    }
+
+    if (myTakeback) {
+      return `Takeback asked for — waiting on ${opponentName}`;
     }
 
     return describeOnlineStatus(status, position.turn, human, opponentName);
@@ -1125,6 +1269,28 @@ function OnlineMatch({
               <span fg={theme.faint}> draw </span>
             </>
           )}
+          {/* The takeback keys, read the same way as the draw's: whatever they
+              currently do. Absent entirely before there is a move of yours
+              under them — a key that answers with a complaint is worse than
+              one that is not there yet. */}
+          {over ? null : theirTakeback ? (
+            <>
+              <span fg={theme.cream}>u</span>
+              <span fg={theme.faint}> give move back </span>
+              <span fg={theme.cream}>n</span>
+              <span fg={theme.faint}> refuse </span>
+            </>
+          ) : myTakeback ? (
+            <>
+              <span fg={theme.cream}>n</span>
+              <span fg={theme.faint}> withdraw takeback </span>
+            </>
+          ) : canAskTakeback ? (
+            <>
+              <span fg={theme.cream}>u</span>
+              <span fg={theme.faint}> take back </span>
+            </>
+          ) : null}
           {claimAvailable ? (
             <>
               <span fg={theme.cream}>c</span>
@@ -1169,7 +1335,10 @@ function OnlineMatch({
       {saying ? (
         <PhrasePicker phrases={phrases} />
       ) : (
-        <ChatLog messages={server.chat} opponent={opponentName} />
+        <ChatLog
+          messages={server.chat}
+          nameFor={(message) => (message.mine ? "you" : opponentName)}
+        />
       )}
 
       {rewards ? (
@@ -1184,71 +1353,5 @@ function OnlineMatch({
         </text>
       ) : null}
     </GameScreen>
-  );
-}
-
-/**
- * What has been said, newest last.
- *
- * Renders nothing at all until there is something to show, rather than holding
- * an empty box open: most games are played in silence, and a permanently blank
- * pane under the board would cost every one of them four rows.
- */
-function ChatLog({
-  messages,
-  opponent,
-}: {
-  messages: ChatMessage[];
-  /** Who to name on the half of the log that is not yours. */
-  opponent: string;
-}) {
-  const theme = useUITheme();
-
-  if (messages.length === 0) {
-    return null;
-  }
-
-  return (
-    <box flexDirection="column">
-      {messages.slice(-CHAT_LINES).map((message) => (
-        <text key={message.id}>
-          <span fg={message.mine ? theme.walnut : theme.gold}>
-            {`${(message.mine ? "you" : opponent).slice(0, 12)}: `}
-          </span>
-          {/* The wire carries a key; the text is looked up here. Nothing the
-              opponent controls ever reaches this line. */}
-          <span fg={message.mine ? theme.dim : theme.cream}>
-            {chatPhraseText(message.phrase)}
-          </span>
-        </text>
-      ))}
-    </box>
-  );
-}
-
-/** The nine things, numbered. */
-function PhrasePicker({
-  phrases,
-}: {
-  phrases: ReturnType<typeof chatPhrasesFor>;
-}) {
-  const theme = useUITheme();
-
-  return (
-    <box flexDirection="column">
-      <text fg={theme.walnut}>Say something — esc to close</text>
-      {/* Three to a row: nine phrases stacked would push the board off an
-          80x24 terminal, which is the size this whole screen is drawn for. */}
-      {[0, 3, 6].map((start) => (
-        <text key={start}>
-          {phrases.slice(start, start + 3).map((phrase, i) => (
-            <span key={phrase.id}>
-              <span fg={theme.cream}>{` ${start + i + 1} `}</span>
-              <span fg={theme.dim}>{phrase.text.padEnd(14)}</span>
-            </span>
-          ))}
-        </text>
-      ))}
-    </box>
   );
 }

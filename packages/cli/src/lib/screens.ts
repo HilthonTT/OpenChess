@@ -38,6 +38,11 @@ export const SCREENS = [
   },
   { name: "rush", path: "/rush", summary: "Race the clock, three mistakes" },
   {
+    name: "collections",
+    path: "/collections",
+    summary: "Sets of puzzles, one motif at a time",
+  },
+  {
     name: "challenges",
     path: "/challenges",
     summary: "Challenge a friend, or take one on",
@@ -59,6 +64,11 @@ export const SCREENS = [
     name: "analysis",
     path: "/analysis",
     summary: "Review a finished game with the engine",
+  },
+  {
+    name: "repertoire",
+    path: "/repertoire",
+    summary: "Drill the openings you keep",
   },
   {
     name: "explorer",

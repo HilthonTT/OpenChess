@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import {
   CHAT_PHRASE_IDS,
+  MAX_REPERTOIRE_PLIES,
+  SPECTATOR_PHRASE_IDS,
   PERSONALITY_ORDER,
   type ChatPhraseId,
   type PersonalityId,
@@ -120,19 +122,33 @@ export const rewardSchema = z
   .openapi("Reward");
 
 /**
- * A phrase key from @openchess/shared's catalog — never free text. Enumerated
- * from that catalog rather than written out here, so adding a phrase cannot
- * leave the API refusing one the client offers.
+ * A phrase key a *player* may send — never free text. Enumerated from
+ * @openchess/shared's catalog rather than written out here, so adding a phrase
+ * cannot leave the API refusing one the client offers.
  */
 export const chatPhraseSchema = z
   .enum(CHAT_PHRASE_IDS as [ChatPhraseId, ...ChatPhraseId[]])
   .openapi({ example: "goodGame" });
 
+/**
+ * And one a *watcher* may send. A different list, because a spectator is in a
+ * different conversation: half the players' catalog is about the speaker's own
+ * move and reads as somebody else's when a watcher sends it.
+ */
+export const spectatorPhraseSchema = z
+  .enum(SPECTATOR_PHRASE_IDS as [ChatPhraseId, ...ChatPhraseId[]])
+  .openapi({ example: "brilliant" });
+
+/**
+ * A message in either conversation. One shape for both — a phrase key from the
+ * catalog, who said it, and when — because which channel it arrived on is a
+ * fact about the request that fetched it, not about the message.
+ */
 export const chatMessageSchema = z
   .object({
     id: z.string(),
     /** The catalog key. The client renders it; the server never sends text. */
-    phrase: chatPhraseSchema,
+    phrase: z.string().openapi({ example: "goodGame" }),
     /** True when you are the one who said it. */
     mine: z.boolean(),
     username: z.string(),
@@ -143,6 +159,10 @@ export const chatMessageSchema = z
 export const sendChatSchema = z
   .object({ phrase: chatPhraseSchema })
   .openapi("SendChatMessage");
+
+export const sendSpectatorChatSchema = z
+  .object({ phrase: spectatorPhraseSchema })
+  .openapi("SendSpectatorChatMessage");
 
 export const gameSchema = z
   .object({
@@ -190,6 +210,17 @@ export const gameSchema = z
      * Always null on a settled game.
      */
     drawOfferFrom: colorSchema.nullable().openapi({ example: null }),
+    /**
+     * The side with a takeback request standing, or null when none is. Read the
+     * same way as `drawOfferFrom`. Always null on an AI game, where a takeback
+     * is taken rather than asked for, and cleared by any move.
+     */
+    takebackOfferFrom: colorSchema.nullable().openapi({ example: null }),
+    /**
+     * How many moves have been taken back. Non-zero only on an AI game, and the
+     * reason it will pay nothing when it ends.
+     */
+    takebacks: z.number().int().openapi({ example: 0 }),
     /**
      * What the two of you have said to each other, oldest last, capped at the
      * most recent few. Empty in an AI game. Only the two players ever see it —
@@ -257,6 +288,14 @@ export const spectatorGameSchema = z
     clock: clockSchema.nullable(),
     /** The side with a draw offer standing, or null when none is. */
     drawOfferFrom: colorSchema.nullable().openapi({ example: null }),
+    /** The side with a takeback request standing, or null when none is. */
+    takebackOfferFrom: colorSchema.nullable().openapi({ example: null }),
+    /**
+     * What the *watchers* have said to each other, oldest last, capped at the
+     * most recent few. Neither player ever sees it — it is not on the players'
+     * view, and it is a different set of phrases besides.
+     */
+    chat: z.array(chatMessageSchema),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
   })
@@ -578,6 +617,116 @@ export const puzzleThemeSchema = z
   })
   .openapi("PuzzleTheme");
 
+export const puzzleCollectionSchema = z
+  .object({
+    id: z.string().openapi({ example: "pins-20" }),
+    name: z.string().openapi({ example: "Nailed down" }),
+    description: z.string(),
+    /** The raw theme tag, ready to hand straight to the trainer. */
+    theme: puzzleThemeKeySchema,
+    /** What that theme is called, from the same catalog the trainer reads. */
+    themeLabel: z.string().openapi({ example: "Pin" }),
+    /** How many distinct puzzles carrying the theme finish it. */
+    target: z.number().int(),
+    /** How many of them you have solved. */
+    solved: z.number().int(),
+    /** How many the corpus holds at all — the target is fixed, this is not. */
+    available: z.number().int(),
+    complete: z.boolean(),
+    xpReward: z.number().int(),
+    coinReward: z.number().int(),
+    /** When you took the reward, or null while it is still owed or unearned. */
+    claimedAt: z.string().nullable().openapi({ example: null }),
+  })
+  .openapi("PuzzleCollection");
+
+export const claimCollectionSchema = z
+  .object({
+    collection: puzzleCollectionSchema,
+    /** The payout, or null when this claim repeated one already paid. */
+    reward: z
+      .object({
+        xp: z.number().int(),
+        coins: z.number().int(),
+        levelBefore: z.number().int(),
+        levelAfter: z.number().int(),
+      })
+      .nullable(),
+  })
+  .openapi("ClaimedPuzzleCollection");
+
+/**
+ * A line in a player's repertoire, and when they next have to prove they still
+ * know it. The scheduling numbers are SM-2's; `progression/repertoire.ts` in
+ * @openchess/shared is where they are moved and what each one means.
+ */
+export const repertoireLineSchema = z
+  .object({
+    id: z.string(),
+    eco: z.string().openapi({ example: "C50" }),
+    name: z.string().openapi({ example: "Italian Game" }),
+    /** The line in SAN, from the initial array. */
+    moves: z.array(z.string()).openapi({ example: ["e4", "e5", "Nf3"] }),
+    /** Whose moves you have to find. The other side is played for you. */
+    side: colorSchema,
+    /** How many of the moves are yours — what a drill asks, and what it pays on. */
+    yourMoves: z.number().int(),
+    ease: z.number(),
+    intervalDays: z.number().int(),
+    reviews: z.number().int(),
+    lapses: z.number().int(),
+    /** Consecutive clean drills. Any mistake sets it to zero. */
+    streak: z.number().int(),
+    dueAt: z.string(),
+    lastReviewedAt: z.string().nullable().openapi({ example: null }),
+    /** Whether it is due now, decided by the server's clock and not yours. */
+    due: z.boolean(),
+    createdAt: z.string(),
+  })
+  .openapi("RepertoireLine");
+
+export const addRepertoireLineSchema = z
+  .object({
+    eco: z.string().min(1).max(8).openapi({ example: "C50" }),
+    name: z.string().min(1).max(80).openapi({ example: "Italian Game" }),
+    /** SAN from the initial array, the form the opening book is written in. */
+    moves: z
+      .array(z.string().min(1).max(10))
+      .min(1)
+      .max(MAX_REPERTOIRE_PLIES)
+      .openapi({ example: ["e4", "e5", "Nf3", "Nc6", "Bc4"] }),
+    /** Which colour to train it from. */
+    side: colorSchema,
+  })
+  .openapi("AddRepertoireLine");
+
+export const reviewRepertoireLineSchema = z
+  .object({
+    /**
+     * How many of your moves you got wrong. One is enough to fail the line —
+     * an opening line is a sequence, and half of one is not half as useful.
+     */
+    mistakes: z.number().int().min(0).max(MAX_REPERTOIRE_PLIES),
+    /** How long the drill took. Omit it and the line is graded `good`. */
+    msSpent: z.number().int().min(0).max(3_600_000).optional(),
+  })
+  .openapi("ReviewRepertoireLine");
+
+export const repertoireReviewResultSchema = z
+  .object({
+    line: repertoireLineSchema,
+    grade: z.enum(["again", "good", "easy"]),
+    /** XP earned, or null when the line was not due — drilling ahead is free. */
+    reward: z
+      .object({
+        xp: z.number().int(),
+        levelBefore: z.number().int(),
+        levelAfter: z.number().int(),
+      })
+      .nullable(),
+  })
+  .openapi("RepertoireReviewResult");
+
 export const rushModeSchema = z
   .enum(["THREE_MINUTE", "FIVE_MINUTE", "SURVIVAL"])
   .openapi({ example: "THREE_MINUTE" });
@@ -872,6 +1021,7 @@ export const transactionSchema = z
       "PURCHASE",
       "ADMIN_GRANT",
       "PUZZLE",
+      "PUZZLE_COLLECTION",
       "DAILY_STREAK",
     ]),
     gameId: z.string().nullable(),

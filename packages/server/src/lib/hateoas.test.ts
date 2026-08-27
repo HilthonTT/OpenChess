@@ -20,6 +20,7 @@ function freshGame() {
     result: null,
     clock: null,
     drawOfferFrom: null as "w" | "b" | null,
+    takebackOfferFrom: null as "w" | "b" | null,
   };
 }
 

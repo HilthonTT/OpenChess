@@ -1,7 +1,7 @@
 import type {
   ClockPreset,
   Difficulty,
-  DrawOfferSide,
+  OfferSide,
   GameResult,
 } from "@openchess/database";
 import {
@@ -89,18 +89,56 @@ export function toClockPreset(
   return timeControl ? STORED_CLOCK[timeControl] : null;
 }
 
-/** The same bridge once more, for the side a draw offer came from. */
-const OFFER_SIDE: Record<Color, DrawOfferSide> = { w: "WHITE", b: "BLACK" };
+/** The same bridge once more, for the side an offer came from. */
+const OFFER_SIDE: Record<Color, OfferSide> = { w: "WHITE", b: "BLACK" };
 
-const OFFER_COLOR: Record<DrawOfferSide, Color> = { WHITE: "w", BLACK: "b" };
+const OFFER_COLOR: Record<OfferSide, Color> = { WHITE: "w", BLACK: "b" };
 
-export function toDrawOfferSide(color: Color): DrawOfferSide {
+export function toOfferSide(color: Color): OfferSide {
   return OFFER_SIDE[color];
 }
 
 /** The colour a stored offer belongs to, or null when none is standing. */
-export function toOfferColor(side: DrawOfferSide | null): Color | null {
+export function toOfferColor(side: OfferSide | null): Color | null {
   return side === null ? null : OFFER_COLOR[side];
+}
+
+/**
+ * How many plies a takeback rewinds, or null when there is nothing to take back.
+ *
+ * A takeback returns the board to the offerer's own turn, which is one ply when
+ * they have just moved and two once the opponent has replied. Anything else
+ * would be a different feature: rewinding three plies hands back a move the
+ * opponent never had the chance to answer, and rewinding zero is not a takeback.
+ *
+ * Null at ply 0 — an untouched board has nothing to undo — and null when the
+ * offerer has not moved at all yet, which at ply 1 is the player who is only
+ * waiting. Both are refusals rather than no-ops, because a client offering a
+ * takeback there has misread the position and should be told so.
+ */
+export function pliesToTakeBack(
+  /** How many plies have been played. */
+  ply: number,
+  /** The colour asking for the move back. */
+  offerer: Color,
+): number | null {
+  if (ply < 1) {
+    return null;
+  }
+
+  // White plays the even plies (0, 2, ...), so the side that made the last one
+  // is white exactly when the count is odd.
+  const lastMover: Color = ply % 2 === 1 ? "w" : "b";
+
+  if (lastMover === offerer) {
+    return 1;
+  }
+
+  // The opponent moved last, so undoing their reply as well is what gets back
+  // to the offerer's turn — and there has to be a move of the offerer's under
+  // it. At ply 1 there is not: the game opened, and the side to move has
+  // nothing of their own to ask for.
+  return ply >= 2 ? 2 : null;
 }
 
 export type Outcome = "win" | "loss" | "draw";
@@ -240,6 +278,63 @@ export function clockAfterMove(input: {
     : { whiteTimeMs: input.clock.whiteTimeMs, blackTimeMs: after };
 }
 
+/**
+ * The clock after a takeback of `plies`, undone while `running`'s clock has been
+ * going for `elapsedMs`.
+ *
+ * Two things happen, and only two. The running side's thinking time is banked —
+ * a takeback rewinds the board, not the afternoon, and a player who spent four
+ * minutes on the move being handed back does not get those four minutes returned
+ * to them. And each undone move gives back the increment it earned, to the side
+ * that earned it: leaving those on would make an agreed takeback in a 3+2 a way
+ * of minting time out of nothing, four seconds at a go, for as long as the
+ * opponent kept saying yes.
+ *
+ * Clamped at zero rather than refusing when a side is left with nothing: a
+ * flag that has fallen stays fallen, and the flag route settles it. A takeback
+ * is not a rescue.
+ */
+export function clockAfterTakeback(input: {
+  clock: ClockState;
+  /** Whose clock is running as the takeback lands. */
+  running: Color;
+  elapsedMs: number;
+  /** How many plies are being undone — 1 or 2; see `pliesToTakeBack`. */
+  plies: number;
+  incrementSeconds: number;
+}): ClockState {
+  const banked: ClockState =
+    input.running === "w"
+      ? {
+          whiteTimeMs: Math.max(0, input.clock.whiteTimeMs - input.elapsedMs),
+          blackTimeMs: input.clock.blackTimeMs,
+        }
+      : {
+          whiteTimeMs: input.clock.whiteTimeMs,
+          blackTimeMs: Math.max(0, input.clock.blackTimeMs - input.elapsedMs),
+        };
+
+  const increment = input.incrementSeconds * 1000;
+
+  // The undone plies are the last `plies` of the game, and they alternate
+  // backwards from the side that made the most recent one — which is the side
+  // that is *not* to move, i.e. not `running`.
+  let white = banked.whiteTimeMs;
+  let black = banked.blackTimeMs;
+  let mover: Color = input.running === "w" ? "b" : "w";
+
+  for (let i = 0; i < input.plies; i += 1) {
+    if (mover === "w") {
+      white = Math.max(0, white - increment);
+    } else {
+      black = Math.max(0, black - increment);
+    }
+    mover = mover === "w" ? "b" : "w";
+  }
+
+  return { whiteTimeMs: white, blackTimeMs: black };
+}
+
 /** How `result` went for the player of `color`. Null for a game that was aborted. */
 export function outcomeFor(result: GameResult, color: Color): Outcome | null {
   if (result === "ABORTED") {
@@ -299,11 +394,22 @@ export function rewardFor(input: {
   color: Color;
   difficulty: Difficulty;
   plies: number;
+  /**
+   * How many moves were taken back. A game with any is unpaid — see
+   * `Game.takebacks`. Optional so the callers that predate the column, and the
+   * tests that do not care, read the same as before.
+   */
+  takebacks?: number;
 }): Reward {
   const outcome = outcomeFor(input.result, input.color);
 
-  // An abort is not a game; a two-move game is not one either.
-  if (outcome === null || input.plies < MIN_REWARDED_PLIES) {
+  // An abort is not a game; a two-move game is not one either; and neither is
+  // one you rewound every time it went wrong.
+  if (
+    outcome === null ||
+    input.plies < MIN_REWARDED_PLIES ||
+    (input.takebacks ?? 0) > 0
+  ) {
     return NOTHING;
   }
 

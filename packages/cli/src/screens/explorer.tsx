@@ -9,16 +9,20 @@ import {
   playSan,
   undo,
 } from "@openchess/shared";
-import type { BookMove, Game, OpeningLine } from "@openchess/shared";
+import type { BookMove, Color, Game, OpeningLine } from "@openchess/shared";
 import { Board } from "../components/board";
 import { OpeningDialogContent } from "../components/dialogs/opening-dialog";
 import { GameScreen } from "../components/game-screen";
 import { HintBar } from "../components/hint-bar";
 import { MoveList } from "../components/game-panels";
+import { addRepertoireLine } from "../lib/repertoire";
+import { errorMessage } from "../lib/utils";
+import { useAuth } from "../providers/auth";
 import { useDialog } from "../providers/dialog";
 import { BASE_LAYER_ID, useKeyboardLayer } from "../providers/keyboard-layer";
 import { isHelpKey, useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
+import { useToast } from "../providers/toast";
 
 const TITLE = "Opening Explorer";
 const SUBTITLE = "Walk the book the engine plays from";
@@ -40,6 +44,13 @@ const KEYMAP: Keymap = {
         { keys: "home / r", label: "back to the starting position" },
         { keys: "f", label: "flip the board" },
         { keys: "/", label: "jump to a line by name or ECO code" },
+      ],
+    },
+    {
+      title: "Keep a line",
+      keys: [
+        { keys: "a", label: "keep the walked line, to drill as White" },
+        { keys: "shift+a", label: "keep it to drill as Black" },
       ],
     },
   ],
@@ -70,11 +81,16 @@ function formatShare(share: number): string {
  * board screen, and this one answers a different question: what does theory do
  * from here, and what is it called when it gets there.
  *
- * Needs no account. The book is compiled into the client, so nothing is fetched.
+ * Needs no account to walk. Keeping a line does need one — that goes in your
+ * repertoire, which is yours and lives on the server — so `a` is the one key
+ * here that can fail, and it says so on the line below the board rather than
+ * anywhere the walking happens.
  */
 export function Explorer() {
   const theme = useUITheme();
   const dialog = useDialog();
+  const toast = useToast();
+  const auth = useAuth();
   const { isTopLayer } = useKeyboardLayer();
 
   useKeymap(KEYMAP);
@@ -82,6 +98,8 @@ export function Explorer() {
   const [game, setGame] = useState<Game>(() => createGame());
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [keeping, setKeeping] = useState(false);
 
   const continuations = useMemo(() => bookMoves(game.position), [game]);
   const opening = useMemo(() => openingOf(game), [game]);
@@ -91,22 +109,28 @@ export function Explorer() {
   // an effect that would re-render every step.
   const cursor = Math.min(index, Math.max(0, continuations.length - 1));
 
+  // Every walk clears the note: it is about the line that was on the board when
+  // it was written, and a stale "kept" on a different position would read as a
+  // claim about this one.
   const advance = useCallback((choice: BookMove | undefined) => {
     if (!choice) {
       return;
     }
     setGame((current) => play(current, choice.move));
     setIndex(0);
+    setNote(null);
   }, []);
 
   const back = useCallback(() => {
     setGame((current) => undo(current));
     setIndex(0);
+    setNote(null);
   }, []);
 
   const reset = useCallback(() => {
     setGame(createGame());
     setIndex(0);
+    setNote(null);
   }, []);
 
   /** Replay a whole line from the initial position, for the search dialog. */
@@ -117,7 +141,63 @@ export function Explorer() {
     }
     setGame(next);
     setIndex(0);
+    setNote(null);
   }, []);
+
+  /**
+   * Keep the line as walked, to drill from one side.
+   *
+   * The side is asked for rather than inferred from whose move it is: a line is
+   * kept because of who you intend to be when you reach it, and both sides of
+   * the Italian are worth knowing. The moves go over as SAN straight off the
+   * history, which is the form the book is written in and the form the server
+   * replays and re-spells before it stores anything.
+   */
+  const keep = useCallback(
+    async (side: Color) => {
+      if (keeping) {
+        return;
+      }
+
+      if (auth.status !== "signed-in") {
+        setNote("Sign in to keep lines — a repertoire belongs to an account.");
+        return;
+      }
+
+      if (game.history.length === 0) {
+        setNote("Walk a move or two first — there is no line to keep yet.");
+        return;
+      }
+
+      setKeeping(true);
+      setNote(null);
+
+      try {
+        const { line, added } = await addRepertoireLine({
+          eco: opening?.eco ?? "A00",
+          name: opening?.name ?? "Unnamed line",
+          moves: game.history.map((entry) => entry.san),
+          side,
+        });
+
+        if (added) {
+          toast.show({
+            message: `Kept ${line.name} as ${side === "w" ? "White" : "Black"} — due now.`,
+            variant: "success",
+          });
+        } else {
+          setNote(
+            `You already keep ${line.name} as ${side === "w" ? "White" : "Black"}.`,
+          );
+        }
+      } catch (cause) {
+        setNote(errorMessage(cause));
+      } finally {
+        setKeeping(false);
+      }
+    },
+    [auth.status, game.history, keeping, opening, toast],
+  );
 
   useKeyboard((key) => {
     if (!isTopLayer(BASE_LAYER_ID)) {
@@ -150,6 +230,9 @@ export function Explorer() {
         break;
       case "f":
         setFlipped((value) => !value);
+        break;
+      case "a":
+        void keep(key.shift ? "b" : "w");
         break;
       case "/":
         // A terminal on the kitty protocol spells `?` as a shifted `/`, and
@@ -206,12 +289,20 @@ export function Explorer() {
 
       <OpeningLabel opening={opening} plies={game.history.length} />
 
+      {note ? (
+        <box width={WIDTH - 6}>
+          <text fg={theme.walnut}>{note}</text>
+        </box>
+      ) : null}
+
       <Continuations moves={continuations} cursor={cursor} />
 
       <HintBar
         hints={[
           { key: "r", label: "restart" },
           { key: "f", label: "flip" },
+          { key: "a", label: keeping ? "keeping…" : "keep as white" },
+          { key: "A", label: "keep as black" },
         ]}
       />
     </GameScreen>

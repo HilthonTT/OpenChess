@@ -174,6 +174,7 @@ const transactions = createRoute({
           "PURCHASE",
           "ADMIN_GRANT",
           "PUZZLE",
+          "PUZZLE_COLLECTION",
           "DAILY_STREAK",
         ])
         .optional(),

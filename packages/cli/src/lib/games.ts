@@ -216,6 +216,49 @@ export async function declineDraw(id: string): Promise<ServerGame> {
   return response.json();
 }
 
+/**
+ * Ask for your move back — or, against the bot, simply take it.
+ *
+ * One call for both, because the server decides which the game is and the
+ * player pressing `u` means the same thing either way. Against the bot the
+ * board comes back rewound and the game's payout is gone; against a person the
+ * board comes back unchanged with your request standing on it, unless theirs
+ * was already there, in which case this agreed to it.
+ *
+ * A 409 means there is nothing of yours to take back, or the game is over.
+ */
+export async function offerTakeback(id: string): Promise<ServerGame> {
+  const response = await byId.takeback.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+/** Grant the takeback they asked for. A 409 means a move has cleared it. */
+export async function acceptTakeback(id: string): Promise<ServerGame> {
+  const response = await byId.takeback.accept.$post({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
+/** Clear the standing request — refusing theirs, or withdrawing your own. */
+export async function declineTakeback(id: string): Promise<ServerGame> {
+  const response = await byId.takeback.$delete({ param: { id } });
+
+  if (response.status !== 200) {
+    throw await toError(response);
+  }
+
+  return response.json();
+}
+
 export async function abortGame(id: string): Promise<ServerGame> {
   const response = await byId.abort.$post({ param: { id } });
 

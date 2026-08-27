@@ -3,9 +3,11 @@ import { describe, expect, test } from "bun:test";
 import {
   MIN_REWARDED_PLIES,
   clockAfterMove,
+  clockAfterTakeback,
   expectedScore,
   hasFlagged,
   outcomeFor,
+  pliesToTakeBack,
   ratingAfter,
   ratingAgainst,
   resultFor,
@@ -15,7 +17,7 @@ import {
   rewardForPvp,
   statsAfter,
   timeOf,
-  toDrawOfferSide,
+  toOfferSide,
   toOfferColor,
 } from "./rules";
 
@@ -102,6 +104,30 @@ describe("rewardFor", () => {
         plies: LONG_ENOUGH,
       }),
     ).toEqual({ xp: 0, coins: 0 });
+  });
+
+  // The other anti-farm guard: a game you can rewind is a game you always win.
+  test("a game with a takeback in it pays nothing, however it ended", () => {
+    expect(
+      rewardFor({
+        result: "WHITE_WIN",
+        color: "w",
+        difficulty: "HARD",
+        plies: LONG_ENOUGH,
+        takebacks: 1,
+      }),
+    ).toEqual({ xp: 0, coins: 0 });
+  });
+
+  test("no takebacks pays exactly as it did before the column existed", () => {
+    const base = {
+      result: "WHITE_WIN",
+      color: "w",
+      difficulty: "HARD",
+      plies: LONG_ENOUGH,
+    } as const;
+
+    expect(rewardFor({ ...base, takebacks: 0 })).toEqual(rewardFor(base));
   });
 
   // The anti-farm floor: start, resign, repeat must be worth exactly zero.
@@ -251,10 +277,134 @@ describe("rewardForPvp", () => {
   });
 });
 
-describe("draw offer sides", () => {
+describe("pliesToTakeBack", () => {
+  test("one ply back when you have just moved", () => {
+    // Ply 1: white opened and it is black's turn. White asking wants their own
+    // move back, and only theirs — black has not answered it.
+    expect(pliesToTakeBack(1, "w")).toBe(1);
+    // Ply 2: black has replied and it is white's turn again. Black asking is in
+    // the same position white was one ply ago.
+    expect(pliesToTakeBack(2, "b")).toBe(1);
+  });
+
+  test("two plies back once the opponent has replied", () => {
+    // Ply 2, white asking: black's reply comes off as well, or the board does
+    // not arrive at white's turn.
+    expect(pliesToTakeBack(2, "w")).toBe(2);
+    expect(pliesToTakeBack(3, "b")).toBe(2);
+  });
+
+  test("an untouched board has nothing to take back", () => {
+    expect(pliesToTakeBack(0, "w")).toBeNull();
+    expect(pliesToTakeBack(0, "b")).toBeNull();
+  });
+
+  test("the side who has only been waiting has nothing to take back", () => {
+    // Ply 1 with black asking: white opened, black has not moved at all, and
+    // there is no move of black's under the rewind. A refusal rather than a
+    // one-ply undo of white's opening move, which black is not entitled to.
+    expect(pliesToTakeBack(1, "b")).toBeNull();
+  });
+
+  test("the answer only ever rewinds to the asker's own turn", () => {
+    for (let ply = 1; ply <= 12; ply += 1) {
+      for (const asker of ["w", "b"] as const) {
+        const plies = pliesToTakeBack(ply, asker);
+
+        if (plies === null) {
+          continue;
+        }
+
+        const after = ply - plies;
+        // White moves on the even plies, so the side to move after the rewind
+        // is white exactly when the remaining count is even.
+        const toMove = after % 2 === 0 ? "w" : "b";
+
+        expect(toMove).toBe(asker);
+        expect(after).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+});
+
+describe("clockAfterTakeback", () => {
+  const clock = { whiteTimeMs: 100_000, blackTimeMs: 90_000 };
+
+  test("the running side's thinking time is spent, not returned", () => {
+    // White to move, twelve seconds on the clock, taking back their own last
+    // move (two plies: theirs and black's reply). Those twelve seconds are gone.
+    const after = clockAfterTakeback({
+      clock,
+      running: "w",
+      elapsedMs: 12_000,
+      plies: 2,
+      incrementSeconds: 0,
+    });
+
+    expect(after.whiteTimeMs).toBe(88_000);
+    expect(after.blackTimeMs).toBe(90_000);
+  });
+
+  test("each undone move gives back the increment it earned", () => {
+    // Two plies undone in a 3+2: the most recent was black's (white is to
+    // move), the one under it white's. One increment comes off each.
+    const after = clockAfterTakeback({
+      clock,
+      running: "w",
+      elapsedMs: 0,
+      plies: 2,
+      incrementSeconds: 2,
+    });
+
+    expect(after.whiteTimeMs).toBe(98_000);
+    expect(after.blackTimeMs).toBe(88_000);
+  });
+
+  test("a single undone ply charges only the side that made it", () => {
+    // Black to move, so the last ply was white's, and it is white's increment
+    // that is taken back.
+    const after = clockAfterTakeback({
+      clock,
+      running: "b",
+      elapsedMs: 0,
+      plies: 1,
+      incrementSeconds: 5,
+    });
+
+    expect(after.whiteTimeMs).toBe(95_000);
+    expect(after.blackTimeMs).toBe(90_000);
+  });
+
+  test("a fallen flag stays fallen — a takeback is not a rescue", () => {
+    const after = clockAfterTakeback({
+      clock: { whiteTimeMs: 1_000, blackTimeMs: 90_000 },
+      running: "w",
+      elapsedMs: 30_000,
+      plies: 2,
+      incrementSeconds: 2,
+    });
+
+    expect(after.whiteTimeMs).toBe(0);
+  });
+
+  test("an untimed-looking clock never goes negative", () => {
+    const after = clockAfterTakeback({
+      clock: { whiteTimeMs: 500, blackTimeMs: 500 },
+      running: "w",
+      elapsedMs: 0,
+      plies: 2,
+      incrementSeconds: 10,
+    });
+
+    expect(after.whiteTimeMs).toBe(0);
+    expect(after.blackTimeMs).toBe(0);
+  });
+});
+
+describe("offer sides", () => {
   test("a colour survives the round trip through the column", () => {
-    expect(toOfferColor(toDrawOfferSide("w"))).toBe("w");
-    expect(toOfferColor(toDrawOfferSide("b"))).toBe("b");
+    expect(toOfferColor(toOfferSide("w"))).toBe("w");
+    expect(toOfferColor(toOfferSide("b"))).toBe("b");
   });
 
   test("no stored offer is no colour, not a default one", () => {
@@ -262,8 +412,8 @@ describe("draw offer sides", () => {
   });
 
   test("the column spells the sides out", () => {
-    expect(toDrawOfferSide("w")).toBe("WHITE");
-    expect(toDrawOfferSide("b")).toBe("BLACK");
+    expect(toOfferSide("w")).toBe("WHITE");
+    expect(toOfferSide("b")).toBe("BLACK");
   });
 });
 

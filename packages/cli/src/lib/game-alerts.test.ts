@@ -10,6 +10,7 @@ function game(over: Partial<AlertGame> = {}): AlertGame {
     ply: 0,
     result: null,
     drawOfferFrom: null,
+    takebackOfferFrom: null,
     history: [],
     ...over,
   };
@@ -94,6 +95,40 @@ describe("alertFor", () => {
     const clear = game({ turn: "b", ply: 5 });
 
     expect(ask(clear, theirs)).toBeNull();
+  });
+
+  test("rings for a takeback request however fast it arrived", () => {
+    const previous = game({ turn: "b", ply: 5 });
+    const state = game({ turn: "b", ply: 5, takebackOfferFrom: "w" });
+
+    expect(ask(state, previous, { theirTurnSince: null })).toBe(
+      "hikaru asks for their move back",
+    );
+  });
+
+  test("ignores our own takeback request, and its withdrawal", () => {
+    const clear = game({ turn: "w", ply: 5 });
+    const ours = game({ turn: "w", ply: 5, takebackOfferFrom: "b" });
+
+    expect(ask(ours, clear)).toBeNull();
+    expect(ask(clear, ours)).toBeNull();
+  });
+
+  test("a rewound ply is a takeback, never a move played", () => {
+    // Playing black: our move comes back, so it is our turn again. The move
+    // rule below would have announced the SAN of a move that has just been
+    // unplayed, which is the one thing that must not be said here.
+    const previous = game({ turn: "w", ply: 6, history: ["e4", "e5", "Nf3"] });
+    const state = game({ turn: "b", ply: 4, history: ["e4", "e5"] });
+
+    expect(ask(state, previous)).toBe("hikaru gave you your move back");
+  });
+
+  test("their move coming back is named as theirs", () => {
+    const previous = game({ turn: "b", ply: 6, history: ["e4", "e5", "Nf3"] });
+    const state = game({ turn: "w", ply: 5, history: ["e4", "e5"] });
+
+    expect(ask(state, previous)).toBe("hikaru took their move back");
   });
 
   test("tells us how the game ended, from our own side of it", () => {

@@ -16,15 +16,17 @@ terminal.
 | --- | --- |
 | **Local 1v1** | Two players, one keyboard, no account |
 | **Play vs AI** | Six named bots, each with its own taste in positions and opening repertoire. Server games pay XP and coins |
-| **Online 1v1** | Matched from a queue, moves pushed over a live stream. The only games that move your Elo. Draw offers, and nine set phrases to say |
+| **Online 1v1** | Matched from a queue, moves pushed over a live stream. The only games that move your Elo. Draw offers, takebacks by consent, and nine set phrases to say |
 | **Challenges** | Play someone you picked, by name or short code, with a rematch when the game ends |
 | **Friends** | Requests, presence (online / in a game / last seen), one key from a friend's row to a challenge |
 | **Profiles** | Anyone's record, rating curve, title, achievements, recent games |
 | **Puzzles** | A tactics trainer on its own Elo ladder: daily puzzle, solve streak, hints at half payout, training one motif at a time |
 | **Puzzle Rush** | As many as you can solve before the clock or your third mistake, with a leaderboard per mode |
-| **Watch** | Look in on any game in progress, on the same live stream |
+| **Collections** | Nine sets of puzzles, one motif each, that pay when you finish them. Progress is counted from what you have already solved |
+| **Watch** | Look in on any game in progress, on the same live stream, with a chat for the gallery that the players cannot see |
 | **Analysis** | Eval bar, accuracy per side, a verdict per ply, the opening as it gets named, jumps between mistakes, PGN in and out |
 | **Openings** | An explorer over the book the engine plays from, searchable by name or ECO code |
+| **Repertoire** | Keep a line from the explorer and drill it on a spaced-repetition schedule, from either side |
 | **Chess960** | The back rank shuffled, with castling that works from wherever the king and rooks landed |
 | **Time controls** | Bullet, blitz and rapid on server AI and online games |
 | **Progression** | Leaderboard, achievements, daily streaks, stats, and a store for titles you can wear |
@@ -222,12 +224,15 @@ above and below the board, and a fallen flag ends it.
 
 | Screen | Its own keys |
 | --- | --- |
-| Online 1v1 | `d`/`n` draw and refusal (offering takes `d` twice), `x` twice resigns, `t` then `1`–`9` says a phrase, `c` claims a win from an opponent who left, `p` offers a rematch |
+| Online 1v1 | `d`/`n` draw and refusal (offering takes `d` twice), `u` asks for a takeback and answers theirs, `x` twice resigns, `t` then `1`–`9` says a phrase, `c` claims a win from an opponent who left, `p` offers a rematch |
 | Analysis | `←→` step, `home`/`end` jump to an end, `n`/`p` to the next and previous mistake, `e` writes a PGN to `~/openchess`, `i` reads one in, `y` copies the position you are *looking at* |
 | Puzzles | `t` hint (names the square, halves the payout), `s` gives up, `n` next, `d` swaps the rated queue for the daily, `/` picks a motif to train |
 | Puzzle Rush | `1`–`3` start a mode, `←→` browse first, `x` banks a run where it stands, `n` starts another. No hint and no solution during a run |
+| Collections | `↑↓` browse, `enter` trains the set’s motif in the puzzle screen, `c` claims a finished one |
 | Local 1v1 | `9` switches between the ordinary array and a shuffled one, dealing a fresh position |
-| Openings | `↑↓` pick a continuation, `enter` plays it, `←` takes one back, `/` searches by name or ECO. Only book moves play |
+| Openings | `↑↓` pick a continuation, `enter` plays it, `←` takes one back, `/` searches by name or ECO, `a` / `shift+a` keeps the walked line to drill as White or as Black. Only book moves play |
+| Repertoire | `↑↓` browse, `enter` drills the selected line, `d` drills the next one due, `x` twice drops a line, `s` gives up on a drill mid-line |
+| Watch | `t` then `1`–`9` says a phrase to the other spectators — their own channel, invisible to the players |
 | Challenges | `←→` inbox and sent, `enter` accepts, `d` declines, `x` withdraws, `n` writes one, `c` joins by code |
 | Friends | `←→` friends, inbox, sent; `enter` opens a profile, `c` challenges, `x` twice removes, `a` searches by name |
 | Profile | `f` asks or accepts, `d` declines, `x` twice unfriends, `c` challenges |
@@ -245,6 +250,9 @@ rank, six bots out of one engine — are written up in **[DESIGN.md](DESIGN.md)*
 | [Asking the terminal](DESIGN.md#asking-the-terminal) | Clipboard and bell as escape sequences, so both work over SSH |
 | [Friends, presence and chat](DESIGN.md#friends-presence-and-chat) | Presence derived from request timestamps; nine phrases and no free text |
 | [Draws by agreement](DESIGN.md#draws-by-agreement) | One offer at a time, and the ten-ply floor that stops handshake farming |
+| [Takebacks](DESIGN.md#takebacks) | Consent you do not need from a bot, and the clock a rewind must not refund |
+| [Puzzle collections](DESIGN.md#puzzle-collections) | Progress as a query over solved puzzles, not a counter to keep in step |
+| [The repertoire trainer](DESIGN.md#the-repertoire-trainer) | SM-2 with three grades, and why only a due line pays |
 | [Progression](DESIGN.md#progression) | Two Elo ladders, the rating curve, and what each payout is guarded by |
 | [The bots](DESIGN.md#the-bots) | Four levers — weights, contempt, book style, blunder rate |
 | [Chess960](DESIGN.md#chess960) | The three castling cases a normal array can never produce |

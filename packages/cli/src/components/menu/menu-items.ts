@@ -54,6 +54,15 @@ export const MENU_ITEMS: MenuItem[] = [
     },
   },
   {
+    id: "collections",
+    title: "Collections",
+    icon: "▣",
+    description: "Sets of puzzles, one motif at a time",
+    action(ctx) {
+      ctx.navigate("/collections");
+    },
+  },
+  {
     id: "challenges",
     title: "Challenges",
     icon: "⚔",
@@ -123,6 +132,15 @@ export const MENU_ITEMS: MenuItem[] = [
     description: "Walk the book, by name or by move",
     action(ctx) {
       ctx.navigate("/explorer");
+    },
+  },
+  {
+    id: "repertoire",
+    title: "Repertoire",
+    icon: "⌸",
+    description: "Drill the openings you keep",
+    action(ctx) {
+      ctx.navigate("/repertoire");
     },
   },
   {

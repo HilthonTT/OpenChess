@@ -8,14 +8,16 @@ import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 import type { User } from "@openchess/database";
 
 import { createRematch } from "../game/challenges";
-import { attachChat, sendChatMessage } from "../game/chat";
+import { attachChat, attachSpectatorChat, sendChatMessage } from "../game/chat";
 import { gameVersion, subscribeToGame } from "../game/events";
 import {
   abortGame,
   acceptDraw,
+  acceptTakeback,
   claimVictory,
   createAiGame,
   declineDraw,
+  declineTakeback,
   flagGame,
   getGame,
   getGamePgn,
@@ -25,6 +27,7 @@ import {
   listGames,
   listLiveGames,
   offerDraw,
+  offerTakeback,
   playMove,
   resignGame,
   watchGame,
@@ -62,6 +65,7 @@ import {
   queueJoinSchema,
   queueResultSchema,
   sendChatSchema,
+  sendSpectatorChatSchema,
   spectatorGameSchema,
 } from "./schemas";
 import { TAGS } from "./tags";
@@ -293,6 +297,66 @@ const declineDrawRoute = createRoute({
   },
 });
 
+const takebackNotAvailable = problemDetailsContent(
+  "Nothing to take back: the game is over, it holds no move of yours, or there is no request of your opponent's to grant",
+);
+
+const takebackRoute = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/takeback",
+  summary: "Take back your last move",
+  description:
+    "Rewinds the board to your own turn — one ply when you have just moved, two once your opponent has replied. What that means depends on who you are playing.\n\nAgainst the bot it happens immediately: there is nobody to ask. The price is the game's reward — the first takeback voids it, and the game will pay no XP and no coins however it ends.\n\nAgainst a person it is a request, and works like a draw offer: one stands at a time, re-asking is a no-op, and asking while your *opponent's* request stands is agreement, which hands **them** their move back there and then. Unlike a draw offer it does not survive a move — any move, yours included, clears it, because a takeback names a position and playing on moves that position.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      gameSchema,
+      "The rewound game, or the game with your request standing on it",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: takebackNotAvailable,
+  },
+});
+
+const acceptTakebackRoute = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/takeback/accept",
+  summary: "Grant a takeback request",
+  description:
+    "Hands your opponent their move back and rewinds the board to their turn. Online games only — against the bot a takeback is taken, not granted. Granting your own request, or one that a move has since cleared, is a conflict.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(gameSchema, "The rewound game"),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: takebackNotAvailable,
+  },
+});
+
+const declineTakebackRoute = createRoute({
+  tags: [TAGS.GAMES],
+  method: "delete",
+  path: "/{id}/takeback",
+  summary: "Refuse or withdraw a takeback request",
+  description:
+    "Clears the standing request. One route for both readings, as the draw's is: the asker withdraws theirs, the opponent refuses it. Idempotent — with nothing standing there is nothing to clear, and the game comes back as it is.",
+  request: { params: idParamsSchema },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      gameSchema,
+      "The game, with no request on it",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: forbidden,
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+  },
+});
+
 const claim = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
@@ -354,7 +418,7 @@ const watch = createRoute({
   path: "/{id}/watch",
   summary: "Watch a game you are not in",
   description:
-    "The spectator's view of an online game: both players, the position, the clock and the move list — but no legal moves and no colour of your own, because a watcher has neither. Only online games can be watched; an AI game is a private board.",
+    "The spectator's view of an online game: both players, the position, the clock and the move list — but no legal moves and no colour of your own, because a watcher has neither. The `chat` here is the *gallery's*, not the players': what the two of them are saying to each other is not on this view at all. Only online games can be watched; an AI game is a private board.",
   request: { params: idParamsSchema },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(spectatorGameSchema, "The game"),
@@ -418,7 +482,7 @@ const chat = createRoute({
   path: "/{id}/chat",
   summary: "Say something to your opponent",
   description:
-    "Sends one of the phrases in the shared catalog — `phrase` is a key like `goodGame`, never text of your own, which is what makes this safe without a moderation queue. Online games only, players only, and capped per player per game. A settled game still takes messages: 'good game' comes after the result, and the players' event stream stays open for a minute and a half past the end so it lands. Returns the recent transcript with your message on it; your opponent gets the same over their stream.",
+    "Sends one of the phrases in the shared catalog — `phrase` is a key like `goodGame`, never text of your own, which is what makes this safe without a moderation queue. Online games only, players only, and capped per player per game. Nobody watching the game ever sees a word of this: the gallery has its own channel at `/{id}/watch/chat`, and the two never meet. A settled game still takes messages: 'good game' comes after the result, and the players' event stream stays open for a minute and a half past the end so it lands. Returns the recent transcript with your message on it; your opponent gets the same over their stream.",
   request: {
     params: idParamsSchema,
     body: jsonContentRequired(sendChatSchema, "What to say"),
@@ -436,6 +500,36 @@ const chat = createRoute({
     ),
     [HttpStatusCodes.UNPROCESSABLE_ENTITY]: problemDetailsContent(
       "That is not a phrase in the catalog",
+    ),
+  },
+});
+
+const spectatorChat = createRoute({
+  tags: [TAGS.GAMES],
+  method: "post",
+  path: "/{id}/watch/chat",
+  summary: "Say something to the other watchers",
+  description:
+    "The gallery's channel. Same shape as the players' — a `phrase` key from the shared catalog, never text of your own — and a different list of phrases, because a watcher is commenting rather than playing: `brilliant` and `closeOne` are here, `sorry` and `oops` are not. Strictly separate from the players' conversation in both directions: neither player sees a word said here, and nothing they say to each other appears here, because the two of them did not sign up to be heard by an audience and a crowd talking over a live game is a coaching channel with extra steps. A player in the game is refused outright — there is no seat that can speak in both. Online games only, and capped per watcher per game.",
+  request: {
+    params: idParamsSchema,
+    body: jsonContentRequired(sendSpectatorChatSchema, "What to say"),
+  },
+  responses: {
+    [HttpStatusCodes.OK]: jsonContent(
+      z.object({ chat: z.array(chatMessageSchema) }),
+      "The recent messages, oldest first",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: unauthorized,
+    [HttpStatusCodes.FORBIDDEN]: problemDetailsContent(
+      "You are playing this game — the players have their own channel",
+    ),
+    [HttpStatusCodes.NOT_FOUND]: notFound,
+    [HttpStatusCodes.CONFLICT]: problemDetailsContent(
+      "An AI game, or you have said your fill of this one",
+    ),
+    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: problemDetailsContent(
+      "That is not a phrase a watcher can say",
     ),
   },
 });
@@ -567,8 +661,9 @@ function streamGameState<T extends { result: string | null }>(
    * different facts, and getting this wrong is silent: a change left out of the
    * signature is not delivered late, it is never delivered at all. The ply and
    * the result are the obvious pair and would have been the whole of it — but a
-   * draw offer moves neither, and neither does a message, so a signature of
-   * `ply|result` filters out both of the changes that are pure conversation.
+   * draw offer moves neither, nor does a takeback request, nor does a message,
+   * so a signature of `ply|result` filters out every one of the changes that
+   * are pure conversation.
    */
   signature: (state: T) => string,
 ) {
@@ -688,6 +783,7 @@ base.get("/:id/events", (c) => {
         state.ply,
         state.result,
         state.drawOfferFrom,
+        state.takebackOfferFrom,
         state.chat.at(-1)?.id ?? "",
       ].join("|"),
   );
@@ -698,20 +794,32 @@ base.get("/:id/events", (c) => {
  *
  * Sharing the loop with the players' stream is what keeps a watcher from ever
  * being a tick behind them — both wake on the same notification — and it is
- * also why a spectator never sees a legal-move list or a word of the chat: the
- * shape is decided by `watchGame`, which has neither to give.
+ * also why a spectator never sees a legal-move list: the shape is decided by
+ * `watchGame`, which has none to give. The `chat` hung on it afterwards is the
+ * gallery's own, read from its own scope; the players' conversation has no path
+ * onto this feed at all.
  */
 base.get("/:id/watch/events", (c) => {
   const gameId = c.req.param("id");
+  const user = c.get("user");
 
   return streamGameState(
     c,
     gameId,
-    () => watchGame(gameId),
-    // No chat term, because there is no chat on this shape. A message the
-    // players send still bumps the change counter and wakes this stream, which
-    // then finds the same signature and correctly says nothing.
-    (state) => [state.ply, state.result, state.drawOfferFrom].join("|"),
+    async () => attachSpectatorChat(await watchGame(gameId), user),
+    // The chat term here is the *gallery's* last message, never the players'.
+    // A message the players send still bumps the change counter and wakes this
+    // stream, which then finds the same signature and correctly says nothing —
+    // which is exactly the behaviour that keeps their conversation off this
+    // feed even under a counter the two of them share.
+    (state) =>
+      [
+        state.ply,
+        state.result,
+        state.drawOfferFrom,
+        state.takebackOfferFrom,
+        state.chat.at(-1)?.id ?? "",
+      ].join("|"),
   );
 });
 
@@ -798,7 +906,10 @@ const router = base
 
     const game = await watchGame(id);
 
-    return c.json(game, HttpStatusCodes.OK);
+    return c.json(
+      await attachSpectatorChat(game, c.get("user")),
+      HttpStatusCodes.OK,
+    );
   })
   .openapi(pgn, async (c) => {
     const { id } = c.req.valid("param");
@@ -865,6 +976,27 @@ const router = base
 
     return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
   })
+  .openapi(takebackRoute, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await offerTakeback(id, c.get("user"));
+
+    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
+  })
+  .openapi(acceptTakebackRoute, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await acceptTakeback(id, c.get("user"));
+
+    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
+  })
+  .openapi(declineTakebackRoute, async (c) => {
+    const { id } = c.req.valid("param");
+
+    const game = await declineTakeback(id, c.get("user"));
+
+    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
+  })
   .openapi(claim, async (c) => {
     const { id } = c.req.valid("param");
 
@@ -894,6 +1026,20 @@ const router = base
       gameId: id,
       user: c.get("user"),
       phrase,
+      scope: "PLAYERS",
+    });
+
+    return c.json({ chat: messages }, HttpStatusCodes.OK);
+  })
+  .openapi(spectatorChat, async (c) => {
+    const { id } = c.req.valid("param");
+    const { phrase } = c.req.valid("json");
+
+    const messages = await sendChatMessage({
+      gameId: id,
+      user: c.get("user"),
+      phrase,
+      scope: "SPECTATORS",
     });
 
     return c.json({ chat: messages }, HttpStatusCodes.OK);

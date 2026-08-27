@@ -50,12 +50,22 @@ achievements, recent games. No wallet, no ledger, no account identity, enforced 
 projecting field by field, so a column added to `User` tomorrow is invisible on a
 profile until somebody writes it down.
 
-**Chat is nine phrases and no free text.** The wire carries a key like `goodGame`
-and the receiving client looks up what it means, so nothing one player controls
-ever reaches the other's screen — safe by construction rather than by filtering, so
-no moderation queue, no mute list, no report flow. Capped per player per game,
-since nine phrases cannot be abusive one at a time but a hundred in a row can.
-Players only; the watch feed carries no chat at all.
+**Chat is nine phrases and no free text.** The wire carries a key
+like `goodGame` and the receiving client looks up what it means, so nothing one
+player controls ever reaches the other's screen — safe by construction rather than
+by filtering, so no moderation queue, no mute list, no report flow. Capped per
+player per game, since nine phrases cannot be abusive one at a time but a hundred
+in a row can.
+
+**The gallery gets its own channel, not a seat in the players'.** Spectators talk
+to spectators: a separate scope on the same table, a second nine —
+`whatAGame`, `ouch`, `didntSeeThat`, things said *about* a game rather than *to* an
+opponent — and a query that never joins the two. Letting watchers into the players'
+chat would make a live game a place strangers can talk at you while your clock runs,
+which is the one thing the phrase catalogue exists to prevent; giving them nothing at
+all just moves the audience somewhere with no cap on what it can say. Players cannot
+read the spectator channel either, so a crowded game cannot become a coaching
+channel.
 
 ## Draws by agreement
 
@@ -71,6 +81,27 @@ the pre-game rating, XP but no coins — and held to the same ten-ply floor as e
 result, which closes two accounts shaking hands at move one to farm a `draws`
 column. Nothing legitimate is caught: stalemate, repetition and insufficient
 material are all out of reach inside ten plies.
+
+## Takebacks
+
+**Against a player a takeback needs consent; against a bot it does not.** The offer
+is a second one alongside draws and behaves almost the same, with one deliberate
+difference: *any* move clears it. A draw offer means "I would accept a draw", which
+stays true after you move; a takeback offer names a position, and once the position
+has changed it is an offer to undo something else. One or two plies come off
+depending on who asked — the offerer's own last move if they have just moved,
+otherwise their move and the reply that provoked the request.
+
+**The clock is not rewound, only the increments are.** Time already spent thinking is
+spent; what the takeback returns is the increment each undone move earned, and the
+result is clamped at zero so a flag that has fallen stays fallen. Anything else would
+make a takeback a way to buy time.
+
+**A bot game that has had a takeback pays nothing.** There is no opponent to say no,
+so the guard has to be economic: `Game.takebacks` is counted and the first one voids
+the game's XP and coins, which leaves the unilateral takeback a study tool rather
+than a way to play every won position twice. Games between two players need no such
+guard — the opponent already had to agree.
 
 ## Progression
 
@@ -171,6 +202,54 @@ by the run's own `rewardsGranted` flag: per solve would make a run a coin faucet
 tap by abandoning it at nine. The ramp is linear — 35 points a solve from 600,
 levelling off at 2600 — because a ramp that got hard quickly would make the whole
 score depend on the first thirty seconds.
+
+## Puzzle collections
+
+Nine sets, one motif each, ordered easiest first, paying XP and coins scaled to the
+size of the target. Two decisions carry the feature.
+
+**Progress is a query, not a counter.** How far along a collection is comes from
+counting solved puzzles carrying its theme, live, rather than from a per-player
+column incremented on each solve. A counter would have to be kept in step with the
+attempt rows forever — and would start every existing player at zero, telling
+somebody who has solved four hundred forks that they have solved none. The count is
+one grouped query over `PuzzleAttempt` joined to `unnest(Puzzle.themes)`, which the
+GIN index the theme filter already needs makes cheap.
+
+**Claiming is separate from finishing, and pays once.** A finished collection sits
+there until you take it, so the reward is something you are told about rather than
+something that happened while you were looking at a board. The claim row's
+`(userId, collectionId)` unique constraint is the idempotency key: a duplicate claim
+loses the race inside the same serializable transaction that writes the coin ledger
+entry, and comes back reporting no reward rather than paying twice.
+
+## The repertoire trainer
+
+Lines you keep from the explorer, drilled on a schedule. The scheduler is SM-2 with
+its five grades collapsed to three — `again`, `good`, `easy` — because the drill can
+only produce three outcomes worth telling apart: you got the line wrong, you got it
+right, or you got it right without having to think. Asking a player to rate their own
+recall on a five-point scale is asking them to do the scheduler's job.
+
+**One wrong move fails the whole line, however long it was.** An opening line is a
+sequence; half of one is not half as useful, and a trainer that passed you at eighty
+percent would keep passing you on the eighty percent you already knew. A failed line
+comes back the same day with its ease reduced; a clean one is graded on how long it
+took and pushed out, to a ceiling of six months.
+
+**Only a line that was actually due pays.** Drilling ahead is free, unlimited and
+worth nothing, which is the right price for practice you asked for — and, since a
+clean review always pushes the interval to at least a day, it is also what stops a
+line being run in a loop for XP. The repertoire is capped at 120 lines: more than
+anyone plays, and few enough that the queue stays a schedule rather than a backlog.
+
+**A line is stored as the engine spells it.** SAN arrives from the explorer and is
+replayed move by move before anything is written, and the engine's own spelling is
+what gets stored: `Nf3`, `Nf3+` and `Ng1f3` are one move, and three spellings of it
+would otherwise be three lines to drill. Prisma cannot put a unique constraint on a
+list column, so identity lives in a derived `lineKey` — side and canonical moves,
+joined — which is what makes keeping the same line twice a no-op instead of a
+duplicate.
 
 ## Puzzle themes
 

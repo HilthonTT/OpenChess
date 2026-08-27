@@ -12,6 +12,7 @@ import {
   type PromotionPiece,
 } from "@openchess/shared";
 import { Board } from "../components/board";
+import { useLocation } from "react-router";
 import { PuzzleThemeDialogContent } from "../components/dialogs/puzzle-theme-dialog";
 import { ErrorNotice } from "../components/error-notice";
 import { GameScreen } from "../components/game-screen";
@@ -77,8 +78,17 @@ export function Puzzles() {
 
   const dialog = useDialog();
 
+  // A theme can arrive with the navigation — the Collections screen sends one
+  // when you ask to train the set you are six puzzles short of. Read once, as
+  // the initial value: it is where the screen opens, not something that keeps
+  // overriding the picker afterwards.
+  const location = useLocation();
+  const opened = location.state as { theme?: string } | null;
+
   const [mode, setMode] = useState<"rated" | "daily">("rated");
-  const [themeKey, setThemeKey] = useState<string | null>(null);
+  const [themeKey, setThemeKey] = useState<string | null>(
+    opened?.theme ?? null,
+  );
   const [themes, setThemes] = useState<PuzzleThemeEntry[]>([]);
   const [state, setState] = useState<NextPuzzle | null>(null);
   const [error, setError] = useState<string | null>(null);

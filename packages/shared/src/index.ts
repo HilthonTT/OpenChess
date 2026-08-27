@@ -20,4 +20,6 @@ export * from "./social/chat";
 export * from "./progression/level";
 export * from "./progression/streak";
 export * from "./progression/puzzle-rating";
+export * from "./progression/collections";
+export * from "./progression/repertoire";
 export * from "./problem-details/problem-details";
