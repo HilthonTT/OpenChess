@@ -336,7 +336,6 @@ export function Setup({
   );
 }
 
-/** One line of the opponent list: key, name, strength, and what it wants. */
 function OpponentRow({
   shortcut,
   personality,
@@ -357,7 +356,6 @@ function OpponentRow({
   );
 }
 
-/** The header line recapping what has been picked so far. */
 function ChoiceSoFar({
   personality,
   variant,

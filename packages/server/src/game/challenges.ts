@@ -75,7 +75,6 @@ export type ChallengeView = {
   challenger: { username: string; rating: number; title: string | null };
   /** Null on an open challenge. */
   challenged: { username: string } | null;
-  /** The colour the challenger asked for. */
   color: ChallengeColor;
   variant: GameVariant;
   timeControl: TimeControlKey | null;

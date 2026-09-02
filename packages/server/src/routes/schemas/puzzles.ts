@@ -18,7 +18,6 @@ export const puzzleSchema = z
     rating: z.number().int().openapi({ example: 1100 }),
     themes: z.array(z.string()).openapi({ example: ["fork", "mateIn2"] }),
     sourceUrl: z.string().nullable(),
-    /** How many moves the solver has to find. */
     solverMoves: z.number().int().openapi({ example: 2 }),
     /** True when you have already been scored on this puzzle. */
     attempted: z.boolean(),
@@ -76,7 +75,6 @@ export const puzzleCollectionSchema = z
     themeLabel: z.string().openapi({ example: "Pin" }),
     /** How many distinct puzzles carrying the theme finish it. */
     target: z.number().int(),
-    /** How many of them you have solved. */
     solved: z.number().int(),
     /** How many the corpus holds at all — the target is fixed, this is not. */
     available: z.number().int(),

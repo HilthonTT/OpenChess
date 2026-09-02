@@ -115,11 +115,9 @@ export type PuzzleView = {
   rating: number;
   themes: string[];
   sourceUrl: string | null;
-  /** How many solver moves the line asks for. */
   solverMoves: number;
   /** True when this puzzle has already been attempted for credit. */
   attempted: boolean;
-  /** Whether this is today's puzzle. */
   daily: boolean;
 };
 

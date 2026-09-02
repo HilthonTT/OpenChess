@@ -664,7 +664,6 @@ function kingSquareOf(position: Position): number {
   return findKing(position.board, position.turn) ?? -1;
 }
 
-/** The legal moves for the side to move. */
 export function generateLegalMoves(position: Position): Move[] {
   const candidates = generatePseudoLegalMoves(position);
   const king = kingSquareOf(position);
@@ -726,7 +725,6 @@ export function hasLegalMove(position: Position): boolean {
   return false;
 }
 
-/** The legal moves that start from `square`. */
 export function movesFrom(position: Position, square: number): Move[] {
   return generateLegalMoves(position).filter((m) => m.from === square);
 }

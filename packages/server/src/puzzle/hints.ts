@@ -55,7 +55,6 @@ export async function markHintUsed(
   }
 }
 
-/** Whether this player took the hint on this puzzle. */
 export async function wasHintUsed(
   userId: string,
   puzzleId: string,

@@ -22,7 +22,6 @@ export const challengeSchema = z
     }),
     /** Null on an open challenge, until someone takes it. */
     challenged: z.object({ username: z.string() }).nullable(),
-    /** The colour the challenger asked for. */
     color: challengeColorSchema,
     variant: gameVariantSchema,
     timeControl: timeControlKeySchema.nullable(),

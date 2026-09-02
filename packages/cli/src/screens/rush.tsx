@@ -152,7 +152,6 @@ export function Rush() {
   return <RunBoard key={run.id} initial={run} onAgain={() => setRun(null)} />;
 }
 
-/** Pick a mode, and see what you and everyone else have managed at it. */
 function Lobby({
   onStart,
   starting,
@@ -285,7 +284,6 @@ function Lobby({
   );
 }
 
-/** The board, and the run's numbers above it. */
 function RunBoard({
   initial,
   onAgain,

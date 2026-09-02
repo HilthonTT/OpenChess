@@ -23,7 +23,6 @@ export const QUIET_REPLY_MS = 20_000;
 
 /** As much of a game as deciding this takes. */
 export type AlertGame = {
-  /** Whose move it is now. */
   turn: Color;
   /** Half-moves played, which is how a move is told from everything else. */
   ply: number;
@@ -35,13 +34,9 @@ export type AlertGame = {
 };
 
 export type AlertInput = {
-  /** The state that just arrived. */
   state: AlertGame;
-  /** What the board was showing before it. */
   previous: AlertGame;
-  /** The colour we are playing. */
   you: Color;
-  /** What to call the other player. */
   opponent: string;
   /**
    * When the opponent's turn began by this client's clock, or null while it is

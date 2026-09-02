@@ -48,7 +48,6 @@ const RULES: Record<string, Rule> = {
   IRON_WALL: (c) => c.outcome === "draw" && c.difficulty === "HARD",
 };
 
-/** The codes whose rules `context` satisfies. */
 export function satisfiedCodes(context: UnlockContext): string[] {
   return Object.entries(RULES)
     .filter(([, rule]) => rule(context))
@@ -103,9 +102,7 @@ export type PuzzleUnlockContext = {
   puzzlesSolved: number;
   /** The solve streak after this attempt. Zero on a failure. */
   streak: number;
-  /** The puzzle's own rating. */
   puzzleRating: number;
-  /** Whether this was the puzzle of the day. */
   daily: boolean;
 };
 

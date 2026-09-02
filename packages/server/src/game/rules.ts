@@ -116,12 +116,7 @@ export function toOfferColor(side: OfferSide | null): Color | null {
  * waiting. Both are refusals rather than no-ops, because a client offering a
  * takeback there has misread the position and should be told so.
  */
-export function pliesToTakeBack(
-  /** How many plies have been played. */
-  ply: number,
-  /** The colour asking for the move back. */
-  offerer: Color,
-): number | null {
+export function pliesToTakeBack(ply: number, offerer: Color): number | null {
   if (ply < 1) {
     return null;
   }

@@ -472,7 +472,6 @@ function Row({
   );
 }
 
-/** The selected line's moves and its record, under the list. */
 function Details({
   line,
   note,

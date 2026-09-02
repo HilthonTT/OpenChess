@@ -443,7 +443,6 @@ function Row({
   );
 }
 
-/** The selected title's description and what Enter will do to it. */
 function Details({
   title,
   confirming,

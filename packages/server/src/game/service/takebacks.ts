@@ -108,7 +108,6 @@ async function applyTakeback(
     /** The caller's colour, for the view that comes back. */
     color: Color;
     opponent: OpponentView | null;
-    /** Whose move is being handed back. */
     offerer: Color;
     /** Whether this one costs the game its payout. AI games only. */
     charged: boolean;
@@ -259,7 +258,6 @@ export async function offerTakeback(
   return result;
 }
 
-/** Grant the takeback the opponent asked for. */
 export async function acceptTakeback(
   gameId: string,
   user: User,

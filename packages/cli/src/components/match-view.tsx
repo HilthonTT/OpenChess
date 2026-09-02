@@ -81,10 +81,6 @@ export function ClockLine({ row }: { row: ClockRow }) {
   );
 }
 
-/**
- * The stack every game screen shares: board beside the move list, captures
- * underneath, and a status line that yields to the promotion picker.
- */
 export function MatchView({
   game,
   cursor,

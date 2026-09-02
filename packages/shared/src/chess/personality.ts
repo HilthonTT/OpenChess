@@ -222,7 +222,6 @@ export function personalityFor(
   return PERSONALITIES[DEFAULT_PERSONALITY[tier]];
 }
 
-/** The personalities that play at `tier`. */
 export function personalitiesAtTier(tier: Difficulty): Personality[] {
   return PERSONALITY_LIST.filter((personality) => personality.tier === tier);
 }

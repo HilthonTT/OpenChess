@@ -396,7 +396,6 @@ function Row({
   );
 }
 
-/** The selected collection's description and what it is worth, under the list. */
 function Details({
   entry,
   note,

@@ -262,7 +262,6 @@ export function Profile() {
   );
 }
 
-/** The footer, written as whatever the friend keys currently mean. */
 function FriendKeys({
   state,
 }: {

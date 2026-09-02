@@ -48,7 +48,6 @@ export function describeStatus(status: GameStatus, turn: Color): string {
   }
 }
 
-/** The scrolling move list shown beside the board. */
 export function MoveList({ game }: { game: Game }) {
   const theme = useUITheme();
   const pairs = movePairs(game);
@@ -108,7 +107,6 @@ function CapturedRow({
   );
 }
 
-/** Both sides' captures and material balance, stacked under the board. */
 export function CapturedSummary({ game }: { game: Game }) {
   const theme = useUITheme();
   const captures = capturedPieces(game);
@@ -132,7 +130,6 @@ export function CapturedSummary({ game }: { game: Game }) {
   );
 }
 
-/** The one-line promotion picker shown in place of the status line. */
 export function PromotionPrompt() {
   const theme = useUITheme();
 

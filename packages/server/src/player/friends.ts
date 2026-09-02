@@ -70,9 +70,7 @@ export type FriendView = {
 
 export type FriendLists = {
   friends: FriendView[];
-  /** Requests waiting on you. */
   incoming: FriendView[];
-  /** Requests you are waiting on. */
   outgoing: FriendView[];
 };
 
@@ -489,7 +487,6 @@ export async function friendshipWith(
   };
 }
 
-/** The ids of everyone the caller is friends with. */
 export async function friendIds(userId: string): Promise<string[]> {
   const rows = await db.friendship.findMany({
     where: {

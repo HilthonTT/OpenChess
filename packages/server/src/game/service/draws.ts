@@ -146,7 +146,6 @@ export async function offerDraw(gameId: string, user: User): Promise<GameView> {
   return result;
 }
 
-/** Accept the draw the opponent has offered. */
 export async function acceptDraw(
   gameId: string,
   user: User,

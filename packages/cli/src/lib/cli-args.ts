@@ -27,7 +27,6 @@ export type LaunchState =
 
 /** Where a successful parse lands the app. */
 export type LaunchOptions = {
-  /** The route to open on. */
   path: string;
   state?: LaunchState;
   /**

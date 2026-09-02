@@ -8,7 +8,6 @@
 type Screen = {
   /** What the user types: `openchess puzzles`, or `--puzzles`. */
   readonly name: string;
-  /** The route it opens. */
   readonly path: string;
   /** The one line `--help` prints beside the name. */
   readonly summary: string;

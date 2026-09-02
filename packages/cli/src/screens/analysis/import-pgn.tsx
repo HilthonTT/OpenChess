@@ -64,7 +64,6 @@ export function positionSource(fen: string): ReviewSource {
   };
 }
 
-/** Read a game out of a PGN file on disk. */
 export function ImportPgn({
   onImported,
   onCancel,

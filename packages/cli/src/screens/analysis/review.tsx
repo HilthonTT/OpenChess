@@ -491,7 +491,6 @@ function AccuracyRow({ report }: { report: GameReport }) {
   );
 }
 
-/** The advantage bar: white's share of it grows as white leads. */
 function EvalBar({ analysis }: { analysis: PositionAnalysis | null }) {
   const theme = useUITheme();
 

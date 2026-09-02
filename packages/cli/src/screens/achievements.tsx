@@ -259,7 +259,6 @@ function Row({
   );
 }
 
-/** The selected achievement's description and unlock state, under the list. */
 function Details({ entry }: { entry: AchievementEntry | null }) {
   const theme = useUITheme();
 

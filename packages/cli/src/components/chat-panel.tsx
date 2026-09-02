@@ -73,7 +73,6 @@ export function ChatLog({
   );
 }
 
-/** The nine things, numbered. */
 export function PhrasePicker({
   phrases,
   title = "Say something — esc to close",

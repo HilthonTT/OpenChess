@@ -230,7 +230,6 @@ export async function fetchRushLeaderboard(
   return entries;
 }
 
-/** Your best at each mode. */
 export async function fetchRushBests(): Promise<RushBest[]> {
   const response = await apiClient.puzzles.rush.bests.$get();
 

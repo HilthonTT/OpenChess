@@ -63,7 +63,6 @@ export type SideReport = {
 export type GameReport = {
   white: SideReport;
   black: SideReport;
-  /** Every move, in order. */
   plies: PlyReport[];
 };
 

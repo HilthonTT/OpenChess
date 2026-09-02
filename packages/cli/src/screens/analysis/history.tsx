@@ -17,7 +17,6 @@ import { errorMessage } from "../../lib/utils";
 
 import { HISTORY_KEYMAP, SUBTITLE, TITLE, WIDTH } from "./keymaps";
 
-/** Your finished games, newest first; pick one to review. */
 export function History({
   onOpen,
   onImport,

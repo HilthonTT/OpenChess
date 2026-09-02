@@ -309,7 +309,6 @@ export function Explorer() {
   );
 }
 
-/** What the position on the board is called, with its ECO volume. */
 function OpeningLabel({
   opening,
   plies,
@@ -337,10 +336,6 @@ function OpeningLabel({
   );
 }
 
-/**
- * The moves the book plays from here, heaviest first, with the share of the book
- * that runs through each and the opening it arrives at.
- */
 function Continuations({
   moves,
   cursor,
