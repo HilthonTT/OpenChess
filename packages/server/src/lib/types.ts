@@ -9,7 +9,6 @@ export interface AppBindings {
   };
 }
 
-// eslint-disable-next-line ts/no-empty-object-type
 export type AppOpenAPI<S extends Schema = {}> = OpenAPIHono<AppBindings, S>;
 
 export type AppRouteHandler<R extends RouteConfig> = RouteHandler<

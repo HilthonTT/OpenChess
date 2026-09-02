@@ -1,59 +1,14 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import type { Context } from "hono";
-import { streamSSE } from "hono/streaming";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import jsonContent from "stoker/openapi/helpers/json-content";
 import jsonContentRequired from "stoker/openapi/helpers/json-content-required";
 
-import type { User } from "@openchess/database";
-
-import { createRematch } from "../game/challenges";
-import { attachChat, attachSpectatorChat, sendChatMessage } from "../game/chat";
-import { gameVersion, subscribeToGame } from "../game/events";
-import {
-  abortGame,
-  acceptDraw,
-  acceptTakeback,
-  claimVictory,
-  createAiGame,
-  declineDraw,
-  declineTakeback,
-  flagGame,
-  getGame,
-  getGamePgn,
-  joinPvpQueue,
-  leavePvpQueue,
-  listActiveGames,
-  listGames,
-  listLiveGames,
-  offerDraw,
-  offerTakeback,
-  playMove,
-  resignGame,
-  watchGame,
-  type GameView,
-} from "../game/service";
-import { createPlayerRouter } from "../lib/create-app";
-import { isShuttingDown, onShutdown } from "../lib/shutdown";
-import type { PlayerEnv } from "../middlewares/require-user";
-import {
-  API_PATHS,
-  pageLinks,
-  pageLinksSchema,
-  withChallengeLinks,
-  withGameLinks,
-  withGameSummaryLinks,
-  withLiveGameLinks,
-} from "../lib/hateoas";
-import { problemDetailsContent } from "../lib/problem-details";
-import { rateLimit } from "../middlewares/rate-limit";
-import { requireAuth } from "../middlewares/require-auth";
-import { requireUser } from "../middlewares/require-user";
+import { pageLinksSchema } from "../../lib/hateoas";
+import { problemDetailsContent } from "../../lib/problem-details";
 import {
   challengeSchema,
   chatMessageSchema,
   createGameSchema,
-  decodeCursor,
   idParamsSchema,
   gameResultSchema,
   gameSchema,
@@ -67,27 +22,16 @@ import {
   sendChatSchema,
   sendSpectatorChatSchema,
   spectatorGameSchema,
-} from "./schemas";
-import { TAGS } from "./tags";
-
-const base = createPlayerRouter();
-
-// Every game route is a player action; none of them mean anything anonymously.
-// The rate limit sits behind auth so it can key by user — creating a game and
-// playing a move both run the engine, which is too expensive to hand out
-// unmetered. 120/min is far beyond any human pace against a bot.
-base.use(
-  "*",
-  requireAuth,
-  requireUser,
-  rateLimit({ windowMs: 60_000, max: 120 }),
-);
+} from "../schemas";
+import { TAGS } from "../tags";
 
 const unauthorized = problemDetailsContent("Not authenticated");
+
 const forbidden = problemDetailsContent("You are not a player in this game");
+
 const notFound = problemDetailsContent("No such game");
 
-const create = createRoute({
+export const create = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/",
@@ -107,7 +51,7 @@ const create = createRoute({
 });
 
 // Registered ahead of `/{id}` so the literal segment wins the match.
-const active = createRoute({
+export const active = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
   path: "/active",
@@ -121,7 +65,7 @@ const active = createRoute({
   },
 });
 
-const queueJoin = createRoute({
+export const queueJoin = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/pvp/queue",
@@ -140,7 +84,7 @@ const queueJoin = createRoute({
   },
 });
 
-const queueLeave = createRoute({
+export const queueLeave = createRoute({
   tags: [TAGS.GAMES],
   method: "delete",
   path: "/pvp/queue",
@@ -156,7 +100,7 @@ const queueLeave = createRoute({
   },
 });
 
-const list = createRoute({
+export const list = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
   path: "/",
@@ -179,7 +123,7 @@ const list = createRoute({
   },
 });
 
-const read = createRoute({
+export const read = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
   path: "/{id}",
@@ -193,7 +137,7 @@ const read = createRoute({
   },
 });
 
-const move = createRoute({
+export const move = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/moves",
@@ -221,7 +165,7 @@ const move = createRoute({
   },
 });
 
-const resign = createRoute({
+export const resign = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/resign",
@@ -241,7 +185,7 @@ const drawNotAvailable = problemDetailsContent(
   "Not drawable by agreement: an AI game, or no offer of your opponent's to take",
 );
 
-const offerDrawRoute = createRoute({
+export const offerDrawRoute = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/draw",
@@ -261,7 +205,7 @@ const offerDrawRoute = createRoute({
   },
 });
 
-const acceptDrawRoute = createRoute({
+export const acceptDrawRoute = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/draw/accept",
@@ -278,7 +222,7 @@ const acceptDrawRoute = createRoute({
   },
 });
 
-const declineDrawRoute = createRoute({
+export const declineDrawRoute = createRoute({
   tags: [TAGS.GAMES],
   method: "delete",
   path: "/{id}/draw",
@@ -301,7 +245,7 @@ const takebackNotAvailable = problemDetailsContent(
   "Nothing to take back: the game is over, it holds no move of yours, or there is no request of your opponent's to grant",
 );
 
-const takebackRoute = createRoute({
+export const takebackRoute = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/takeback",
@@ -321,7 +265,7 @@ const takebackRoute = createRoute({
   },
 });
 
-const acceptTakebackRoute = createRoute({
+export const acceptTakebackRoute = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/takeback/accept",
@@ -338,7 +282,7 @@ const acceptTakebackRoute = createRoute({
   },
 });
 
-const declineTakebackRoute = createRoute({
+export const declineTakebackRoute = createRoute({
   tags: [TAGS.GAMES],
   method: "delete",
   path: "/{id}/takeback",
@@ -357,7 +301,7 @@ const declineTakebackRoute = createRoute({
   },
 });
 
-const claim = createRoute({
+export const claim = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/claim",
@@ -376,7 +320,7 @@ const claim = createRoute({
   },
 });
 
-const flag = createRoute({
+export const flag = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/flag",
@@ -396,7 +340,7 @@ const flag = createRoute({
 });
 
 // Registered ahead of `/{id}` so the literal segment wins the match.
-const live = createRoute({
+export const live = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
   path: "/live",
@@ -412,7 +356,7 @@ const live = createRoute({
   },
 });
 
-const watch = createRoute({
+export const watch = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
   path: "/{id}/watch",
@@ -430,7 +374,7 @@ const watch = createRoute({
   },
 });
 
-const pgn = createRoute({
+export const pgn = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
   path: "/{id}/pgn",
@@ -454,7 +398,7 @@ const pgn = createRoute({
   },
 });
 
-const rematch = createRoute({
+export const rematch = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/rematch",
@@ -476,7 +420,7 @@ const rematch = createRoute({
   },
 });
 
-const chat = createRoute({
+export const chat = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/chat",
@@ -504,7 +448,7 @@ const chat = createRoute({
   },
 });
 
-const spectatorChat = createRoute({
+export const spectatorChat = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/watch/chat",
@@ -534,7 +478,7 @@ const spectatorChat = createRoute({
   },
 });
 
-const abort = createRoute({
+export const abort = createRoute({
   tags: [TAGS.GAMES],
   method: "post",
   path: "/{id}/abort",
@@ -552,497 +496,3 @@ const abort = createRoute({
     ),
   },
 });
-
-/**
- * How often a stream re-checks a game it has heard nothing about.
- *
- * A move made on *this* instance wakes the stream immediately, so this tick is
- * only the cross-instance path. Two seconds matches what the client used to poll
- * at, so a multi-instance deployment is never slower than it was — and on the
- * common path it is now as fast as the network allows.
- */
-const REVALIDATE_MS = 2_000;
-
-/**
- * A comment sent when nothing has happened, purely so idle connections stay
- * open. Proxies and load balancers cut streams that go quiet, and a chess game
- * can legitimately have nothing to say for minutes at a time.
- */
-const KEEPALIVE_MS = 15_000;
-
-/**
- * How long the stream stays open after the game settles.
- *
- * A settled game has no more moves, which is why this used to hang up on the
- * result — but it is not out of things to say. "Good game" is said *after* the
- * final position, and a stream that closed on the result would deliver every
- * message except the one people actually send. So the loop keeps running for a
- * minute and a half past the end, long enough for the customary exchange and
- * short enough that a finished game is not holding connections open.
- *
- * Only for a game that settles *while* being watched. One that was already over
- * when the stream opened sends its state and hangs up, because nobody is
- * standing at that board.
- */
-const POST_SETTLE_LINGER_MS = 90_000;
-
-/**
- * Wait for the game to change, or for the tick to elapse, whichever comes
- * first — and report which it was, because only a tick needs the version check
- * that follows it.
- */
-function waitForChange(
-  gameId: string,
-  signal: AbortSignal,
-): Promise<"changed" | "tick"> {
-  return new Promise((resolve) => {
-    let settled = false;
-    /**
-     * Assigned below rather than declared there: `onShutdown` runs its listener
-     * on the spot if shutdown has already begun, and that listener calls
-     * `finish`, which would reach a `const` still in its dead zone. A no-op
-     * placeholder makes the ordering safe instead of merely unlikely.
-     */
-    let unsubscribeShutdown: () => void = () => {};
-
-    const finish = (reason: "changed" | "tick") => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      unsubscribe();
-      unsubscribeShutdown();
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      resolve(reason);
-    };
-
-    // An aborted request resolves as a tick; the loop then sees the abort on
-    // its own condition and exits without touching the database.
-    const onAbort = () => finish("tick");
-    const unsubscribe = subscribeToGame(gameId, () => finish("changed"));
-    const timer = setTimeout(() => finish("tick"), REVALIDATE_MS);
-
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    // Last, so everything `finish` touches is initialised before a shutdown
-    // already under way can fire this listener synchronously. A shutdown
-    // resolves as a tick for the same reason an abort does: the loop owns the
-    // decision to stop and checks `isShuttingDown` on its own condition, so
-    // waking it is all this has to do.
-    unsubscribeShutdown = onShutdown(() => finish("tick"));
-  });
-}
-
-/**
- * The live feed for one game, in whatever shape the caller is entitled to.
- *
- * Registered with `.get` rather than `.openapi` because the response is a
- * `text/event-stream` rather than a modelled JSON body — it is documented in the
- * README instead, and the CLI reads it with a plain fetch. Both streams still
- * sit behind the `requireAuth`/`requireUser` middleware above, and the loader
- * each one is given is the same authorization check the polling route makes, so
- * neither exposes anything the polling routes did not.
- *
- * Events are `state`, carrying exactly the JSON body of the matching GET. The
- * first one is sent immediately so a client needs no separate fetch to start,
- * and the stream closes itself shortly after the game is over: the position has
- * nothing further to say, but the players do — see `POST_SETTLE_LINGER_MS`.
- */
-function streamGameState<T extends { result: string | null }>(
-  c: Context<PlayerEnv>,
-  gameId: string,
-  load: () => Promise<T>,
-  /**
-   * Everything about the state a client would want to be told about, as one
-   * comparable value.
-   *
-   * Passed in rather than computed here because the two feeds are entitled to
-   * different facts, and getting this wrong is silent: a change left out of the
-   * signature is not delivered late, it is never delivered at all. The ply and
-   * the result are the obvious pair and would have been the whole of it — but a
-   * draw offer moves neither, nor does a takeback request, nor does a message,
-   * so a signature of `ply|result` filters out every one of the changes that
-   * are pure conversation.
-   */
-  signature: (state: T) => string,
-) {
-  return streamSSE(c, async (stream) => {
-    let lastSignature: string | null = null;
-    let knownVersion = await gameVersion(gameId);
-    let quietSince = Date.now();
-    /** When to hang up on a settled game; null while it is still live. */
-    let hangUpAt: number | null = null;
-
-    const keepaliveIfQuiet = async () => {
-      if (Date.now() - quietSince >= KEEPALIVE_MS) {
-        await stream.write(": keepalive\n\n");
-        quietSince = Date.now();
-      }
-    };
-
-    while (!stream.aborted && !stream.closed && !isShuttingDown()) {
-      const state = await load();
-      const current = signature(state);
-
-      // Resend only on a real change. A client holding a picked-up piece must
-      // not have its selection cleared by an event that says nothing new.
-      if (current !== lastSignature) {
-        const first = lastSignature === null;
-        lastSignature = current;
-        quietSince = Date.now();
-
-        await stream.writeSSE({
-          event: "state",
-          data: JSON.stringify(state),
-        });
-
-        // A game that was already over when the stream opened has nobody
-        // standing at it; one that settles while being watched gets the linger.
-        if (first && state.result !== null) {
-          break;
-        }
-      } else {
-        // Reached on every tick when Redis is absent (nothing to compare, so
-        // each one reloads), and idle proxies still need bytes to flow.
-        await keepaliveIfQuiet();
-      }
-
-      if (state.result !== null) {
-        hangUpAt ??= Date.now() + POST_SETTLE_LINGER_MS;
-
-        if (Date.now() >= hangUpAt) {
-          break;
-        }
-      }
-
-      // Sit out quiet ticks here, without touching the database: only a moved
-      // counter — or one we cannot read, where stale is the greater risk — is
-      // worth paying for a reload.
-      //
-      // The linger deadline is re-checked on each tick as well as above: a
-      // settled game nobody says anything in produces no changes at all, and a
-      // wait that only ended on one would hold the connection open forever.
-      while (
-        !stream.aborted &&
-        !stream.closed &&
-        !isShuttingDown() &&
-        (hangUpAt === null || Date.now() < hangUpAt)
-      ) {
-        const reason = await waitForChange(gameId, c.req.raw.signal);
-
-        if (stream.aborted || stream.closed) {
-          break;
-        }
-
-        if (reason === "changed") {
-          knownVersion = await gameVersion(gameId);
-          break;
-        }
-
-        const version = await gameVersion(gameId);
-
-        if (version === null || version !== knownVersion) {
-          knownVersion = version;
-          break;
-        }
-
-        await keepaliveIfQuiet();
-      }
-    }
-  });
-}
-
-/**
- * A game as every 200 that carries one renders it: the transcript hung on, then
- * the links.
- *
- * One helper rather than the two calls spelled out at fourteen call sites,
- * because the failure mode of forgetting one is not a compile error — it is a
- * response whose `chat` is missing and a client that blanks its own message log
- * the moment you play a move.
- */
-async function gameBody(game: GameView, user: User) {
-  return withGameLinks(await attachChat(game, user));
-}
-
-/** The players' feed: the same body as `GET /games/{id}`, pushed. */
-base.get("/:id/events", (c) => {
-  const gameId = c.req.param("id");
-  const user = c.get("user");
-
-  return streamGameState(
-    c,
-    gameId,
-    async () => gameBody(await getGame(gameId, user), user),
-    // The last message's id rather than the count: the transcript is a window
-    // onto the most recent few, so once it is full the count stops moving while
-    // the conversation carries on.
-    (state) =>
-      [
-        state.ply,
-        state.result,
-        state.drawOfferFrom,
-        state.takebackOfferFrom,
-        state.chat.at(-1)?.id ?? "",
-      ].join("|"),
-  );
-});
-
-/**
- * The spectators' feed: the same body as `GET /games/{id}/watch`, pushed.
- *
- * Sharing the loop with the players' stream is what keeps a watcher from ever
- * being a tick behind them — both wake on the same notification — and it is
- * also why a spectator never sees a legal-move list: the shape is decided by
- * `watchGame`, which has none to give. The `chat` hung on it afterwards is the
- * gallery's own, read from its own scope; the players' conversation has no path
- * onto this feed at all.
- */
-base.get("/:id/watch/events", (c) => {
-  const gameId = c.req.param("id");
-  const user = c.get("user");
-
-  return streamGameState(
-    c,
-    gameId,
-    async () => attachSpectatorChat(await watchGame(gameId), user),
-    // The chat term here is the *gallery's* last message, never the players'.
-    // A message the players send still bumps the change counter and wakes this
-    // stream, which then finds the same signature and correctly says nothing —
-    // which is exactly the behaviour that keeps their conversation off this
-    // feed even under a counter the two of them share.
-    (state) =>
-      [
-        state.ply,
-        state.result,
-        state.drawOfferFrom,
-        state.takebackOfferFrom,
-        state.chat.at(-1)?.id ?? "",
-      ].join("|"),
-  );
-});
-
-// Chained rather than registered as separate statements: `.openapi()` returns a
-// router carrying the new route in its type, so only the chained value knows the
-// full shape. That type is what `hc<AppType>` builds the typed CLI client from.
-const router = base
-  .openapi(create, async (c) => {
-    const { personality, color, timeControl, variant } = c.req.valid("json");
-
-    const game = await createAiGame({
-      user: c.get("user"),
-      personality,
-      color,
-      timeControl: timeControl ?? null,
-      variant,
-    });
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.CREATED);
-  })
-  .openapi(active, async (c) => {
-    const games = await listActiveGames(c.get("user"));
-
-    return c.json(
-      { games: games.map(withGameSummaryLinks) },
-      HttpStatusCodes.OK,
-    );
-  })
-  .openapi(live, async (c) => {
-    const games = await listLiveGames();
-
-    return c.json({ games: games.map(withLiveGameLinks) }, HttpStatusCodes.OK);
-  })
-  .openapi(queueJoin, async (c) => {
-    const { timeControl } = c.req.valid("json");
-
-    const result = await joinPvpQueue(c.get("user"), timeControl ?? null);
-
-    return c.json(
-      {
-        status: result.status,
-        game: result.game ? await gameBody(result.game, c.get("user")) : null,
-      },
-      HttpStatusCodes.OK,
-    );
-  })
-  .openapi(queueLeave, async (c) => {
-    const left = await leavePvpQueue(c.get("user"));
-
-    return c.json({ left }, HttpStatusCodes.OK);
-  })
-  .openapi(list, async (c) => {
-    const { cursor, limit, result } = c.req.valid("query");
-
-    const page = await listGames({
-      user: c.get("user"),
-      limit,
-      cursor: cursor ? decodeCursor(cursor) : undefined,
-      result,
-    });
-
-    return c.json(
-      {
-        games: page.games.map(withGameSummaryLinks),
-        nextCursor: page.nextCursor,
-        _links: pageLinks(
-          API_PATHS.games,
-          { cursor, limit, result },
-          page.nextCursor,
-        ),
-      },
-      HttpStatusCodes.OK,
-    );
-  })
-  .openapi(read, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await getGame(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(watch, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await watchGame(id);
-
-    return c.json(
-      await attachSpectatorChat(game, c.get("user")),
-      HttpStatusCodes.OK,
-    );
-  })
-  .openapi(pgn, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const { pgn: text, filename } = await getGamePgn(id, c.get("user"));
-
-    // `attachment` rather than `inline`: this is a file to save, and the CLI
-    // reads the name off the header rather than inventing one.
-    c.header("Content-Type", "application/x-chess-pgn; charset=utf-8");
-    c.header("Content-Disposition", `attachment; filename="${filename}"`);
-
-    return c.body(text, HttpStatusCodes.OK);
-  })
-  .openapi(rematch, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const challenge = await createRematch({ user: c.get("user"), gameId: id });
-
-    return c.json(withChallengeLinks(challenge), HttpStatusCodes.CREATED);
-  })
-  .openapi(move, async (c) => {
-    const { id } = c.req.valid("param");
-    const { from, to, promotion, ply } = c.req.valid("json");
-
-    const result = await playMove({
-      gameId: id,
-      user: c.get("user"),
-      from,
-      to,
-      promotion,
-      ply,
-    });
-
-    return c.json(
-      { ...result, state: await gameBody(result.state, c.get("user")) },
-      HttpStatusCodes.OK,
-    );
-  })
-  .openapi(resign, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await resignGame(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(offerDrawRoute, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await offerDraw(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(acceptDrawRoute, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await acceptDraw(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(declineDrawRoute, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await declineDraw(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(takebackRoute, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await offerTakeback(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(acceptTakebackRoute, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await acceptTakeback(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(declineTakebackRoute, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await declineTakeback(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(claim, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await claimVictory(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(flag, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await flagGame(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(abort, async (c) => {
-    const { id } = c.req.valid("param");
-
-    const game = await abortGame(id, c.get("user"));
-
-    return c.json(await gameBody(game, c.get("user")), HttpStatusCodes.OK);
-  })
-  .openapi(chat, async (c) => {
-    const { id } = c.req.valid("param");
-    const { phrase } = c.req.valid("json");
-
-    const messages = await sendChatMessage({
-      gameId: id,
-      user: c.get("user"),
-      phrase,
-      scope: "PLAYERS",
-    });
-
-    return c.json({ chat: messages }, HttpStatusCodes.OK);
-  })
-  .openapi(spectatorChat, async (c) => {
-    const { id } = c.req.valid("param");
-    const { phrase } = c.req.valid("json");
-
-    const messages = await sendChatMessage({
-      gameId: id,
-      user: c.get("user"),
-      phrase,
-      scope: "SPECTATORS",
-    });
-
-    return c.json({ chat: messages }, HttpStatusCodes.OK);
-  });
-
-export default router;

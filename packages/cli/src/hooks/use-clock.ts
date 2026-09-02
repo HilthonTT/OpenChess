@@ -65,7 +65,6 @@ export function useClock({
     );
     // Sampled once per turn: mid-turn refetches of the same snapshot carry the
     // same turnStartedAt but a later arrival time, which is not skew.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turnKey]);
 
   // Only a live, timed game needs a heartbeat; a frozen or untimed one is still.
