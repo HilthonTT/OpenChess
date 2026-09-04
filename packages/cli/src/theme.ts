@@ -44,6 +44,9 @@ export type BoardTheme = {
   captureHint: string;
   checkBg: string;
   checkFg: string;
+  arrowBg: string;
+  arrowFg: string;
+  replyArrowBg: string;
 };
 
 export function toBoardTheme(colors: ThemeColors): BoardTheme {
@@ -61,6 +64,9 @@ export function toBoardTheme(colors: ThemeColors): BoardTheme {
     captureHint: colors.error,
     checkBg: colors.error,
     checkFg: colors.background,
+    arrowBg: colors.success,
+    arrowFg: colors.background,
+    replyArrowBg: colors.dimSeparator,
   };
 }
 

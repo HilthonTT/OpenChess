@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   analyzePosition,
   buildGameReport,
@@ -25,6 +25,7 @@ export function buildFrames(history: string[], startingFen: string): Game[] {
 export function useGameAnalysis(frames: Game[]): {
   analyses: Array<PositionAnalysis | null>;
   done: number;
+  refine: (index: number, analysis: PositionAnalysis) => void;
 } {
   const [analyses, setAnalyses] = useState<Array<PositionAnalysis | null>>(() =>
     frames.map(() => null),
@@ -73,8 +74,90 @@ export function useGameAnalysis(frames: Game[]): {
     };
   }, [frames]);
 
+  const refine = useCallback((index: number, analysis: PositionAnalysis) => {
+    setAnalyses((prev) => {
+      const current = prev[index];
+      if (current && current.depth >= analysis.depth) {
+        return prev;
+      }
+      const updated = prev.slice();
+      updated[index] = analysis;
+      return updated;
+    });
+  }, []);
+
   const done = analyses.filter((entry) => entry !== null).length;
-  return { analyses, done };
+  return { analyses, done, refine };
+}
+
+const DEEP_STEPS = [25_000, 50_000, 100_000, 200_000];
+const DEEP_DEPTH = 14;
+
+export type DeepAnalysis = {
+  analysis: PositionAnalysis | null;
+  thinking: boolean;
+};
+
+export function useDeepAnalysis(
+  frame: Game,
+  active: boolean,
+  onResult: (analysis: PositionAnalysis) => void,
+): DeepAnalysis {
+  const [state, setState] = useState<DeepAnalysis>({
+    analysis: null,
+    thinking: false,
+  });
+  const onResultRef = useRef(onResult);
+  useEffect(() => {
+    onResultRef.current = onResult;
+  });
+
+  useEffect(() => {
+    setState({ analysis: null, thinking: active });
+
+    if (!active) {
+      return;
+    }
+
+    let cancelled = false;
+    let step = 0;
+
+    const think = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const nodes = DEEP_STEPS[step]!;
+      const analysis = analyzePosition(frame.position, DEEP_DEPTH, nodes);
+      step += 1;
+
+      if (cancelled) {
+        return;
+      }
+
+      onResultRef.current(analysis);
+
+      const finished =
+        step >= DEEP_STEPS.length ||
+        analysis.mateIn !== null ||
+        analysis.bestMove === null;
+
+      setState({ analysis, thinking: !finished });
+
+      if (!finished) {
+        timer = setTimeout(think, 0);
+      }
+    };
+
+    let timer = setTimeout(think, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [frame, active]);
+
+  return state;
 }
 
 export function useGameReport(

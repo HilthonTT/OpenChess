@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
 import {
   centipawnLoss,
   classifyMove,
   clampEval,
   findKing,
+  formatLine,
   mistakes,
   openingOf,
   STARTING_FEN,
@@ -37,7 +39,12 @@ import {
 import { useUITheme } from "../../providers/theme";
 import { errorMessage } from "../../lib/utils";
 
-import { buildFrames, useGameAnalysis, useGameReport } from "./engine";
+import {
+  buildFrames,
+  useDeepAnalysis,
+  useGameAnalysis,
+  useGameReport,
+} from "./engine";
 import type { ReviewSource } from "./import-pgn";
 import { SUBTITLE, TITLE, WIDTH } from "./keymaps";
 import { botName } from "./history";
@@ -50,7 +57,13 @@ const QUALITY_LABEL: Record<MoveQuality, string> = {
   blunder: "Blunder",
 };
 
-const BAR_W = 24;
+const BAR_H = 17;
+
+const MARKS: Partial<Record<MoveQuality, string>> = {
+  inaccuracy: "?!",
+  mistake: "?",
+  blunder: "??",
+};
 
 function formatEval(analysis: PositionAnalysis): string {
   if (analysis.mateIn !== null) {
@@ -205,13 +218,31 @@ export function ReviewBoard({
     () => buildFrames(source.history, source.startingFen),
     [source.history, source.startingFen],
   );
-  const { analyses, done } = useGameAnalysis(frames);
+  const { analyses, done, refine } = useGameAnalysis(frames);
   const report = useGameReport(frames, analyses, source.history);
 
   const lastPly = frames.length - 1;
   const [ply, setPly] = useState(0);
   const [flipped, setFlipped] = useState(source.orientation === "b");
   const [note, setNote] = useState<string | null>(null);
+  const [deep, setDeep] = useState(false);
+  const [showLine, setShowLine] = useState(true);
+
+  const frame = frames[ply]!;
+  const { thinking } = useDeepAnalysis(frame, deep, (result) =>
+    refine(ply, result),
+  );
+
+  const marks = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const entry of report.plies) {
+      const mark = MARKS[entry.quality];
+      if (mark) {
+        map.set(entry.ply, mark);
+      }
+    }
+    return map;
+  }, [report]);
 
   const jumpToMistake = useCallback(
     (direction: 1 | -1) => {
@@ -285,6 +316,12 @@ export function ReviewBoard({
       case "f":
         setFlipped((value) => !value);
         break;
+      case "a":
+        setDeep((value) => !value);
+        break;
+      case "b":
+        setShowLine((value) => !value);
+        break;
       case "n":
         jumpToMistake(1);
         break;
@@ -304,7 +341,6 @@ export function ReviewBoard({
     }
   });
 
-  const frame = frames[ply]!;
   const { position, status } = frame;
   const analysis = analyses[ply] ?? null;
 
@@ -334,6 +370,8 @@ export function ReviewBoard({
   const bestSan = analysis?.bestMove
     ? toSan(position, analysis.bestMove, frame.legalMoves)
     : null;
+  const bestLine = analysis ? formatLine(position, analysis.line) : "";
+  const arrows = showLine && analysis ? analysis.line.slice(0, 2) : [];
 
   const opening = openingOf(frame);
 
@@ -352,6 +390,10 @@ export function ReviewBoard({
           <span fg={theme.faint}> step </span>
           <span fg={theme.cream}>n/p</span>
           <span fg={theme.faint}> mistakes </span>
+          <span fg={theme.cream}>a</span>
+          <span fg={theme.faint}> deeper </span>
+          <span fg={theme.cream}>b</span>
+          <span fg={theme.faint}> line </span>
           <span fg={theme.cream}>e</span>
           <span fg={theme.faint}> export </span>
           <span fg={theme.cream}>y</span>
@@ -361,7 +403,8 @@ export function ReviewBoard({
         </>
       }
     >
-      <box flexDirection="row" gap={2}>
+      <box flexDirection="row" gap={1}>
+        <EvalBar analysis={analysis} flipped={flipped} />
         <Board
           board={position.board}
           cursor={-1}
@@ -370,11 +413,10 @@ export function ReviewBoard({
           lastMove={lastMove}
           checkSquare={checkSquare}
           flipped={flipped}
+          arrows={arrows}
         />
-        <MoveList game={frame} />
+        <MoveList game={frame} marks={marks} />
       </box>
-
-      <EvalBar analysis={analysis} />
 
       <AccuracyRow report={report} />
 
@@ -407,9 +449,14 @@ export function ReviewBoard({
         )}
 
         <text>
-          <span fg={theme.faint}>Engine likes: </span>
+          <span fg={theme.faint}>Best line: </span>
           {bestSan ? (
-            <span fg={theme.walnut}>{bestSan}</span>
+            <>
+              <span fg={theme.walnut}>{bestLine.slice(0, WIDTH - 24)}</span>
+              <span fg={theme.faint}>
+                {`  d${analysis?.depth ?? 0}${thinking ? " thinking…" : deep ? " ✓" : ""}`}
+              </span>
+            </>
           ) : (
             <span fg={theme.faint}>{analysis ? "—" : "…"}</span>
           )}
@@ -466,28 +513,43 @@ function AccuracyRow({ report }: { report: GameReport }) {
   );
 }
 
-function EvalBar({ analysis }: { analysis: PositionAnalysis | null }) {
+function EvalBar({
+  analysis,
+  flipped,
+}: {
+  analysis: PositionAnalysis | null;
+  flipped: boolean;
+}) {
   const theme = useUITheme();
 
+  const rows: ReactNode[] = [];
   if (!analysis) {
-    return (
-      <box flexDirection="row" width={WIDTH - 6} gap={1}>
-        <text fg={theme.faint}>{"·".repeat(BAR_W)}</text>
-        <text fg={theme.faint}>…</text>
-      </box>
-    );
+    for (let row = 0; row < BAR_H; row += 1) {
+      rows.push(
+        <text key={row} fg={theme.faint}>
+          {" ·· "}
+        </text>,
+      );
+    }
+  } else {
+    const whiteCells = Math.round(whiteShare(analysis) * BAR_H);
+    for (let row = 0; row < BAR_H; row += 1) {
+      const fromTop = flipped ? row : BAR_H - 1 - row;
+      const white = fromTop < whiteCells;
+      rows.push(
+        <text key={row} fg={white ? theme.cream : theme.walnut}>
+          {" ██ "}
+        </text>,
+      );
+    }
   }
 
-  const whiteCells = Math.round(whiteShare(analysis) * BAR_W);
-  const blackCells = BAR_W - whiteCells;
+  const label = analysis ? formatEval(analysis) : "…";
 
   return (
-    <box flexDirection="row" width={WIDTH - 6} gap={1}>
-      <text>
-        <span fg={theme.cream}>{"█".repeat(whiteCells)}</span>
-        <span fg={theme.walnut}>{"█".repeat(blackCells)}</span>
-      </text>
-      <text fg={theme.gold}>{formatEval(analysis)}</text>
+    <box flexDirection="column" width={5}>
+      {rows}
+      <text fg={theme.gold}>{label.padStart(4).slice(0, 5)}</text>
     </box>
   );
 }

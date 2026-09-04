@@ -47,10 +47,29 @@ export function describeStatus(status: GameStatus, turn: Color): string {
   }
 }
 
-export function MoveList({ game }: { game: Game }) {
+export function MoveList({
+  game,
+  marks,
+}: {
+  game: Game;
+  marks?: ReadonlyMap<number, string>;
+}) {
   const theme = useUITheme();
   const pairs = movePairs(game);
-  const visible = pairs.slice(Math.max(0, pairs.length - VISIBLE_MOVE_PAIRS));
+
+  let ply = 1;
+  const annotated = pairs.map((pair) => {
+    const whitePly = pair.white === "…" ? null : ply++;
+    const blackPly = pair.black === null ? null : ply++;
+    return {
+      ...pair,
+      whiteMark: whitePly === null ? "" : (marks?.get(whitePly) ?? ""),
+      blackMark: blackPly === null ? "" : (marks?.get(blackPly) ?? ""),
+    };
+  });
+  const visible = annotated.slice(
+    Math.max(0, annotated.length - VISIBLE_MOVE_PAIRS),
+  );
 
   return (
     <box flexDirection="column" width={16}>
@@ -61,8 +80,12 @@ export function MoveList({ game }: { game: Game }) {
         visible.map((pair) => (
           <text key={pair.number}>
             <span fg={theme.faint}>{`${pair.number}.`.padEnd(4)}</span>
-            <span fg={theme.cream}>{pair.white.padEnd(7)}</span>
+            <span fg={theme.cream}>{pair.white}</span>
+            <span fg={theme.gold}>
+              {pair.whiteMark.padEnd(7 - Math.min(6, pair.white.length))}
+            </span>
             <span fg={theme.walnut}>{pair.black ?? ""}</span>
+            <span fg={theme.gold}>{pair.blackMark}</span>
           </text>
         ))
       )}

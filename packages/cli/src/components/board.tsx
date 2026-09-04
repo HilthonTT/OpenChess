@@ -19,6 +19,7 @@ interface BoardProps {
   lastMove: Move | null;
   checkSquare: number | null;
   flipped: boolean;
+  arrows?: readonly Move[];
 }
 
 const LABEL_WIDTH = "   ";
@@ -35,6 +36,7 @@ export function Board({
   lastMove,
   checkSquare,
   flipped,
+  arrows = [],
 }: BoardProps) {
   const theme = useBoardTheme();
   const pieceSet = usePieceSet();
@@ -43,6 +45,13 @@ export function Board({
   const captureTargets = new Set(
     targets.filter((move) => move.captured !== null).map((move) => move.to),
   );
+
+  const arrowSquares = new Map<number, { primary: boolean; head: boolean }>();
+  for (const [index, move] of [...arrows].reverse().entries()) {
+    const primary = index === arrows.length - 1;
+    arrowSquares.set(move.from, { primary, head: false });
+    arrowSquares.set(move.to, { primary, head: true });
+  }
 
   const ranks = [7, 6, 5, 4, 3, 2, 1, 0];
   const files = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -53,8 +62,13 @@ export function Board({
     const piece = pieceAt(board, square);
     const isTarget = moveTargets.has(square);
 
+    const arrow = arrowSquares.get(square);
     const glyph =
-      isTarget && !isPiece(piece) ? "." : renderPiece(piece, pieceSet);
+      isTarget && !isPiece(piece)
+        ? "."
+        : arrow?.head && !isPiece(piece)
+          ? "●"
+          : renderPiece(piece, pieceSet);
 
     let fg = isPiece(piece)
       ? pieceColor(piece) === "w"
@@ -76,6 +90,9 @@ export function Board({
     } else if (square === checkSquare) {
       bg = theme.checkBg;
       fg = theme.checkFg;
+    } else if (arrow) {
+      bg = arrow.primary ? theme.arrowBg : theme.replyArrowBg;
+      fg = arrow.primary ? theme.arrowFg : fg;
     } else if (
       lastMove &&
       (square === lastMove.from || square === lastMove.to)

@@ -1,5 +1,6 @@
 import { evaluate } from "./evaluate";
 import {
+  applyMove,
   findMove,
   generateLegalMoves,
   isInCheck,
@@ -13,6 +14,7 @@ import {
   type Personality,
   type PersonalityId,
 } from "./personality";
+import { toSan } from "./san";
 import { MATE_SCORE, MATE_THRESHOLD, search } from "./search";
 import type { Color, Move, Position } from "./types";
 
@@ -87,7 +89,11 @@ export type Analysis = {
   scoreCp: number;
   mateIn: number | null;
   bestMove: Move | null;
+  line: Move[];
+  depth: number;
 };
+
+const SETTLED: Pick<Analysis, "line" | "depth"> = { line: [], depth: 0 };
 
 export function evaluatePosition(position: Position): number {
   const score = evaluate(position);
@@ -97,6 +103,7 @@ export function evaluatePosition(position: Position): number {
 export function analyzePosition(
   position: Position,
   depth: number = ANALYSIS_DEPTH,
+  nodes: number = ANALYSIS_NODES,
 ): Analysis {
   const moves = generateLegalMoves(position);
 
@@ -107,16 +114,17 @@ export function analyzePosition(
         scoreCp: whiteMated ? -MATE_SCORE : MATE_SCORE,
         mateIn: 0,
         bestMove: null,
+        ...SETTLED,
       };
     }
-    return { scoreCp: 0, mateIn: null, bestMove: null };
+    return { scoreCp: 0, mateIn: null, bestMove: null, ...SETTLED };
   }
 
   if (position.halfmoveClock >= 100 || isInsufficientMaterial(position)) {
-    return { scoreCp: 0, mateIn: null, bestMove: null };
+    return { scoreCp: 0, mateIn: null, bestMove: null, ...SETTLED };
   }
 
-  const result = search(position, { depth, nodes: ANALYSIS_NODES });
+  const result = search(position, { depth, nodes });
 
   const whiteScore = position.turn === "w" ? result.score : -result.score;
 
@@ -128,7 +136,52 @@ export function analyzePosition(
     mateIn = whiteMating ? movesToMate : -movesToMate;
   }
 
-  return { scoreCp: whiteScore, mateIn, bestMove: result.bestMove };
+  return {
+    scoreCp: whiteScore,
+    mateIn,
+    bestMove: result.bestMove,
+    line: result.pv,
+    depth: result.depth,
+  };
+}
+
+export function lineToSan(position: Position, line: readonly Move[]): string[] {
+  const sans: string[] = [];
+  let current = position;
+
+  for (const move of line) {
+    const legal = generateLegalMoves(current);
+    if (!findMove(legal, move.from, move.to, move.promotion ?? undefined)) {
+      break;
+    }
+    sans.push(toSan(current, move, legal));
+    current = applyMove(current, move);
+  }
+
+  return sans;
+}
+
+export function formatLine(position: Position, line: readonly Move[]): string {
+  const sans = lineToSan(position, line);
+  if (sans.length === 0) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  let number = position.fullmoveNumber;
+  let turn = position.turn;
+
+  for (const [index, san] of sans.entries()) {
+    if (turn === "w") {
+      parts.push(`${number}. ${san}`);
+    } else {
+      parts.push(index === 0 ? `${number}… ${san}` : san);
+      number += 1;
+    }
+    turn = turn === "w" ? "b" : "w";
+  }
+
+  return parts.join(" ");
 }
 
 export function centipawnLoss(

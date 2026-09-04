@@ -37,6 +37,13 @@ const REVIEW_KEYMAP: Keymap = {
       ],
     },
     {
+      title: "Ask the engine",
+      keys: [
+        { keys: "a", label: "think harder about this position" },
+        { keys: "b", label: "show or hide the best line on the board" },
+      ],
+    },
+    {
       title: "Take it away",
       keys: [
         {

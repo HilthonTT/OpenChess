@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { createGame } from "./game";
-import { parseFen } from "./board";
+import { STARTING_FEN, fromAlgebraic, parseFen } from "./board";
+import { applyMove, generateLegalMoves } from "./moves";
+import type { Move, Position } from "./types";
 import {
   analyzePosition,
   centipawnLoss,
   classifyMove,
   evaluatePosition,
+  formatLine,
+  lineToSan,
 } from "./ai";
 import { TIME_CONTROLS, formatClock, timeControlFor } from "./time-control";
 
@@ -98,3 +102,44 @@ describe("time controls", () => {
     expect(formatClock(-500)).toBe("0.0");
   });
 });
+
+describe("analysis lines", () => {
+  test("a mate in one carries the mating move as its line", () => {
+    const position = parseFen("6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1");
+    const analysis = analyzePosition(position);
+
+    expect(analysis.line.length).toBeGreaterThan(0);
+    expect(analysis.line[0]).toEqual(analysis.bestMove ?? undefined);
+    expect(analysis.depth).toBeGreaterThan(0);
+    expect(formatLine(position, analysis.line)).toBe("1. Ra8#");
+  });
+
+  test("formatLine numbers a line that starts with black", () => {
+    const position = parseFen(
+      "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+    );
+    const e5 = moveNamed(position, "e7", "e5");
+    const next = applyMove(position, e5);
+    const nf3 = moveNamed(next, "g1", "f3");
+
+    expect(formatLine(position, [e5, nf3])).toBe("1… e5 2. Nf3");
+  });
+
+  test("a line stops at the first illegal move", () => {
+    const position = parseFen(STARTING_FEN);
+    const e4 = moveNamed(position, "e2", "e4");
+    expect(lineToSan(position, [e4, e4])).toEqual(["e4"]);
+  });
+});
+
+function moveNamed(position: Position, from: string, to: string): Move {
+  const move = generateLegalMoves(position).find(
+    (candidate) =>
+      candidate.from === fromAlgebraic(from) &&
+      candidate.to === fromAlgebraic(to),
+  );
+  if (!move) {
+    throw new Error(`no move ${from}${to}`);
+  }
+  return move;
+}
