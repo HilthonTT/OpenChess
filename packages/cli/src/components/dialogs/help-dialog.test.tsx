@@ -7,11 +7,6 @@ import { Home } from "../../screens/home";
 import { Explorer } from "../../screens/explorer";
 import { LocalGame } from "../../screens/local-game";
 
-/**
- * The `?` overlay, driven through the real renderer — the only way to check the
- * thing it actually has to get right, which is that the keys it lists belong to
- * the screen underneath rather than to whichever one registered last.
- */
 async function renderApp(initialPath: string, height = 40) {
   const router = createMemoryRouter(
     [
@@ -66,10 +61,8 @@ describe("the ? overlay", () => {
 
     const frame = app.frame();
     expect(frame).toContain("take the last move back");
-    // The shared board group, and the screen's own, both reach it.
     expect(frame).toContain("move the cursor");
     expect(frame).toContain("Chess960");
-    // And the section the overlay appends for itself.
     expect(frame).toContain("this list");
 
     app.renderer.destroy();
@@ -95,8 +88,6 @@ describe("the ? overlay", () => {
 
     const frame = app.frame();
     expect(frame).not.toContain("take the last move back");
-    // Still on the board rather than back at the menu: the escape was the
-    // dialog's, and the screen never saw it.
     expect(frame).toContain("Local 1v1");
 
     app.renderer.destroy();
@@ -109,7 +100,6 @@ describe("the ? overlay", () => {
 
     const frame = app.frame();
     expect(frame).toContain("open a screen by the number beside it");
-    // Nowhere to go back to, so the appended section says so by omission.
     expect(frame).not.toContain("back to the menu");
 
     app.renderer.destroy();
@@ -132,8 +122,6 @@ describe("the ? overlay", () => {
 
     await app.help();
 
-    // The list is longer than the room for it, so the last rows are held back
-    // behind the scroll rather than drawn past the bottom of the dialog.
     expect(app.frame()).toContain("move the cursor");
     expect(app.frame()).not.toContain("copy the game as a PGN");
     expect(app.frame()).toContain("more");

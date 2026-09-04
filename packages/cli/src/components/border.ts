@@ -17,10 +17,6 @@ export const SplitBorderChars = {
   vertical: "┃",
 };
 
-/**
- * A bare horizontal line with no corner glyphs. Paired with `border={["top"]}`
- * it renders as a rule across a box rather than the top of a frame.
- */
 export const RuleBorderChars = {
   ...EmptyBorder,
   horizontal: "─",

@@ -2,12 +2,6 @@ import type { InferResponseType } from "hono/client";
 import { apiClient } from "./api-client";
 import { responseError } from "./http-errors";
 
-/**
- * Typed calls to the server's `/titles` store API. Like the `/games` helpers,
- * every call either returns the decoded body or throws an `Error` carrying the
- * server's problem detail, so screens can render `error.message` as-is.
- */
-
 export type TitleCatalog = InferResponseType<typeof apiClient.titles.$get, 200>;
 export type Title = TitleCatalog["titles"][number];
 

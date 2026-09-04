@@ -106,8 +106,6 @@ describe("parsePgn", () => {
     expect(parsed.game.history).toEqual([]);
   });
 
-  // The whole point of replaying rather than trusting the file: a move list
-  // that does not describe a real game must not reach a board.
   test("refuses a move that is not legal, naming it", () => {
     expect(() => parsePgn("1. e4 e5 2. Qxf7#")).toThrow(/Qxf7/);
   });

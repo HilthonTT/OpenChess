@@ -1,33 +1,6 @@
 import { db } from "@openchess/database/client";
 import { isPlayablePuzzle } from "@openchess/shared";
 
-/**
- * Import the Lichess puzzle database.
- *
- * The built-in catalog is a starter set of a dozen positions. This is where a
- * real corpus comes from: Lichess publishes its puzzle database as a CC0 CSV of
- * several million rows, in exactly the format `chess/puzzle.ts` speaks.
- *
- *     curl -O https://database.lichess.org/lichess_db_puzzle.csv.zst
- *     zstd -d lichess_db_puzzle.csv.zst
- *     bun run db:import-puzzles lichess_db_puzzle.csv --limit 20000
- *
- * The columns are, in order:
- *
- *     PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags
- *
- * Every row is replayed through the engine before it is written. A corpus this
- * size will contain rows this engine cannot replay — a promotion spelled
- * differently, a position it reads as already terminal — and one unplayable row
- * reaching the table is a puzzle a player cannot solve and cannot escape. They
- * are counted and skipped rather than being allowed to fail the whole import.
- *
- * Rows are upserted by `externalId`, so a rerun with a newer dump rewrites
- * ratings in place and leaves players' attempts attached.
- *
- * @see https://database.lichess.org/#puzzles
- */
-
 type Options = {
   path: string;
   limit: number;
@@ -71,8 +44,6 @@ function parseArgs(argv: string[]): Options {
 
   return {
     path,
-    // Defaulted rather than unbounded: the full dump is millions of rows, and
-    // an accidental full import is a long wait and a large table.
     limit: number("limit", 10_000),
     minRating: number("min-rating", 400),
     maxRating: number("max-rating", 2400),
@@ -80,13 +51,6 @@ function parseArgs(argv: string[]): Options {
   };
 }
 
-/**
- * Split one CSV line.
- *
- * The Lichess dump quotes nothing and embeds no commas in its fields, so a
- * plain split is correct for it — but a quoted field would silently corrupt
- * every column after it, so quoting is honoured rather than assumed away.
- */
 function splitCsvLine(line: string): string[] {
   const fields: string[] = [];
   let field = "";
@@ -132,7 +96,6 @@ type Row = {
   sourceUrl: string | null;
 };
 
-/** One CSV line as a puzzle row, or null when it is not one we can use. */
 function toRow(line: string, options: Options): Row | null {
   const fields = splitCsvLine(line);
   const [id, fen, moves, rating, , , , themes, gameUrl] = fields;
@@ -141,7 +104,6 @@ function toRow(line: string, options: Options): Row | null {
     return null;
   }
 
-  // The header line, if the dump still carries one.
   if (id === "PuzzleId") {
     return null;
   }
@@ -168,9 +130,6 @@ function toRow(line: string, options: Options): Row | null {
 }
 
 async function writeBatch(batch: Row[]): Promise<void> {
-  // `createMany` with `skipDuplicates` would leave a rerun's rating updates on
-  // the floor, so each row is upserted. Slower, and the only shape that makes a
-  // reimport of a newer dump mean anything.
   await db.$transaction(
     batch.map((row) => {
       const { externalId, ...rest } = row;
@@ -208,7 +167,6 @@ const flush = async () => {
   console.log(`  …${written} written`);
 };
 
-/** Consume one complete line; returns false once the import should stop. */
 async function handleLine(line: string): Promise<boolean> {
   if (line.trim() === "") {
     return true;
@@ -222,8 +180,6 @@ async function handleLine(line: string): Promise<boolean> {
     return true;
   }
 
-  // The check that keeps an unsolvable puzzle out of the table. It is a full
-  // replay through the engine, which is why the import is not instant.
   if (!isPlayablePuzzle(row)) {
     skippedUnplayable += 1;
     return true;
@@ -261,7 +217,6 @@ outer: for await (const chunk of stream) {
   }
 }
 
-// The last line of a file with no trailing newline.
 if (buffer.trim() !== "" && written + batch.length < options.limit) {
   await handleLine(buffer.replace(/\r$/, ""));
 }

@@ -2,24 +2,11 @@ import type { Difficulty } from "@openchess/database";
 
 import type { Outcome, StatsDelta } from "./rules";
 
-/**
- * Achievement unlock rules, keyed by `Achievement.code`.
- *
- * The schema is explicit that `code` is the stable key and `name` is display
- * copy that will get reworded — so everything here keys off `code` and nothing
- * reads a name. A code with no rule never unlocks; a rule with no row in the
- * `Achievement` table unlocks nothing. Both are fine, and both let the copy and
- * the logic ship independently.
- */
-
 export type UnlockContext = {
-  /** The player's stats *after* this game has been counted. */
   stats: StatsDelta;
   outcome: Outcome;
-  /** Null for a PvP game — the difficulty achievements are AI-only by nature. */
   difficulty: Difficulty | null;
   plies: number;
-  /** True when the player won by delivering checkmate, rather than on a resign. */
   byCheckmate: boolean;
 };
 
@@ -38,13 +25,10 @@ const RULES: Record<string, Rule> = {
   BEAT_MEDIUM: (c) => c.outcome === "win" && c.difficulty === "MEDIUM",
   BEAT_HARD: (c) => c.outcome === "win" && c.difficulty === "HARD",
 
-  // Won by mate rather than by the bot running out of moves to make.
   CHECKMATE_ARTIST: (c) => c.outcome === "win" && c.byCheckmate,
 
-  // A mate inside 20 plies is a scholar's-mate-shaped game.
   QUICK_MATE: (c) => c.outcome === "win" && c.byCheckmate && c.plies <= 20,
 
-  // Grinding a draw out of the strongest bot is its own achievement.
   IRON_WALL: (c) => c.outcome === "draw" && c.difficulty === "HARD",
 };
 
@@ -54,34 +38,18 @@ export function satisfiedCodes(context: UnlockContext): string[] {
     .map(([code]) => code);
 }
 
-/**
- * The daily check-in rules, kept beside the game ones so that every unlock
- * condition in the product is readable in one file — and so the seed's
- * invariant, that every code here has a row in the catalog, stays checkable by
- * looking in a single place.
- *
- * These take a streak day rather than an `UnlockContext`: a check-in has no
- * game, no outcome and no difficulty, and threading nulls through the game
- * shape to pretend otherwise would make both rule sets harder to read.
- */
 const STREAK_RULES: Record<string, (day: number) => boolean> = {
   DAILY_STREAK_3: (day) => day >= 3,
   DAILY_STREAK_7: (day) => day >= 7,
   DAILY_STREAK_30: (day) => day >= 30,
 };
 
-/** The codes a check-in landing on streak day `day` satisfies. */
 export function satisfiedStreakCodes(day: number): string[] {
   return Object.entries(STREAK_RULES)
     .filter(([, rule]) => rule(day))
     .map(([code]) => code);
 }
 
-/**
- * The Puzzle Rush rules, which key off a finished run's score alone. Kept
- * here with the rest for the reason above: every unlock condition in the
- * product should be readable in one file.
- */
 const RUSH_RULES: Record<string, (solved: number) => boolean> = {
   RUSH_FIRST: (solved) => solved >= 1,
   RUSH_10: (solved) => solved >= 10,
@@ -89,7 +57,6 @@ const RUSH_RULES: Record<string, (solved: number) => boolean> = {
   RUSH_30: (solved) => solved >= 30,
 };
 
-/** The codes a run that solved `solved` puzzles satisfies. */
 export function satisfiedRushCodes(solved: number): string[] {
   return Object.entries(RUSH_RULES)
     .filter(([, rule]) => rule(solved))
@@ -98,22 +65,12 @@ export function satisfiedRushCodes(solved: number): string[] {
 
 export type PuzzleUnlockContext = {
   solved: boolean;
-  /** The player's solve count *after* this attempt. */
   puzzlesSolved: number;
-  /** The solve streak after this attempt. Zero on a failure. */
   streak: number;
   puzzleRating: number;
   daily: boolean;
 };
 
-/**
- * Puzzle unlock rules, here for the same reason the streak rules are: one file
- * where every unlock condition in the product can be read, and one place to
- * check the seed's invariant that every code has a catalog row.
- *
- * Every rule is gated on a solve. A failed attempt is still an attempt, and
- * counting one toward a trophy would make the cheapest trophy a keystroke.
- */
 const PUZZLE_RULES: Record<string, (context: PuzzleUnlockContext) => boolean> =
   {
     PUZZLE_FIRST: (c) => c.solved && c.puzzlesSolved === 1,
@@ -123,13 +80,11 @@ const PUZZLE_RULES: Record<string, (context: PuzzleUnlockContext) => boolean> =
     PUZZLE_STREAK_5: (c) => c.solved && c.streak >= 5,
     PUZZLE_STREAK_20: (c) => c.solved && c.streak >= 20,
 
-    // Solving well above the ladder's midpoint is worth marking on its own.
     PUZZLE_HARD: (c) => c.solved && c.puzzleRating >= 1800,
 
     DAILY_PUZZLE: (c) => c.solved && c.daily,
   };
 
-/** The codes a settled puzzle attempt satisfies. */
 export function satisfiedPuzzleCodes(context: PuzzleUnlockContext): string[] {
   return Object.entries(PUZZLE_RULES)
     .filter(([, rule]) => rule(context))

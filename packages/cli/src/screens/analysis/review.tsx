@@ -50,10 +50,8 @@ const QUALITY_LABEL: Record<MoveQuality, string> = {
   blunder: "Blunder",
 };
 
-/** Centipawns clamped to a pawn axis for the eval bar. */
 const BAR_W = 24;
 
-/** A signed pawn reading, or mate notation, from white's point of view. */
 function formatEval(analysis: PositionAnalysis): string {
   if (analysis.mateIn !== null) {
     if (analysis.mateIn === 0) {
@@ -65,7 +63,6 @@ function formatEval(analysis: PositionAnalysis): string {
   return `${pawns >= 0 ? "+" : ""}${pawns.toFixed(1)}`;
 }
 
-/** White's share of the eval bar, 0 (black winning) to 1 (white winning). */
 function whiteShare(analysis: PositionAnalysis): number {
   if (analysis.mateIn !== null) {
     return analysis.scoreCp >= 0 ? 1 : 0;
@@ -94,7 +91,6 @@ function subtitleFor(game: ServerGame): string {
   return `${kind} · ${outcome}`;
 }
 
-/** Who played, and how it ended — the headers a copied PGN is written with. */
 function pgnDetailsFor(game: ServerGame, you: string): PgnDetails {
   const them =
     game.mode === "AI"
@@ -184,9 +180,6 @@ export function Review({
     <ReviewBoard
       source={{
         history: game.history,
-        // Null on an ordinary game, and the dealt array on a shuffled one.
-        // Reviewing a Chess960 game from the standard start would replay its
-        // moves onto the wrong pieces and fail on the first one that differs.
         startingFen: game.startFen ?? STARTING_FEN,
         orientation: game.yourColor,
         subtitle: subtitleFor(game),
@@ -208,7 +201,6 @@ export function ReviewBoard({
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
 
-  // Stable across ticks so the analysis effect does not restart every render.
   const frames = useMemo(
     () => buildFrames(source.history, source.startingFen),
     [source.history, source.startingFen],
@@ -221,7 +213,6 @@ export function ReviewBoard({
   const [flipped, setFlipped] = useState(source.orientation === "b");
   const [note, setNote] = useState<string | null>(null);
 
-  /** Step to the next mistake in `direction`, or say there isn't one. */
   const jumpToMistake = useCallback(
     (direction: 1 | -1) => {
       const marks = mistakes(report);
@@ -304,9 +295,6 @@ export function ReviewBoard({
         void exportPgn();
         break;
       case "y":
-        // The position you are *looking at*, not the one the game ended on —
-        // stepping to a mistake and taking that position elsewhere is the whole
-        // reason to want it. Shifted, it is the game instead.
         setNote(
           key.shift
             ? copyPgn(frames[lastPly]!, source.pgn)
@@ -326,16 +314,11 @@ export function ReviewBoard({
       ? findKing(position.board, position.turn)
       : null;
 
-  // The quality of the move that reached this position, once both the position
-  // before it and this one have been evaluated.
   const before = ply > 0 ? analyses[ply - 1] : null;
   const moved = ply > 0 ? (source.history[ply - 1] ?? null) : null;
   let quality: { label: string; loss: number | null } | null = null;
   if (ply > 0 && before && analysis) {
     const mover = frames[ply - 1]!.position.turn;
-    // Clamp mate scores onto the pawn axis before comparing: throwing away a
-    // forced mate for a merely-winning position is a mistake, not the
-    // hundred-pawn "blunder" the raw mate score would read as.
     const loss = centipawnLoss(
       mover,
       clampEval(before.scoreCp),
@@ -352,9 +335,6 @@ export function ReviewBoard({
     ? toSan(position, analysis.bestMove, frame.legalMoves)
     : null;
 
-  // Named off the frame rather than the whole game, so stepping through the
-  // opening shows it being named a move at a time — and a game that transposed
-  // reports what it transposed into at the point it did.
   const opening = openingOf(frame);
 
   return (
@@ -457,11 +437,6 @@ export function ReviewBoard({
   );
 }
 
-/**
- * How each side played, over the whole game: an accuracy percentage and the
- * count of what went wrong. This is the line a review opens with — the move by
- * move detail is what you read after it has told you where to look.
- */
 function AccuracyRow({ report }: { report: GameReport }) {
   const theme = useUITheme();
 

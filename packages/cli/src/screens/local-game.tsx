@@ -37,12 +37,6 @@ const KEYMAP: Keymap = {
 
 export function LocalGame() {
   const theme = useUITheme();
-  /**
-   * The array in play, or null for the ordinary one. Held apart from the game
-   * so that `r` restarts the same *variant* rather than the same position: a
-   * shuffled game that replayed its own array on every reset would only ever
-   * be one shuffled game.
-   */
   const [startFen, setStartFen] = useState<string | null>(null);
   const [game, setGame] = useState(createGame);
 
@@ -53,7 +47,6 @@ export function LocalGame() {
   const { position, status, history } = game;
   const over = isGameOver(status);
 
-  // No `you` side: whoever's turn it is holds the keyboard.
   const selection = useMoveSelection({
     game,
     cursor: cursor.cursor,
@@ -62,7 +55,6 @@ export function LocalGame() {
   });
   const { beginCommit, clearSelection, setMessage } = selection;
 
-  /** Start again — a fresh array when the game in play is a shuffled one. */
   const reset = useCallback(() => {
     const fen = startFen === null ? null : randomChess960Fen();
     setStartFen(fen);
@@ -72,7 +64,6 @@ export function LocalGame() {
     setMessage(null);
   }, [clearSelection, cursor.resetCursor, setMessage, startFen]);
 
-  /** Switch between the ordinary array and a shuffled one, dealing as it goes. */
   const toggleVariant = useCallback(() => {
     const fen = startFen === null ? randomChess960Fen() : null;
     setStartFen(fen);

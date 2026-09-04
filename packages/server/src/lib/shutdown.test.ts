@@ -50,9 +50,6 @@ describe("shutdown", () => {
     expect(calls).toBe(0);
   });
 
-  // The case that matters for a stream opening in the middle of a shutdown: it
-  // has already missed the announcement, and waiting for a second one would
-  // hold the connection open for the whole grace period.
   test("subscribing after the fact runs immediately", () => {
     beginShutdown();
 

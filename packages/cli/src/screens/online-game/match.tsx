@@ -69,10 +69,7 @@ export function OnlineMatch({
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
   const opponentName = server.opponent?.username ?? "your opponent";
-  /** Your own name, for the header of a PGN copied off a finished game. */
   const you = auth.profile?.username ?? "You";
-  // The equipped title is the whole point of buying one; the header is where
-  // it gets shown off. Status lines keep the bare username so they stay short.
   const opponentDisplay = server.opponent?.title
     ? `${server.opponent.title} ${opponentName}`
     : opponentName;
@@ -81,49 +78,28 @@ export function OnlineMatch({
     initialSquare: homeSquare(human),
     initiallyFlipped: human === "b",
   });
-  /**
-   * A request is on the wire; the board is read-only until it answers. The value
-   * is the status line to show while it is — not every action here is a move, and
-   * a draw offer announcing itself as one would be a lie the player can see.
-   */
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
   const [confirmingResign, setConfirmingResign] = useState(false);
-  /** A draw offer is one keypress from being sent; `d` again confirms it. */
   const [confirmingDraw, setConfirmingDraw] = useState(false);
-  /** The opponent has been on the clock long enough to claim the win. */
   const [claimAvailable, setClaimAvailable] = useState(false);
-  /** The phrase picker is open and taking the digits. */
   const [saying, setSaying] = useState(false);
 
   const game = useReplayedGame(server.history, server.startFen);
   const { position, status } = game;
   const over = server.result !== null || isGameOver(status);
 
-  /** Whose draw offer is standing, if either side's. */
   const theirDrawOffer =
     server.drawOfferFrom !== null && server.drawOfferFrom !== human;
   const myDrawOffer = server.drawOfferFrom === human;
 
-  /** And the same for the takeback, which stands independently of the draw. */
   const theirTakeback =
     server.takebackOfferFrom !== null && server.takebackOfferFrom !== human;
   const myTakeback = server.takebackOfferFrom === human;
 
-  /**
-   * Whether there is a move of ours to ask back for. The server decides this
-   * too and would refuse, but the footer has to know before the keypress: a
-   * key offered on move one and answered with a complaint is worse than a key
-   * that is simply not there yet.
-   *
-   * One ply in, with us to move, our own first move has not happened.
-   */
   const canAskTakeback =
     server.ply >= 1 && !(server.ply === 1 && position.turn === human);
 
-  // `d` and `n` mean three different pairs of things depending on whose offer
-  // is on the board, and the footer only has room to say so in four words. The
-  // overlay describes whichever reading is live, exactly as the footer does.
   useKeymap(
     useMemo<Keymap>(
       () => ({
@@ -209,8 +185,6 @@ export function OnlineMatch({
       setServer(state);
       clearSelection();
 
-      // The payout moved our header numbers whether or not this response
-      // carried our breakdown — the opponent's request may have settled it.
       if (state.result !== null) {
         void auth.refresh();
       }
@@ -237,59 +211,14 @@ export function OnlineMatch({
     [auth, clearSelection, toast],
   );
 
-  // What the board is showing right now, readable from inside the stream
-  // callback without making the subscription depend on it. One connection has
-  // to outlive every move of the game; an effect that re-ran on each ply would
-  // tear the stream down and rebuild it after every single one.
   const latest = useRef(server);
   latest.current = server;
 
-  /**
-   * Whether a request of ours is waiting on the server, read from that same
-   * callback. A change landing while one is in flight is most likely its echo,
-   * and our own resignation is not news worth ringing a bell about.
-   */
   const awaitingOurOwn = useRef(pending);
   awaitingOurOwn.current = pending;
 
-  /**
-   * When the opponent's turn began, by this terminal's clock rather than the
-   * game's — an untimed game has no clock, and the question the bell asks is
-   * how long *this* terminal has been sitting there with nothing happening in
-   * it.
-   *
-   * Written from the effect below rather than from here, which is what makes it
-   * hold the right value when it is read: the effect runs after the render that
-   * applied a state, so at the moment the next one arrives it still says when
-   * the turn that state ends began.
-   */
   const theirTurnSince = useRef<number | null>(null);
 
-  // The opponent's moves, resignations, draw offers and messages arrive pushed,
-  // not polled. Only a changed board is *applied* — `apply` clears the current
-  // selection, and having a square picked up must survive an event that says
-  // nothing new.
-  //
-  // That same guard is what protects the rewards breakdown: our own move's POST
-  // response carries it and the stream's copy never does, so the echo of our
-  // move arriving a moment later matches on ply and result and is ignored.
-  //
-  // A draw offer moves neither the ply nor the result, so it has to be named here
-  // too or a board change that is pure negotiation would be filtered out as
-  // "nothing new" — and an offer nobody is told about is not an offer. A
-  // takeback request is the same, and named for the same reason. (The takeback
-  // itself does move the ply, backwards, and needs no special case here.)
-  //
-  // A message moves none of the three, and is also not a board change at all: it
-  // takes the narrow path, which copies the transcript across and leaves
-  // everything else — the held selection, the rewards line — exactly where it
-  // was. Being told "nice move" must not put your piece back down.
-  //
-  // Gated on whether the game was live when this screen opened rather than on
-  // `over`, so the subscription survives the game ending. The server keeps the
-  // stream open for a minute and a half past the result precisely so the "good
-  // game" afterwards lands, and an effect that tore down on `over` would hang up
-  // a moment before it arrived.
   const wasLiveOnOpen = initial.result === null;
 
   useEffect(() => {
@@ -307,9 +236,6 @@ export function OnlineMatch({
           state.drawOfferFrom !== current.drawOfferFrom ||
           state.takebackOfferFrom !== current.takebackOfferFrom
         ) {
-          // Ring the terminal first, while the state that is about to be
-          // applied can still be compared with the one it replaces. Most of
-          // these changes are not worth a bell and `alertFor` says which.
           const alert = alertFor({
             state,
             previous: current,
@@ -335,9 +261,6 @@ export function OnlineMatch({
     });
   }, [apply, human, opponentName, server.id, wasLiveOnOpen]);
 
-  // Arms the claim offer while the opponent sits on their turn, and starts the
-  // shorter count the bell reads. Keyed on ply, not the turn value: only an
-  // actual move resets the clock, the same event the server measures from.
   useEffect(() => {
     setClaimAvailable(false);
 
@@ -353,7 +276,6 @@ export function OnlineMatch({
     return () => clearTimeout(timer);
   }, [human, over, position.turn]);
 
-  /** Refetch and accept whatever the server says; our picture was stale. */
   const resync = useCallback(async () => {
     try {
       apply(await fetchGame(server.id));
@@ -362,11 +284,6 @@ export function OnlineMatch({
     }
   }, [apply, server.id, setMessage]);
 
-  /**
-   * Settle on time: cash in the opponent's fallen flag, or concede our own.
-   * The server decides which it is, so a clock that only looks fallen to us
-   * (a lagging tick) comes back a conflict and we just resync.
-   */
   const flag = useCallback(async () => {
     if (busy || over) {
       return;
@@ -430,11 +347,6 @@ export function OnlineMatch({
     [apply, beginCommit, resync, server.id, server.ply, setMessage],
   );
 
-  /**
-   * Give up the game. Before the first move it is an abort — settled with no
-   * loss on either record, the way out of a match whose opponent never showed —
-   * and once under way it is a resignation.
-   */
   const concede = useCallback(async () => {
     setConfirmingResign(false);
     setPending(server.ply === 0 ? "Aborting…" : "Resigning…");
@@ -453,12 +365,6 @@ export function OnlineMatch({
     }
   }, [apply, server.id, server.ply, setMessage]);
 
-  /**
-   * Offer a draw — or, when the opponent's offer is already standing, agree to
-   * it. The server makes that call, so the two cases are one request here: it is
-   * the same keypress either way, and treating a simultaneous exchange of offers
-   * as agreement is the server's business, not the board's.
-   */
   const proposeDraw = useCallback(async () => {
     setConfirmingDraw(false);
     setPending("Offering a draw…");
@@ -477,7 +383,6 @@ export function OnlineMatch({
     }
   }, [apply, resync, server.id, setMessage]);
 
-  /** Take the draw they offered. A conflict means it is no longer on the table. */
   const takeDraw = useCallback(async () => {
     setPending("Accepting the draw…");
     setMessage(null);
@@ -495,7 +400,6 @@ export function OnlineMatch({
     }
   }, [apply, resync, server.id, setMessage]);
 
-  /** Clear the offer on the board: theirs declined, or ours withdrawn. */
   const refuseDraw = useCallback(async () => {
     const mine = myDrawOffer;
     setPending(mine ? "Withdrawing your offer…" : "Declining the draw…");
@@ -511,20 +415,6 @@ export function OnlineMatch({
     }
   }, [apply, myDrawOffer, server.id, setMessage]);
 
-  /**
-   * Ask for the last move back.
-   *
-   * The server reads this as agreement when their request is already standing,
-   * which is what makes two players pressing `u` at the same instant come out
-   * as one takeback rather than as two requests neither will ever answer — but
-   * the screen does not rely on that, and routes an answer to their request
-   * through `grantTakeback` instead, so the status line can say which of the
-   * two things is happening.
-   *
-   * No confirmation step, unlike the draw. Half a point cannot be given away
-   * with this key: an unwanted request costs the opponent one keypress to
-   * refuse, and costs the asker nothing to withdraw.
-   */
   const proposeTakeback = useCallback(async () => {
     setPending("Asking for your move back…");
     setMessage(null);
@@ -542,7 +432,6 @@ export function OnlineMatch({
     }
   }, [apply, resync, server.id, setMessage]);
 
-  /** Grant theirs. A conflict means a move has since cleared the request. */
   const grantTakeback = useCallback(async () => {
     setPending("Giving the move back…");
     setMessage(null);
@@ -560,7 +449,6 @@ export function OnlineMatch({
     }
   }, [apply, resync, server.id, setMessage]);
 
-  /** Clear the request on the board: theirs refused, or ours withdrawn. */
   const refuseTakeback = useCallback(async () => {
     const mine = myTakeback;
     setPending(mine ? "Withdrawing your request…" : "Refusing the takeback…");
@@ -576,11 +464,6 @@ export function OnlineMatch({
     }
   }, [apply, myTakeback, server.id, setMessage]);
 
-  /**
-   * Offer this opponent another game. It becomes an ordinary challenge in
-   * their list — there is nothing to wait on here, so the screen says it was
-   * sent and the game, if they take it, arrives from the challenge list.
-   */
   const rematch = useCallback(async () => {
     setPending("Offering a rematch…");
     setMessage(null);
@@ -595,28 +478,11 @@ export function OnlineMatch({
     }
   }, [opponentName, server.id, setMessage]);
 
-  /**
-   * The nine phrases, led by the ones that fit where the game is.
-   *
-   * The whole catalog is always on screen and only its order moves: a picker
-   * whose contents changed under you would be worse than one whose best answer
-   * is not always first, and "sorry" has to stay reachable at every point in a
-   * game.
-   */
   const phrases = useMemo(
     () => chatPhrasesFor(over ? "end" : server.ply < 2 ? "start" : "any"),
     [over, server.ply],
   );
 
-  /**
-   * Say one of them.
-   *
-   * Deliberately outside `pending`, unlike every other request on this screen.
-   * Those all change the game and have to lock the board until the server
-   * agrees; this one changes nothing about the position, and freezing the
-   * pieces because somebody typed "nice move" would make the feature cost a
-   * tempo in a bullet game.
-   */
   const say = useCallback(
     async (phrase: ChatPhraseId) => {
       setSaying(false);
@@ -633,8 +499,6 @@ export function OnlineMatch({
 
   const { push: pushLayer, pop: popLayer, isTopLayer } = useKeyboardLayer();
 
-  // The picker owns the keyboard while it is open, which is what lets it bind
-  // the digits without the board underneath having to know they are spoken for.
   useEffect(() => {
     if (!saying) {
       return;
@@ -661,7 +525,6 @@ export function OnlineMatch({
     }
   });
 
-  /** Take the win from an opponent who walked away. The server is the judge. */
   const claim = useCallback(async () => {
     setPending("Claiming the win…");
     setMessage(null);
@@ -670,7 +533,6 @@ export function OnlineMatch({
       apply(await claimVictory(server.id));
     } catch (error) {
       if (error instanceof GameConflictError) {
-        // The opponent moved after all, or the server's clock lags ours.
         await resync();
       } else {
         setMessage(errorMessage(error));
@@ -680,9 +542,6 @@ export function OnlineMatch({
     }
   }, [apply, resync, server.id, setMessage]);
 
-  // Escape's extra steps here: a pending resign or draw confirmation. Leaving
-  // mid-game is fine — the game stays active, and the queue hands it straight
-  // back the next time this screen opens.
   const handleEscape = useCallback(
     () =>
       selection.handleEscape(() => {
@@ -712,14 +571,9 @@ export function OnlineMatch({
         white: human === "w" ? you : opponentName,
         black: human === "b" ? you : opponentName,
       }),
-      // A rated game against a person is the one board where an engine's
-      // opinion is worth something to someone, so the position does not leave
-      // this screen until the result is in. It is the same reading the analysis
-      // screen gets by only ever opening on a finished game.
       refuse: over ? null : "Not while the game is on — press y once it's over",
       onNote: setMessage,
     },
-    // A pending confirmation is called off by any key that isn't its own confirm.
     before: (name) => {
       if (confirmingResign && name !== "x") {
         setConfirmingResign(false);
@@ -731,9 +585,6 @@ export function OnlineMatch({
     onKey: (name) => {
       switch (name) {
         case "u":
-          // The takeback key, in its three readings — the draw key's shape,
-          // one row down. Answering their request needs no confirmation; nor
-          // does making one, because a request is not a concession.
           if (busy || over) {
             break;
           }
@@ -770,10 +621,6 @@ export function OnlineMatch({
           }
           break;
         case "d":
-          // The draw key, in all three of its readings. Answering an offer needs
-          // no confirmation — the player is replying to a question already on the
-          // screen — but starting one does, so half a game is not given away by a
-          // stray keypress.
           if (busy || over) {
             break;
           }
@@ -790,15 +637,6 @@ export function OnlineMatch({
           }
           break;
         case "n":
-          // "No" to whatever is on the table — and up to two things can be,
-          // since a draw offer and a takeback request stand independently. The
-          // order is the one a person would use: answer what was asked of you
-          // before withdrawing what you asked for, and the takeback before the
-          // draw, it being the narrower question and the one the next move
-          // would clear on its own anyway.
-          //
-          // Never a guess as to which: the status line names the thing `n` is
-          // about to answer, and pressing it twice answers both.
           if (busy || over) {
             break;
           }
@@ -818,20 +656,16 @@ export function OnlineMatch({
           }
           break;
         case "a":
-          // A finished rated game is worth reviewing; jump straight in.
           if (over) {
             void navigate("/analysis", { state: { gameId: server.id } });
           }
           break;
         case "p":
-          // `r` already means "back to the queue"; a rematch is the other
-          // thing you might want from a finished game, so it gets its own key.
           if (over && !busy && server.result !== "ABORTED") {
             void rematch();
           }
           break;
         case "t":
-          // Talk. Available after the result too — see `say`.
           setSaying(true);
           break;
       }
@@ -861,8 +695,6 @@ export function OnlineMatch({
       return "Game aborted — press r to search again";
     }
 
-    // A result on a position that isn't terminal was agreed rather than played
-    // out: a draw both sides signed, or a resignation.
     if (server.result !== null && !isGameOver(status)) {
       if (server.result === "DRAW") {
         return "Draw agreed — press r to search again";
@@ -873,9 +705,6 @@ export function OnlineMatch({
         : `You resigned — ${opponentName} wins`;
     }
 
-    // An offer on the table outranks the position: it is a question addressed to
-    // this player, and the turn indicator will still be there once it is answered.
-    // Same order the `n` key answers them in, so the line and the key agree.
     if (theirTakeback) {
       return `${opponentName} wants their move back — u grants, n refuses`;
     }
@@ -924,8 +753,6 @@ export function OnlineMatch({
           <span fg={theme.faint}> select </span>
           <span fg={theme.cream}>x</span>
           <span fg={theme.faint}> resign </span>
-          {/* The draw keys read as whatever they currently do: accept/decline
-              while an offer is on the table, and plain "draw" otherwise. */}
           {over ? null : theirDrawOffer ? (
             <>
               <span fg={theme.cream}>d</span>
@@ -944,10 +771,6 @@ export function OnlineMatch({
               <span fg={theme.faint}> draw </span>
             </>
           )}
-          {/* The takeback keys, read the same way as the draw's: whatever they
-              currently do. Absent entirely before there is a move of yours
-              under them — a key that answers with a complaint is worse than
-              one that is not there yet. */}
           {over ? null : theirTakeback ? (
             <>
               <span fg={theme.cream}>u</span>

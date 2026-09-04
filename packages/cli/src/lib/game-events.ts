@@ -3,36 +3,15 @@ import { refreshAccessToken } from "./oauth";
 import type { ServerGame } from "./games";
 import type { SpectatorGame } from "./spectate";
 
-/**
- * The live feed for an online game, over Server-Sent Events.
- *
- * This replaces polling `GET /games/{id}` every two seconds. The saving is not
- * only the request rate: every one of those polls carried a token verification
- * and a full game load, and the opponent's move was on average a second old by
- * the time it showed up. One connection, pushed to, is both cheaper and faster.
- *
- * Written against `fetch` rather than `EventSource`, which Bun does have, for
- * one reason: `EventSource` cannot send an `Authorization` header, and the API
- * takes a bearer token. That means parsing the wire format here, which is small
- * and stable enough to be worth it.
- *
- * A dropped connection is reconnected with backoff, and every reconnect is
- * handed the current state immediately by the server — so a reconnect is also
- * the resync, and no separate catch-up fetch is ever needed.
- */
-
 const API_URL = process.env.API_URL ?? "http://localhost:3000/api";
 
-/** Backoff between reconnects: 1s doubling to a 10s ceiling. */
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 10_000;
 
 export type GameStreamHandlers<T = ServerGame> = {
-  /** The authoritative game state, sent on connect and on every change. */
   onState: (game: T) => void;
 };
 
-/** The two feeds a game publishes, and what each one is entitled to see. */
 type StreamKind = "player" | "spectator";
 
 const STREAM_PATH: Record<StreamKind, (gameId: string) => string> = {
@@ -42,11 +21,6 @@ const STREAM_PATH: Record<StreamKind, (gameId: string) => string> = {
 
 type ParsedEvent = { event: string; data: string };
 
-/**
- * Split one SSE frame into its event name and joined data lines. Returns null
- * for a frame carrying no data at all — which is what a `: keepalive` comment
- * is, and the reason idle connections do not surface as events.
- */
 function parseFrame(raw: string): ParsedEvent | null {
   let event = "message";
   const data: string[] = [];
@@ -58,8 +32,6 @@ function parseFrame(raw: string): ParsedEvent | null {
 
     const colon = line.indexOf(":");
     const field = colon === -1 ? line : line.slice(0, colon);
-    // One optional leading space after the colon is part of the framing, not
-    // the value — stripping more would corrupt indented JSON.
     const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
 
     if (field === "event") {
@@ -87,8 +59,6 @@ async function consume(
         return;
       }
 
-      // Normalized so a proxy that rewrites line endings cannot hide the
-      // blank-line frame separator this splits on.
       buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
 
       let boundary = buffer.indexOf("\n\n");
@@ -104,8 +74,6 @@ async function consume(
       }
     }
   } finally {
-    // Releases the socket. A cancel on an already-closed stream throws, and
-    // there is nothing useful to do about it.
     void reader.cancel().catch(() => {});
   }
 }
@@ -127,8 +95,6 @@ function open(
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    // Removed again when the timer wins: the signal lives for the whole
-    // subscription, and a listener left behind per reconnect accumulates.
     const onAbort = () => {
       clearTimeout(timer);
       resolve();
@@ -141,13 +107,6 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Follow `gameId` until the returned function is called.
- *
- * The server closes the stream once the game is settled, and the final state
- * carries the result — so the loop stops on its own rather than reconnecting to
- * a game with nothing left to say.
- */
 function subscribe<T extends { result: string | null }>(
   kind: StreamKind,
   gameId: string,
@@ -164,19 +123,13 @@ function subscribe<T extends { result: string | null }>(
       try {
         let response = await open(kind, gameId, signal);
 
-        // The access token expired mid-game — an hour of play is entirely
-        // normal. One refresh and one retry, matching the api-client's policy.
         if (response.status === 401) {
           const outcome = await refreshAccessToken();
           if (outcome.status === "rejected") {
-            // The session is truly over. Match the api-client's policy: wipe
-            // the stored auth so listeners flip the UI to signed-out, and stop
-            // — reconnecting with a dead token can never succeed.
             clearAuth();
             return;
           }
           if (outcome.status !== "refreshed") {
-            // Clerk unreachable; the token may still be good. Retry later.
             throw new Error("Not authorized to watch this game");
           }
           response = await open(kind, gameId, signal);
@@ -186,9 +139,6 @@ function subscribe<T extends { result: string | null }>(
           throw new Error(`Stream failed with ${response.status}`);
         }
 
-        // A connection that opened is a healthy one; forget earlier failures so
-        // a long game does not inherit a ten-second backoff from its first
-        // minute.
         attempt = 0;
 
         await consume(response.body, (frame) => {
@@ -199,17 +149,11 @@ function subscribe<T extends { result: string | null }>(
           const state = JSON.parse(frame.data) as T;
           handlers.onState(state);
 
-          // The server hangs up after this one. Recording it here means the
-          // loop exits rather than treating the close as a dropped connection.
           if (state.result !== null) {
             finished = true;
           }
         });
-      } catch {
-        // Every failure is treated the same: wait, then open again. The screen
-        // stays on the last known board meanwhile, which is the truthful thing
-        // to show — nothing has been observed to change.
-      }
+      } catch {}
 
       if (signal.aborted || finished) {
         return;
@@ -225,7 +169,6 @@ function subscribe<T extends { result: string | null }>(
   return () => controller.abort();
 }
 
-/** The players' feed for a game you are in. */
 export function subscribeToGame(
   gameId: string,
   handlers: GameStreamHandlers<ServerGame>,
@@ -233,11 +176,6 @@ export function subscribeToGame(
   return subscribe("player", gameId, handlers);
 }
 
-/**
- * The spectators' feed. Same connection machinery, different endpoint and a
- * narrower payload — a watcher gets the board and the clocks, and no legal
- * moves to be tempted into offering.
- */
 export function subscribeToSpectatorGame(
   gameId: string,
   handlers: GameStreamHandlers<SpectatorGame>,

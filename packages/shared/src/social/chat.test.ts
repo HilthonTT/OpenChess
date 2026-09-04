@@ -14,9 +14,6 @@ import {
 } from "./chat";
 
 describe("the chat catalog", () => {
-  // Between them the two lists account for the whole catalog: an entry on
-  // neither is a phrase nothing can ever send, which is a dead row rather than
-  // a feature waiting to be used.
   test("orders every phrase exactly once, across the two conversations", () => {
     expect(
       [...new Set([...CHAT_PHRASE_IDS, ...SPECTATOR_PHRASE_IDS])].sort().join(),
@@ -34,8 +31,6 @@ describe("the chat catalog", () => {
     }
   });
 
-  // The picker binds 1-9 to the list, so a tenth phrase would silently become
-  // unreachable rather than fail anything.
   test("fits the digit keys", () => {
     expect(CHAT_PHRASE_IDS.length).toBeLessThanOrEqual(9);
     expect(SPECTATOR_PHRASE_IDS.length).toBeLessThanOrEqual(9);
@@ -47,9 +42,6 @@ describe("the chat catalog", () => {
     }
   });
 
-  // The point of the split: a watcher narrating someone else's blunder as
-  // "oops" reads as the player who made it, and a player calling their own
-  // game "brilliant" reads as nobody at all.
   test("keeps the two conversations apart", () => {
     expect(SPECTATOR_PHRASE_IDS).not.toContain("oops");
     expect(SPECTATOR_PHRASE_IDS).not.toContain("sorry");
@@ -77,7 +69,6 @@ describe("the two doors", () => {
   test("neither admits something outside the catalog", () => {
     expect(isPlayerPhraseId("say-whatever-i-like")).toBe(false);
     expect(isSpectatorPhraseId("say-whatever-i-like")).toBe(false);
-    // Not `in`, so nothing inherited slips past either.
     expect(isPlayerPhraseId("toString")).toBe(false);
     expect(isSpectatorPhraseId("constructor")).toBe(false);
   });
@@ -92,8 +83,6 @@ describe("isChatPhraseId", () => {
     expect(isChatPhraseId("say-whatever-i-like")).toBe(false);
   });
 
-  // `hasOwnProperty` rather than `in`, precisely so an inherited key cannot
-  // pass the guard the API validates submissions with.
   test("rejects a key inherited from Object.prototype", () => {
     expect(isChatPhraseId("toString")).toBe(false);
     expect(isChatPhraseId("constructor")).toBe(false);
@@ -105,8 +94,6 @@ describe("chatPhraseText", () => {
     expect(chatPhraseText("wellPlayed")).toBe("Well played");
   });
 
-  // A phrase retired from the catalog is still a message somebody sent; the
-  // game it is in has to stay readable.
   test("falls back to the key for a retired phrase", () => {
     expect(chatPhraseText("phraseWeNoLongerOffer")).toBe(
       "phraseWeNoLongerOffer",

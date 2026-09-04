@@ -11,46 +11,13 @@ import { useBoardTheme } from "../providers/theme";
 import { usePieceSet } from "../providers/pieces";
 import { renderPiece } from "./pieces";
 
-/**
- * Renders a position as a human readable grid. Pieces and empty squares are
- * arranged in a grid-like pattern. The square under the cursor and the selected
- * piece are highlighted, legal moves for the selected piece are marked with a
- * dot (.) on empty squares, and pieces that may be captured are highlighted.
- *
- * For example, with the white pawn on E2 selected we mark E3 and E4:
- *
- *    ┌───┬───┬───┬───┬───┬───┬───┬───┐
- *  8 │ ♖ │ ♘ │ ♗ │ ♕ │ ♔ │ ♗ │ ♘ │ ♖ │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  7 │ ♙ │ ♙ │ ♙ │ ♙ │ ♙ │ ♙ │ ♙ │ ♙ │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  6 │   │   │   │   │   │   │   │   │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  5 │   │   │   │   │   │   │   │   │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  4 │   │   │   │   │ . │   │   │   │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  3 │   │   │   │   │ . │   │   │   │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  2 │ ♟ │ ♟ │ ♟ │ ♟ │ ♟ │ ♟ │ ♟ │ ♟ │
- *    ├───┼───┼───┼───┼───┼───┼───┼───┤
- *  1 │ ♜ │ ♞ │ ♝ │ ♛ │ ♚ │ ♝ │ ♞ │ ♜ │
- *    └───┴───┴───┴───┴───┴───┴───┴───┘
- *      A   B   C   D   E   F   G   H
- */
 interface BoardProps {
   board: BoardState;
-  /** The square the player is standing on. */
   cursor: number;
-  /** The piece the player has picked up, if any. */
   selected: number | null;
-  /** Legal moves for the selected piece; drives the dots and capture marks. */
   targets: Move[];
-  /** The move just played, highlighted so it's easy to see what happened. */
   lastMove: Move | null;
-  /** The king of a side that stands in check, if any. */
   checkSquare: number | null;
-  /** Draw from black's point of view. */
   flipped: boolean;
 }
 
@@ -86,8 +53,6 @@ export function Board({
     const piece = pieceAt(board, square);
     const isTarget = moveTargets.has(square);
 
-    // An empty square the selected piece can reach shows a dot; an occupied one
-    // keeps its glyph and is recolored to read as capturable.
     const glyph =
       isTarget && !isPiece(piece) ? "." : renderPiece(piece, pieceSet);
 
@@ -102,8 +67,6 @@ export function Board({
       fg = theme.captureHint;
     }
 
-    // Most specific highlight wins: where you are, then what you're holding,
-    // then a king in trouble, then the move that was just played.
     if (square === cursor) {
       bg = theme.cursorBg;
       fg = theme.cursorFg;

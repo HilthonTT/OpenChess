@@ -9,7 +9,6 @@ import {
   withTitleLinks,
 } from "./hateoas";
 
-/** A live, untimed AI game where you play white and are yet to move. */
 function freshGame() {
   return {
     id: "game1",
@@ -24,7 +23,6 @@ function freshGame() {
   };
 }
 
-/** The same, as an online game — where the draw links live. */
 function freshPvpGame() {
   return { ...freshGame(), mode: "PVP" as const };
 }
@@ -60,7 +58,6 @@ describe("gameLinks", () => {
   });
 
   test("abort survives the bot's opening move but not your own", () => {
-    // You are black at ply 1: the bot opened, you have not moved.
     const botOpened = gameLinks({
       ...freshGame(),
       yourColor: "b",
@@ -69,7 +66,6 @@ describe("gameLinks", () => {
     });
     expect(botOpened.abort).toBeDefined();
 
-    // You are white at ply 2: your own first move is on the board.
     const youMoved = gameLinks({ ...freshGame(), ply: 2 });
     expect(youMoved.abort).toBeUndefined();
   });
@@ -144,7 +140,6 @@ describe("gameLinks", () => {
       href: "/api/games/game1/draw",
       method: "DELETE",
     });
-    // Still offerable: offering into their offer is how agreement is reached.
     expect(links.offerDraw).toBeDefined();
   });
 
@@ -179,8 +174,6 @@ describe("the chat link", () => {
     });
   });
 
-  // The one link that outlives the result. "Good game" is said after the game,
-  // and a link that vanished on the final move would take it away exactly then.
   test("survives the game it belongs to", () => {
     const links = gameLinks({ ...freshPvpGame(), result: "WHITE_WIN" });
 
@@ -208,8 +201,6 @@ describe("withFriendLinks", () => {
       method: "POST",
     });
     expect(links.decline).toBeDefined();
-    // Declining is the answer to somebody else's question; withdrawing is not
-    // yours to do.
     expect(links.remove).toBeUndefined();
   });
 
@@ -286,8 +277,6 @@ describe("withPlayerLinks", () => {
     });
   });
 
-  // The state says there is a friendship but the id is missing — a row that
-  // cannot be addressed must not produce a link to nowhere.
   test("omits the friendship links when there is no row to address", () => {
     const links = profileFor("friends", null);
 

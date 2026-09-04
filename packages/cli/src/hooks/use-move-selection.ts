@@ -15,20 +15,12 @@ export interface PendingPromotion {
   to: number;
 }
 
-/** A screen's move handler; async screens return a promise the caller drops. */
 export type CommitMove = (
   from: number,
   to: number,
   choice?: PromotionPiece,
 ) => unknown;
 
-/**
- * Picking a piece up and putting it down: the selection, its legal targets,
- * the promotion prompt, and the messages that explain a refused input. The
- * commit itself stays on the screen — it is passed into `confirm` rather than
- * stored here, because a server screen's commit closes over state that in
- * turn needs `clearSelection`.
- */
 export function useMoveSelection({
   game,
   cursor,
@@ -40,11 +32,8 @@ export function useMoveSelection({
   game: Game;
   cursor: number;
   over: boolean;
-  /** Shown when confirm is pressed after the game has ended. */
   overMessage: string;
-  /** The side this player controls; omitted when one keyboard plays both. */
   you?: { color: Color; waitMessage: string };
-  /** A request is on the wire; the board is read-only until it answers. */
   locked?: boolean;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
@@ -59,7 +48,6 @@ export function useMoveSelection({
     setPromotion(null);
   }, []);
 
-  /** Pick up the piece under the cursor, explaining why when we can't. */
   const select = useCallback(
     (square: number) => {
       const piece = pieceAt(position.board, square);
@@ -126,17 +114,11 @@ export function useMoveSelection({
         return;
       }
 
-      // Not a legal destination: treat it as picking a different piece instead.
       select(cursor);
     },
     [cursor, game, locked, over, overMessage, position, select, selected, you],
   );
 
-  /**
-   * The front half every commit shares: refuse an illegal move with the
-   * standard message, otherwise clear the selection state and hand the move
-   * back for the screen to apply.
-   */
   const beginCommit = useCallback(
     (from: number, to: number, choice?: PromotionPiece) => {
       const move = findLegalMove(game, from, to, choice);
@@ -153,11 +135,6 @@ export function useMoveSelection({
     [game],
   );
 
-  /**
-   * Escape unwinds one step at a time before it gives up the screen: the
-   * promotion prompt first, then whatever dialog the screen slots in, then
-   * the selection.
-   */
   const handleEscape = useCallback(
     (cancelDialog?: () => boolean) => {
       if (promotion) {

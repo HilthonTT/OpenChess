@@ -37,7 +37,7 @@ import type { UITheme } from "../theme";
 import { errorMessage } from "../lib/utils";
 
 const WIDTH = 66;
-/** Rows in the viewport. Sized so the list plus its chrome fits 80x24. */
+
 const VISIBLE = 9;
 
 const RARITY_LABELS: Record<Title["rarity"], string> = {
@@ -68,13 +68,9 @@ export function Store() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(0);
-  /** The wallet after a purchase; falls back to the auth profile's number. */
   const [coins, setCoins] = useState<number | null>(null);
-  /** True after the first Enter on a buyable title; the next Enter buys. */
   const [confirming, setConfirming] = useState(false);
-  /** A purchase or equip round-trip is in flight; Enter is ignored. */
   const [busy, setBusy] = useState(false);
-  /** Bumped to refetch, e.g. after r, a purchase, or a fixed error. */
   const [attempt, setAttempt] = useState(0);
 
   const signedIn = auth.status === "signed-in";
@@ -118,15 +114,12 @@ export function Store() {
   const selected = titles?.[cursor] ?? null;
 
   const move = useCallback((to: (current: number) => number) => {
-    // Moving off the row disarms a pending purchase — the confirmation was
-    // for that title, not whichever one Enter lands on next.
     setConfirming(false);
     setCursor(to);
   }, []);
 
   const refresh = useCallback(() => {
     setAttempt((value) => value + 1);
-    // The header's coin count is fed by the auth profile; keep it in step.
     void auth.refresh();
   }, [auth]);
 
@@ -238,7 +231,6 @@ export function Store() {
       case "end":
         move(() => last);
         break;
-      // g / G, the vim pair for "top" and "bottom".
       case "g":
         move(() => (key.shift ? last : 0));
         break;
@@ -339,13 +331,11 @@ function Notice({ text }: { text: string }) {
   return <text fg={theme.dim}>{text}</text>;
 }
 
-/** Column widths, left to right. */
 const NAME_W = 24;
 const RARITY_W = 11;
 const PRICE_W = 8;
 const STATUS_W = 10;
 
-/** Trim an over-long label rather than let it push the columns apart. */
 function fit(value: string, width: number): string {
   return value.length > width
     ? `${value.slice(0, width - 1)}…`
@@ -367,8 +357,6 @@ function List({
     return <Notice text="The store is empty." />;
   }
 
-  // Keep the cursor mid-window while scrolling so there is always context on
-  // both sides of it, clamped at either end of the catalog.
   const offset = Math.max(
     0,
     Math.min(cursor - Math.floor(VISIBLE / 2), titles.length - VISIBLE),
@@ -379,8 +367,6 @@ function List({
   const heading = (label: string) => <span fg={theme.faint}>{label}</span>;
 
   return (
-    // A refresh in flight keeps the old rows on screen, just dimmed, so the
-    // list doesn't blank out under the cursor.
     <box flexDirection="column" width={WIDTH - 6}>
       <text>
         {heading("Title".padEnd(NAME_W))}

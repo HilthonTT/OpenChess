@@ -5,9 +5,6 @@ import { parseArgs } from "./lib/cli-args";
 import { setNotificationsEnabled } from "./lib/notify";
 import { createAppRouter } from "./router";
 
-// Read the command line before anything takes over the terminal, so `--help`
-// and a misspelled flag print a line and leave rather than clearing the screen
-// to say it.
 const parsed = parseArgs(Bun.argv.slice(2));
 
 if (parsed.kind === "print") {
@@ -19,8 +16,6 @@ if (parsed.kind === "print") {
   process.exit(parsed.code);
 }
 
-// `--bell` and `--no-bell` overrule OPENCHESS_BELL for this session. Nothing
-// says so when neither was given, which is the ordinary case.
 if (parsed.options.bell !== undefined) {
   setNotificationsEnabled(parsed.options.bell);
 }

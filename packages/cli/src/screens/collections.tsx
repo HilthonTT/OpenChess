@@ -18,23 +18,6 @@ import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 
-/**
- * Puzzle collections.
- *
- * A set is a motif and a number — twenty pins, thirty mates in two — and this
- * screen is the two things you can do about one: see how far along it you are,
- * and, on the ones you have finished, take the reward.
- *
- * Nothing here counts anything. Progress arrives from the server as a count of
- * the puzzles you have already solved carrying that theme, which is why a
- * collection can open with fourteen of twenty already done on the first visit:
- * it is not new progress, it is old work being read a new way.
- *
- * `enter` on an unfinished collection goes and trains it, rather than doing
- * nothing — the natural answer to "I am six pins short" is six pins, and the
- * trainer already takes a theme.
- */
-
 const KEYMAP: Keymap = {
   title: "Collections",
   sections: [
@@ -50,7 +33,7 @@ const KEYMAP: Keymap = {
 };
 
 const WIDTH = 64;
-/** Rows in the viewport. Sized so the list plus its chrome fits 80x24. */
+
 const VISIBLE = 8;
 
 export function Collections() {
@@ -62,11 +45,8 @@ export function Collections() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(0);
-  /** What the last claim said, under the list. */
   const [note, setNote] = useState<string | null>(null);
-  /** A claim is on the wire; `c` is ignored until it answers. */
   const [claiming, setClaiming] = useState(false);
-  /** Bumped to refetch, e.g. after r, a claim, or a fixed error. */
   const [attempt, setAttempt] = useState(0);
 
   const signedIn = auth.status === "signed-in";
@@ -109,15 +89,6 @@ export function Collections() {
   const last = Math.max(0, count - 1);
   const selected = entries?.[cursor] ?? null;
 
-  /**
-   * Take the reward for the selected collection.
-   *
-   * The refetch afterwards is not decoration: a claim moves the player's coins
-   * and XP, and the header those are shown in is read from the auth provider,
-   * so both have to be told. A claim that turns out to have been paid already
-   * comes back with a null reward and says so rather than pretending to pay
-   * twice.
-   */
   const claim = useCallback(async () => {
     if (!selected || claiming) {
       return;
@@ -190,7 +161,6 @@ export function Collections() {
       case "end":
         setCursor(last);
         break;
-      // g / G, the vim pair for "top" and "bottom".
       case "g":
         setCursor(key.shift ? last : 0);
         break;
@@ -202,8 +172,6 @@ export function Collections() {
         break;
       case "return":
       case "space":
-        // Straight to the trainer, filtered to this collection's theme. The
-        // answer to "I am six pins short" is six pins.
         if (selected) {
           void navigate("/puzzles", { state: { theme: selected.theme } });
         }
@@ -275,26 +243,17 @@ function Notice({ text }: { text: string }) {
   return <text fg={theme.dim}>{text}</text>;
 }
 
-/** Column widths, left to right. */
 const MARK_W = 2;
 const NAME_W = 26;
 const BAR_W = 12;
 const NUM_W = 10;
 
-/** Trim an over-long name rather than let it push the columns apart. */
 function fit(value: string, width: number): string {
   return value.length > width
     ? `${value.slice(0, width - 1)}…`
     : value.padEnd(width);
 }
 
-/**
- * A progress bar in `BAR_W` cells.
- *
- * Rounded down except that any progress at all shows one cell: a player who has
- * solved one of thirty should see that they have started, and a bar that reads
- * empty at 1/30 says the opposite of what is true.
- */
 function bar(solved: number, target: number): string {
   const ratio = Math.min(1, solved / target);
   const filled = ratio === 0 ? 0 : Math.max(1, Math.floor(ratio * BAR_W));
@@ -317,8 +276,6 @@ function List({
     return <Notice text="No collections yet — the catalog is empty." />;
   }
 
-  // Keep the cursor mid-window while scrolling so there is always context on
-  // both sides of it, clamped at either end of the catalog.
   const offset = Math.max(
     0,
     Math.min(cursor - Math.floor(VISIBLE / 2), entries.length - VISIBLE),
@@ -329,8 +286,6 @@ function List({
   const heading = (label: string) => <span fg={theme.faint}>{label}</span>;
 
   return (
-    // A refresh in flight keeps the old rows on screen, just dimmed, so the
-    // list doesn't blank out under the cursor.
     <box flexDirection="column" width={WIDTH - 6}>
       <text>
         {heading("".padEnd(MARK_W))}
@@ -368,9 +323,6 @@ function Row({
   const theme = useUITheme();
 
   const claimed = entry.claimedAt !== null;
-  // Three states, and the mark is what tells them apart at a glance: done and
-  // paid, done and owed, still going. The middle one is the whole reason the
-  // screen has a key.
   const mark = claimed ? "✔" : entry.complete ? "★" : "·";
   const markColour = claimed
     ? theme.gold
@@ -418,8 +370,6 @@ function Details({
   return (
     <box flexDirection="column" width={WIDTH - 6}>
       <text fg={theme.dim}>{fit(entry.description, WIDTH - 6)}</text>
-      {/* The corpus size, because the target is fixed and this is not: "20 of
-          247 in the corpus" is the honest reading of how much room is left. */}
       <text fg={theme.faint}>
         {`${entry.themeLabel} · ${entry.available} in the corpus`}
       </text>

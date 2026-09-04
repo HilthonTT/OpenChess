@@ -13,13 +13,12 @@ import { useTheme } from "../theme";
 import { RGBA, TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 
-/** Id of the keyboard layer the dialog registers while open. */
 const DIALOG_LAYER_ID = "dialog";
-/** Semi-transparent black backdrop behind the dialog. */
+
 const OVERLAY_BACKGROUND = RGBA.fromInts(0, 0, 0, 150);
 const OVERLAY_Z_INDEX = 100;
 const DIALOG_MAX_WIDTH = 60;
-/** Horizontal space kept free between the dialog and the terminal edges. */
+
 const DIALOG_HORIZONTAL_MARGIN = 4;
 
 export type DialogContextValue = {
@@ -37,17 +36,14 @@ export function DialogProvider({ children }: Props) {
   const [dialogStack, setDialogStack] = useState<DialogConfig[]>([]);
   const { push, pop } = useKeyboardLayer();
 
-  /** Opens a dialog on top of any already-open ones. */
   const open = useCallback((config: DialogConfig) => {
     setDialogStack((prev) => [...prev, config]);
   }, []);
 
-  /** Closes the topmost dialog, revealing the one beneath it, if any. */
   const close = useCallback(() => {
     setDialogStack((prev) => prev.slice(0, -1));
   }, []);
 
-  // Hold the keyboard layer while any dialog is open; ctrl+c closes the top one.
   const hasOpenDialog = dialogStack.length > 0;
   useEffect(() => {
     if (!hasOpenDialog) {

@@ -3,32 +3,11 @@ import { createGame, play, type Game } from "./game";
 import { findSanMove } from "./pgn";
 import type { PgnResult, PgnTags } from "./pgn-text";
 
-/**
- * PGN import.
- *
- * `pgn-text.ts` writes the archival format; this reads it back. The two are
- * deliberately asymmetric: we emit one canonical shape, and have to accept
- * whatever a real file contains — comments, variations, annotation glyphs,
- * clock times, a game that starts from a `FEN` tag rather than the initial
- * array. Everything that is decoration is dropped, and what survives is the
- * mainline, replayed through the same rules the rest of the engine runs.
- *
- * @see https://www.thechessdrum.net/PGN_Reference.txt
- */
-
 export type ParsedPgn = {
-  /** The seven-tag roster and any other tags the file carried, by lowercase key. */
   tags: PgnTags & Record<string, string>;
-  /** The result token from the movetext, or from the `Result` tag. */
   result: PgnResult;
-  /** The position the game starts from — the `FEN` tag, or the initial array. */
   startingFen: string;
-  /**
-   * The mainline in SAN — as the engine spells it, not as the file did, so a
-   * move written `Qxf7#`, `Qxf7+!` or `Qf7xf7` all come back canonical.
-   */
   moves: string[];
-  /** The mainline replayed. Its status and history are fully populated. */
   game: Game;
 };
 
@@ -38,17 +17,8 @@ function isResult(token: string): token is PgnResult {
   return RESULTS.includes(token);
 }
 
-/** `[White "Kasparov"]`, with the spec's backslash escapes undone. */
 const TAG_LINE = /^\[\s*([A-Za-z0-9_]+)\s*"((?:[^"\\]|\\.)*)"\s*\]$/;
 
-/**
- * Split the file into its tag pairs and its movetext.
- *
- * The two sections are separated by a blank line in a well-formed file, but
- * plenty of exporters omit it — so the split is driven by the shape of each
- * line instead: bracketed tag lines belong to the header until a line that
- * isn't one appears, and everything from there on is movetext.
- */
 function splitSections(pgn: string): {
   tags: Record<string, string>;
   movetext: string;
@@ -67,8 +37,6 @@ function splitSections(pgn: string): {
 
       const match = TAG_LINE.exec(line);
       if (match) {
-        // Keys are case-insensitive in practice; lowercase them so a file
-        // writing `WHITE` reads the same as one writing `White`.
         tags[match[1]!.toLowerCase()] = match[2]!.replace(/\\(.)/g, "$1");
         continue;
       }
@@ -82,14 +50,6 @@ function splitSections(pgn: string): {
   return { tags, movetext: body.join("\n") };
 }
 
-/**
- * Strip everything that isn't a move token.
- *
- * Done as a character scan rather than a chain of regexes because the
- * constructs nest: a comment can contain a brace-free parenthesis, a variation
- * can contain a comment, and a `;` comment runs to the end of its line. A
- * regex pass would mis-pair those and eat mainline moves.
- */
 function stripAnnotations(movetext: string): string {
   let out = "";
   let braceDepth = 0;
@@ -112,14 +72,11 @@ function stripAnnotations(movetext: string): string {
         braceDepth -= 1;
         out += " ";
       } else if (ch === "{") {
-        // Not legal PGN, but nesting them is the forgiving reading.
         braceDepth += 1;
       }
       continue;
     }
 
-    // A variation is an alternative to the mainline, not part of it. Its
-    // contents are skipped wholesale, comments and sub-variations included.
     if (parenDepth > 0) {
       if (ch === "(") {
         parenDepth += 1;
@@ -144,8 +101,6 @@ function stripAnnotations(movetext: string): string {
       lineComment = true;
       continue;
     }
-    // A stray `}` or `)` is unbalanced input; dropping it is kinder than
-    // failing, and the move tokens around it still read correctly.
     if (ch === "}" || ch === ")") {
       continue;
     }
@@ -156,21 +111,16 @@ function stripAnnotations(movetext: string): string {
   return out;
 }
 
-/** A move number (`1.`, `12...`), a NAG (`$7`), or the `...` that resumes black. */
 const NOISE = /^(?:\d+\.*|\.+|\$\d+)$/;
 
-/** The `!?` family, written attached to the move rather than as a NAG. */
 const ANNOTATION_SUFFIX = /[!?]+$/;
 
-/**
- * The move tokens, in order, with the result token removed. Everything left is
- * SAN for `findSanMove` to resolve against the position it reaches.
- */
 function tokenize(movetext: string): { moves: string[]; result: PgnResult } {
   let result: PgnResult = "*";
   const moves: string[] = [];
 
-  for (const token of stripAnnotations(movetext).split(/\s+/)) {
+  for (const raw of stripAnnotations(movetext).split(/\s+/)) {
+    const token = raw.replace(/½/g, "1/2");
     if (token === "") {
       continue;
     }
@@ -184,7 +134,6 @@ function tokenize(movetext: string): { moves: string[]; result: PgnResult } {
       continue;
     }
 
-    // `1.e4` with no space is legal, and common from engines that wrap tightly.
     const stripped = token
       .replace(/^\d+\.+/, "")
       .replace(ANNOTATION_SUFFIX, "");
@@ -198,7 +147,6 @@ function tokenize(movetext: string): { moves: string[]; result: PgnResult } {
   return { moves, result };
 }
 
-/** The `Result` tag as a result token, when the movetext carried none. */
 function resultFromTag(value: string | undefined): PgnResult | null {
   if (value === undefined) {
     return null;
@@ -207,24 +155,10 @@ function resultFromTag(value: string | undefined): PgnResult | null {
   return isResult(normalized) ? normalized : null;
 }
 
-/**
- * Parse one PGN game.
- *
- * Throws on the first move that is not legal in the position it reaches,
- * naming the move and its index — a file whose moves do not replay describes a
- * game that was never played, and silently truncating it would put a board on
- * screen that never existed.
- *
- * Only the first game in a file is read. A multi-game file is split by
- * `splitPgnGames` first.
- */
 export function parsePgn(pgn: string): ParsedPgn {
   const { tags, movetext } = splitSections(pgn);
   const { moves, result } = tokenize(movetext);
 
-  // A `SetUp "1"` tag is what the spec says licenses `FEN`, but files that
-  // carry the position without the flag are everywhere — and a `FEN` tag is
-  // unambiguous on its own, so honour it either way.
   const startingFen = tags.fen?.trim() || STARTING_FEN;
 
   let game: Game;
@@ -250,24 +184,13 @@ export function parsePgn(pgn: string): ParsedPgn {
 
   return {
     tags,
-    // The movetext's token wins: it is the one the moves actually terminate
-    // with. The tag is the fallback for a file that omits the token entirely.
     result: result === "*" ? (resultFromTag(tags.result) ?? "*") : result,
     startingFen,
-    // Taken from the replay rather than the file: the engine's own SAN is what
-    // every other consumer of a move list in this codebase speaks.
     moves: game.history.map((entry) => entry.san),
     game,
   };
 }
 
-/**
- * Split a file holding several games into one string each.
- *
- * The boundary is a tag line that follows movetext: within one game the tag
- * pairs are contiguous, so the first `[Tag "…"]` after a non-tag line begins
- * the next game. A file with a single game comes back as a single element.
- */
 export function splitPgnGames(pgn: string): string[] {
   const games: string[] = [];
   let current: string[] = [];

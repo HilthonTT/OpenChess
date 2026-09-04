@@ -58,7 +58,6 @@ describe("advanceStreak", () => {
 
     expect(claimed).toBe(true);
     expect(streak.current).toBe(5);
-    // The run is still short of the record, which is left alone.
     expect(streak.best).toBe(9);
   });
 
@@ -85,8 +84,6 @@ describe("advanceStreak", () => {
   });
 
   test("a lastDay in the future restarts rather than extending", () => {
-    // Only reachable if a clock moved backwards. Restarting is the reading that
-    // cannot be farmed; extending would pay for every backwards step.
     const before: Streak = { current: 5, best: 5, lastDay: "2026-07-30" };
     const { streak } = advanceStreak(before, "2026-07-23");
 
@@ -118,7 +115,6 @@ describe("streakReward", () => {
   });
 
   test("the capped payout stays under a won online game", () => {
-    // PvP pays 70 xp / 45 coins for a win. Showing up must not out-earn that.
     const capped = streakReward(STREAK_REWARD_CAP_DAY);
 
     expect(capped.xp).toBeLessThan(70);

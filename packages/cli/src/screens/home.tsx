@@ -16,14 +16,10 @@ import { useTheme } from "../providers/theme";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
 import { useKeymap, type Keymap } from "../providers/keymap";
 
-// Which row last sent the user away. Module state, not React state: the
-// router unmounts Home while a screen is open, so this is what lets the
-// cursor come back to the same row instead of the top.
 let lastSelectedId: string | undefined;
 
 const KEYMAP: Keymap = {
   title: "The menu",
-  // The one screen with nowhere to go back to.
   escape: null,
   sections: [
     {
@@ -56,9 +52,6 @@ export function Home() {
 
   useKeymap(KEYMAP);
 
-  // The menu is where a session first lands, whether the token was restored at
-  // launch or signed in for from the row below, so it is where the day is
-  // claimed. Silent unless there was actually something to claim.
   useDailyCheckIn();
 
   const authItem = useMemo(
@@ -82,8 +75,6 @@ export function Home() {
   );
 
   useKeyboard((key) => {
-    // Only the base screen owns these shortcuts; while a dialog is open its
-    // own layer handles input (e.g. typing "q" into the theme search).
     if (!isTopLayer(BASE_LAYER_ID)) {
       return;
     }
@@ -100,16 +91,11 @@ export function Home() {
       });
     }
 
-    // The same action the account row runs, so the shortcut and the row can
-    // never disagree about whether this signs you in or out.
     if (key.ctrl && key.name === "l" && !authItem.disabled) {
       handleSelect(authItem);
     }
   });
 
-  // Rows are numbered by position, but only the first nine can be reached by a
-  // number key, so that — not the length of the list — is what the footer can
-  // honestly advertise. Everything below the ninth row is what ctrl+k is for.
   const highestQuickPick = Math.min(
     QUICK_PICK_LIMIT,
     items.filter((item) => !item.disabled).length,
@@ -155,8 +141,6 @@ export function Home() {
             { key: "↑↓", label: "move" },
             { key: "enter", label: "select" },
             { key: `1-${highestQuickPick}`, label: "quick pick" },
-            // Sits beside the numbers on purpose: it is where the rows past
-            // the ninth went.
             { key: "ctrl+k", label: "jump" },
             { key: "?", label: "keys" },
           ]}

@@ -1,4 +1,5 @@
 import {
+  enPassantIsCapturable,
   fileOf,
   findKing,
   homeRankOf,
@@ -11,6 +12,7 @@ import {
   pieceColor,
   rankOf,
   squareAt,
+  toFen,
   toPiece,
 } from "./board";
 import type {
@@ -26,12 +28,6 @@ import type {
 } from "./types";
 import { EMPTY } from "./types";
 
-/**
- * A step across the board as `[files, ranks]`. Exported along with the delta
- * sets below so the search can walk the same geometry — an engine that decides
- * exchanges by its own copy of the knight's moves is one bad edit from
- * disagreeing with the rules.
- */
 export type Delta = readonly [number, number];
 
 export const KNIGHT_DELTAS: readonly Delta[] = [
@@ -72,20 +68,12 @@ export const BISHOP_DIRECTIONS: readonly Delta[] = [
 
 const PROMOTION_PIECES: readonly PromotionPiece[] = ["q", "r", "b", "n"];
 
-/** The rank a pawn starts on, and the rank it promotes on, per color. */
 function pawnRanks(color: Color): { start: number; last: number; dir: number } {
   return color === "w"
     ? { start: 1, last: 7, dir: 1 }
     : { start: 6, last: 0, dir: -1 };
 }
 
-/**
- * Every field written out in a fixed order rather than spread over defaults.
- * Spreading a partial gives each call site's shape its own layout, and the search
- * then reads `captured` and `promotion` off half a dozen different shapes a
- * million times a move; naming the fields here means every `Move` in the program
- * has one layout and those reads stay cheap.
- */
 function move(
   partial: Partial<Move> & Pick<Move, "from" | "to" | "piece">,
 ): Move {
@@ -101,11 +89,6 @@ function move(
   };
 }
 
-/**
- * Is `square` attacked by any piece of `byColor`? Runs the ray walks outward
- * from the target square rather than scanning every enemy piece, so it stays
- * cheap enough to call once per candidate move during legality filtering.
- */
 export function isSquareAttacked(
   board: Board,
   square: number,
@@ -114,8 +97,6 @@ export function isSquareAttacked(
   const x = fileOf(square);
   const y = rankOf(square);
 
-  // Pawns. A white pawn attacks diagonally upward, so a white pawn attacking
-  // this square must sit one rank below it.
   const pawnDir = byColor === "w" ? -1 : 1;
   const pawn = toPiece("p", byColor);
   for (const dx of [-1, 1]) {
@@ -319,16 +300,9 @@ function addSlidingMoves(
   }
 }
 
-/**
- * Where a castle *ends*, which is the one part of the rule that never moves.
- * The king finishes on the g- or c-file and the rook beside it on the f- or
- * d-file whatever files the two of them started on, which is what makes a
- * shuffled game's castling recognisably the same move as a normal one.
- */
 const CASTLE_KING_FILE: Record<CastleSide, number> = { king: 6, queen: 2 };
 const CASTLE_ROOK_FILE: Record<CastleSide, number> = { king: 5, queen: 3 };
 
-/** The right `side` needs, named as it is on `CastlingRights`. */
 function castlingRightKey(
   color: Color,
   side: CastleSide,
@@ -339,7 +313,6 @@ function castlingRightKey(
   return side === "king" ? "blackKingSide" : "blackQueenSide";
 }
 
-/** Where the rook that castles to `side` began, for `color`. */
 export function castlingRookSquare(
   position: Position,
   color: Color,
@@ -352,7 +325,6 @@ export function castlingRookSquare(
   );
 }
 
-/** Where the king and rook stand once `side` has been castled to. */
 export function castlingDestinations(
   color: Color,
   side: CastleSide,
@@ -364,14 +336,6 @@ export function castlingDestinations(
   };
 }
 
-/**
- * Every square from `fromFile` to `toFile` along `rank` is empty, ignoring the
- * two squares the castling king and rook are themselves standing on.
- *
- * The exemptions are what makes this work on a shuffled array, where the king's
- * destination is routinely the rook's starting square and vice versa: those two
- * are about to swap, so finding each other in the way is not an obstruction.
- */
 function fileRangeIsClear(
   board: Board,
   rank: number,
@@ -396,7 +360,6 @@ function fileRangeIsClear(
   return true;
 }
 
-/** No square the king starts on, crosses, or lands on is attacked. */
 function kingWalkIsSafe(
   board: Board,
   rank: number,
@@ -423,16 +386,12 @@ function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
   const files = position.castlingFiles[color];
   const kingFrom = squareAt(files.king, homeRank);
 
-  // A king that has been displaced can't castle; rights alone aren't enough to
-  // trust, because a test FEN may hand us rights with the king elsewhere.
   if (pieceAt(board, kingFrom) !== piece) {
     return;
   }
 
   const enemy = opposite(color);
 
-  // Castling out of check is illegal on either side, so it is worth answering
-  // once here rather than inside each side's walk.
   if (isSquareAttacked(board, kingFrom, enemy)) {
     return;
   }
@@ -454,9 +413,6 @@ function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
     const kingToFile = CASTLE_KING_FILE[side];
     const rookToFile = CASTLE_ROOK_FILE[side];
 
-    // Both journeys have to be clear, and between them they cover every square
-    // the rule cares about — including b1/b8, which only the rook crosses and
-    // which the king is therefore allowed to be attacked on.
     if (
       !fileRangeIsClear(
         board,
@@ -485,13 +441,6 @@ function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
     out.push(
       move({
         from: kingFrom,
-        // In a shuffled game the king's castling destination is frequently a
-        // square it could also reach as an ordinary king move — b1-c1 is both
-        // "king steps right" and "castles queenside" — so naming that square
-        // would make one move description mean two moves. Castling is written
-        // king-takes-rook there instead, as every Chess960 implementation
-        // writes it, and that can never collide: the square holds the mover's
-        // own rook, so no plain king move goes to it.
         to: standard ? squareAt(kingToFile, homeRank) : rookFrom,
         piece,
         isCastle: side,
@@ -500,7 +449,6 @@ function addCastlingMoves(position: Position, piece: Piece, out: Move[]) {
   }
 }
 
-/** Every move the side to move could make ignoring whether it leaves the king in check. */
 export function generatePseudoLegalMoves(position: Position): Move[] {
   const out: Move[] = [];
 
@@ -542,23 +490,6 @@ export function generatePseudoLegalMoves(position: Position): Move[] {
   return out;
 }
 
-/**
- * Whether `candidate` leaves the side that played it with a safe king — the one
- * condition that separates a pseudo-legal move from a legal one. It covers pins,
- * check evasions, and the rare en-passant discovered check for free, because the
- * pawn taken en passant really is lifted off the board below.
- *
- * This is the expensive half of move generation, and it runs on every candidate:
- * around thirty times per position, and the search asks for a position's moves
- * hundreds of thousands of times a move. That is why it plays `candidate` onto
- * the board in place and takes it back off again rather than building the
- * position that follows — a `Position` is immutable everywhere else, and this is
- * the one place that would rather have the array back than a copy of it.
- *
- * Nothing can observe the board mid-move: the mutation and its undo sit in one
- * synchronous stretch with no allocation, no callback and no throw between them,
- * and the two helpers in between only read.
- */
 function leavesKingSafe(
   position: Position,
   candidate: Move,
@@ -568,11 +499,6 @@ function leavesKingSafe(
   const color = position.turn;
   const { from, to } = candidate;
 
-  // Castling moves four squares' worth of board around and, on a shuffled
-  // array, those four squares overlap — the king's destination is often the
-  // rook's origin. That makes the "lift, place, put back" dance below wrong in
-  // a way no amount of ordering fixes, so a castle gets its own path where
-  // every touched square is saved up front and restored from that snapshot.
   if (candidate.isCastle !== null) {
     return castleLeavesKingSafe(position, candidate);
   }
@@ -586,9 +512,6 @@ function leavesKingSafe(
       ? toPiece(candidate.promotion, color)
       : (moved as Piece);
 
-  // The pawn taken en passant stands beside the starting square, not on the
-  // target — which is exactly why a discovered check along that rank is a real
-  // possibility and has to be tested on a board with the pawn gone.
   let enPassantSquare = -1;
   let enPassantPawn: SquareContent = EMPTY;
   if (candidate.isEnPassant) {
@@ -597,8 +520,6 @@ function leavesKingSafe(
     board[enPassantSquare] = EMPTY;
   }
 
-  // A king that just moved is on the square it moved to; every other move leaves
-  // it where the caller already found it.
   const king = candidate.piece.toLowerCase() === "k" ? to : kingSquare;
   const safe = king < 0 || !isSquareAttacked(board, king, opposite(color));
 
@@ -611,18 +532,6 @@ function leavesKingSafe(
   return safe;
 }
 
-/**
- * The same in-place test for a castle.
- *
- * Castling cannot walk into check — `addCastlingMoves` already refused every
- * square the king crosses — but the rook lands somewhere new, and on the back
- * rank it can be the piece that was blocking a check on the king's destination.
- * That is the one thing left to test, so the rook has to be down when it runs.
- *
- * The four squares are snapshotted before anything is written and restored from
- * that snapshot afterwards, which stays correct however they overlap: writing a
- * square twice with the value it started with is the same as writing it once.
- */
 function castleLeavesKingSafe(position: Position, candidate: Move): boolean {
   const board = position.board;
   const color = position.turn;
@@ -652,14 +561,6 @@ function castleLeavesKingSafe(position: Position, candidate: Move): boolean {
   return safe;
 }
 
-/**
- * Where the side to move's king stands, or -1 when the position has no king —
- * which a hand-written test FEN is allowed to do.
- *
- * Found once and handed to every legality check, rather than rediscovered inside
- * each of them: the king only moves on a king move, and scanning the board for it
- * thirty-odd times per position was a fifth of the cost of generating them.
- */
 function kingSquareOf(position: Position): number {
   return findKing(position.board, position.turn) ?? -1;
 }
@@ -679,15 +580,6 @@ export function generateLegalMoves(position: Position): Move[] {
   return legal;
 }
 
-/**
- * The legal captures and promotions for the side to move — the moves a
- * quiescence search extends into.
- *
- * Filtering the pseudo-legal list *before* the legality check is the whole
- * point. A quiet middlegame position offers thirty-odd moves and two captures,
- * so `generateLegalMoves(...).filter(isCapture)` would pay for thirty board
- * copies to keep two; this pays for two.
- */
 export function generateLegalCaptures(position: Position): Move[] {
   const candidates = generatePseudoLegalMoves(position);
   const king = kingSquareOf(position);
@@ -706,12 +598,6 @@ export function generateLegalCaptures(position: Position): Move[] {
   return captures;
 }
 
-/**
- * Whether the side to move has any legal move at all, stopping at the first one
- * found. This is how a search that only generated captures tells a genuinely
- * quiet position from a stalemate without paying for the full legal list — in
- * a position with moves it almost always returns on the first candidate.
- */
 export function hasLegalMove(position: Position): boolean {
   const candidates = generatePseudoLegalMoves(position);
   const king = kingSquareOf(position);
@@ -743,10 +629,6 @@ function updateCastlingRights(position: Position, move: Move): CastlingRights {
     }
   }
 
-  // A rook leaving its home square, or being captured on it, kills that right.
-  // Checking squares rather than piece identity covers both cases at once —
-  // and the squares are read from the position rather than assumed to be the
-  // corners, which is the whole of what a shuffled array changes here.
   for (const square of [move.from, move.to]) {
     for (const color of ["w", "b"] as const) {
       for (const side of ["king", "queen"] as const) {
@@ -760,7 +642,6 @@ function updateCastlingRights(position: Position, move: Move): CastlingRights {
   return next;
 }
 
-/** Play `move` and return the resulting position. The input is never mutated. */
 export function applyMove(position: Position, move: Move): Position {
   const board = position.board.slice();
   const color = pieceColor(move.piece);
@@ -768,7 +649,6 @@ export function applyMove(position: Position, move: Move): Position {
   board[move.from] = EMPTY;
 
   if (move.isEnPassant) {
-    // The captured pawn sits beside our starting square, not on the target.
     const captured = squareAt(fileOf(move.to), rankOf(move.from));
     board[captured] = EMPTY;
   }
@@ -777,14 +657,6 @@ export function applyMove(position: Position, move: Move): Position {
     const rookFrom = castlingRookSquare(position, color, move.isCastle);
     const { kingTo, rookTo } = castlingDestinations(color, move.isCastle);
 
-    // Both pieces are lifted before either is put down. On a shuffled array the
-    // king's destination is often the rook's starting square — and the rook's
-    // destination the king's — so placing one before lifting the other would
-    // quietly delete a piece.
-    //
-    // The king lands on `kingTo` rather than on `move.to`: in a shuffled game
-    // the move is written king-takes-rook, so `move.to` is where the *rook*
-    // was, not where the king is going.
     board[rookFrom] = EMPTY;
     board[kingTo] = move.piece;
     board[rookTo] = toPiece("r", color);
@@ -811,10 +683,6 @@ export function applyMove(position: Position, move: Move): Position {
   };
 }
 
-/**
- * Neither side can deliver mate with the material on the board: bare kings,
- * king and minor piece, or same-colored bishops only.
- */
 export function isInsufficientMaterial(position: Position): boolean {
   const bishops: number[] = [];
   let knights = 0;
@@ -835,7 +703,6 @@ export function isInsufficientMaterial(position: Position): boolean {
         knights += 1;
         break;
       default:
-        // A pawn, rook, or queen is always enough for someone to mate with.
         return false;
     }
   }
@@ -853,7 +720,6 @@ export function isInsufficientMaterial(position: Position): boolean {
   }
 
   if (knights === 0 && bishops.length > 1) {
-    // Any number of bishops draws only while they all sit on one square color.
     const squareColor = (square: number) =>
       (fileOf(square) + rankOf(square)) % 2;
     const first = squareColor(bishops[0] as number);
@@ -875,4 +741,26 @@ export function findMove(
       m.to === to &&
       (promotion === undefined || m.promotion === promotion),
   );
+}
+
+export function hasLegalEnPassant(position: Position): boolean {
+  if (!enPassantIsCapturable(position)) {
+    return false;
+  }
+
+  const king = kingSquareOf(position);
+  return generatePseudoLegalMoves(position).some(
+    (candidate) =>
+      candidate.isEnPassant && leavesKingSafe(position, candidate, king),
+  );
+}
+
+export function repetitionKey(position: Position): string {
+  const fields = toFen(position).split(" ").slice(0, 4);
+
+  if (position.enPassant !== null && !hasLegalEnPassant(position)) {
+    fields[3] = "-";
+  }
+
+  return fields.join(" ");
 }

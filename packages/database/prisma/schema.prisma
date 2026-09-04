@@ -1,7 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
   provider = "prisma-client"
@@ -19,25 +15,11 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // The last authenticated request we saw from this player, which is what
-  // "online" is derived from. Deliberately not `updatedAt`: that column moves
-  // whenever anything about the row changes — a coin payout, a title equipped —
-  // and a player who has not opened the game in a week would read as present
-  // the moment a scheduled job touched their balance.
-  //
-  // Written at most once a minute per player and never on the request's critical
-  // path; a presence write that fails is a player who looks idle, not a request
-  // that fails. Null for an account that has not made a request since the column
-  // existed, which reads as offline — the honest answer.
   lastSeenAt DateTime?
 
-  // Source of truth for progression. `level` is derived from `experience` by
-  // server logic and stored so the leaderboard can sort without recomputing it.
   experience Int @default(0)
   level      Int @default(1)
 
-  // Cached balance. The CoinTransaction ledger is authoritative; this is written
-  // in the same transaction as the ledger row.
   coins Int @default(0)
 
   equippedTitleId String?
@@ -62,10 +44,6 @@ model User {
   friendshipsReceived Friendship[] @relation("FriendshipAddressee")
   gameMessages        GameMessage[]
 
-  // Player search is a prefix match on the username, which the `@unique` index
-  // above cannot answer under a non-C collation. The `text_pattern_ops` index
-  // that can is created in the migration — Prisma's schema language has no way
-  // to name an operator class.
   @@index([level(sort: Desc), experience(sort: Desc)])
 }
 
@@ -81,25 +59,13 @@ model UserStats {
   currentWinStreak Int @default(0)
   topWinStreak     Int @default(0)
 
-  // The daily check-in streak, counted in UTC calendar days by
-  // @openchess/shared's `advanceStreak`. Zero for a player who has never
-  // checked in, and never reset on a miss — the next check-in simply starts
-  // again at one, so a lapsed streak reads as "1", not as a hole.
   currentLoginStreak Int @default(0)
   topLoginStreak     Int @default(0)
 
-  // The last day claimed. Date-typed rather than a timestamp on purpose: this
-  // doubles as the idempotency key for the day's payout, and a conditional
-  // write against `lastCheckInDay < today` is what stops two concurrent
-  // check-ins from paying twice. A timestamp would make that a range query and
-  // the guard would stop being exact.
   lastCheckInDay DateTime? @db.Date
 
   rating Int @default(1200)
 
-  // The puzzle ladder, kept apart from `rating` on purpose: solving tactics and
-  // winning games are different skills, and one number for both would let a
-  // player farm either side of it into a rank they cannot hold.
   puzzleRating Int @default(1000)
 
   puzzlesSolved    Int @default(0)
@@ -164,41 +130,16 @@ model Game {
 
   variant GameVariant @default(STANDARD)
 
-  // The position the game began from. Null on a standard game, which starts
-  // from the array everything already knows; required on a shuffled one, where
-  // it is the only record of which of the 960 was dealt. Replay reads this, so
-  // a Chess960 row without it is unreplayable rather than merely unlabelled.
   startFen String?
 
-  // UCI ("e2e4", "e7e8q"), appended one per ply — the format `fromRecord` in
-  // @openchess/shared replays. Replaying is what reconstructs the repetition map
-  // and the fifty-move clock; a FEN alone cannot carry position history, so
-  // `draw-repetition` would never fire if this were the cache and not the record.
-  //
-  // A Chess960 castle is written king-takes-rook ("g1h1"), which is what makes
-  // it distinguishable from the ordinary king move to the same square that the
-  // shuffled array can also offer.
   moves String[]
 
-  // Denormalized cache of the position after the last ply. Lets a
-  // read hit the board without replaying; never the source of truth.
   currentFen String?
 
-  // AI games need a strength. Rewards scale off it.
   difficulty Difficulty?
 
-  // Which bot played, by its id in @openchess/shared's personality catalog.
-  // Null on a PvP game, and on an AI game recorded before the bots had names —
-  // both of which fall back to the tier's default personality, so an old row
-  // still replays and still analyses.
-  //
-  // Kept beside `difficulty` rather than replacing it: a personality is a style
-  // and a strength together, and it is the strength that rewards and rating are
-  // scaled by. Folding them into one column would mean a bot could never be
-  // retuned without silently repricing every game anyone had played against it.
   personality String?
 
-  // Null on whichever side the bot is playing in an AI game.
   whitePlayerId String?
   blackPlayerId String?
   whitePlayer   User?   @relation("WhitePlayer", fields: [whitePlayerId], references: [id], onDelete: SetNull)
@@ -208,98 +149,47 @@ model Game {
   pgn      String?
   finalFen String?
 
-  // The side with a draw offer standing, or null when there is none. Only one
-  // offer can be outstanding at a time, which is the whole reason this is a
-  // single column rather than a table: the second offer to arrive is either the
-  // same player repeating themselves or the opponent agreeing, and both of
-  // those are answers to the offer already here.
-  //
-  // Cleared by a move from the side that did *not* offer — the opponent's move
-  // is the decline. The offerer's own move leaves it standing, so offering
-  // before you move (as a player naturally does) does not withdraw it a moment
-  // later.
   drawOfferedBy OfferSide?
 
-  // The side with a takeback offer standing, or null when there is none.
-  //
-  // A separate column from `drawOfferedBy` rather than one "pending offer"
-  // pair, because the two are answers to different questions and a player is
-  // entitled to have both open at once: offering a draw does not withdraw the
-  // takeback you asked for a move earlier, and folding them together would make
-  // it do exactly that.
-  //
-  // Unlike a draw offer, this one is cleared by *any* move, the offerer's
-  // included. A draw offer survives its offerer's move because the thing being
-  // offered is unchanged by it; a takeback names a specific position to return
-  // to, and one more ply means the offer that arrives at the opponent is no
-  // longer the offer that was made.
   takebackOfferedBy OfferSide?
 
-  // How many moves have been taken back in this game.
-  //
-  // Only ever non-zero on an AI game, where a takeback is unilateral and needs
-  // a counterweight: a game you can rewind every time it goes wrong is a game
-  // you always win, and paying it out at the normal rate would make the button
-  // a coin faucet. So the first takeback voids the payout — see `rewardFor` —
-  // and this is the record of that, kept as a count rather than a flag because
-  // "you took this game back four times" is worth being able to read back.
-  //
-  // A PvP takeback needs no such guard: it takes the opponent's consent, and
-  // nobody agrees to hand back the move that was winning them the game.
   takebacks Int @default(0)
 
-  // Time control. Null on an untimed game — the current default — and both set
-  // together otherwise, naming a preset in @openchess/shared by its numbers.
   initialSeconds   Int?
   incrementSeconds Int?
 
-  // Remaining time per side, in milliseconds, as of the last committed move.
-  // The clock of the side to move is still running against `turnStartedAt`; a
-  // reader ticks it down from there rather than trusting these verbatim. Null
-  // exactly when the game is untimed.
   whiteTimeMs Int?
   blackTimeMs Int?
 
-  // When the side-to-move's clock started running: the last move's commit, or
-  // the game's start before the first move. Null on an untimed game.
   turnStartedAt DateTime?
 
   startedAt DateTime  @default(now())
   endedAt   DateTime?
 
-  // Guards against paying a game out twice if the finish request is retried.
   rewardsGranted Boolean @default(false)
 
   transactions    CoinTransaction[]
   ratingSnapshots RatingSnapshot[]
   messages        GameMessage[]
 
-  // The challenge this game was created from, when it was not created by the
-  // matchmaking queue. One game per challenge; see `Challenge.gameId`.
   challenge Challenge?
 
   @@index([whitePlayerId, endedAt(sort: Desc)])
   @@index([blackPlayerId, endedAt(sort: Desc)])
-  // The spectator list: live PvP games, newest first. Partial on `mode` is not
-  // expressible here, so the index carries it as a leading column instead.
   @@index([mode, endedAt, startedAt(sort: Desc)])
 }
 
 model Achievement {
   id String @id @default(cuid())
 
-  // Stable key that server logic references ("FIRST_WIN"). Never key off `name`,
-  // which is display copy and will get reworded.
   code        String  @unique
   name        String
   description String
   iconUrl     String?
 
-  // Paid on unlock, on top of the normal per-game payout.
   xpReward   Int @default(0)
   coinReward Int @default(0)
 
-  // Hidden from the achievement list until unlocked.
   secret Boolean @default(false)
 
   createdAt DateTime @default(now())
@@ -331,15 +221,14 @@ enum TitleRarity {
 model Title {
   id String @id @default(cuid())
 
-  code        String  @unique // "GRANDMASTER"
-  label       String // "Grandmaster"
+  code        String  @unique
+  label       String
   description String?
 
   price         Int
   rarity        TitleRarity @default(COMMON)
   requiredLevel Int         @default(1)
 
-  // False for titles handed out as achievement rewards rather than store stock.
   isPurchasable Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -358,7 +247,6 @@ model UserTitle {
 
   purchasedAt DateTime @default(now())
 
-  // Snapshot of what they actually paid; store prices change over time.
   pricePaid Int
 
   @@unique([userId, titleId])
@@ -380,31 +268,18 @@ model CoinTransaction {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  amount Int // positive = earned, negative = spent
+  amount Int
   reason CoinReason
 
   gameId String?
   game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
 
-  /// Names the recurring period a scheduled payout belongs to, e.g. `2026-W31`
-  /// for the weekly premium stipend. Null on everything that is not one — a
-  /// game reward, a purchase, a manual grant — which leaves those unconstrained
-  /// by the unique index below, exactly as `gameId` does for the per-game one.
   periodKey String?
 
   balanceAfter Int
   createdAt    DateTime @default(now())
 
-  // Postgres treats NULLs as distinct, so this only constrains rows that carry a
-  // gameId: one GAME_REWARD per user per game, while purchases stay unbounded.
-  // Puzzle payouts carry no gameId and are guarded instead by the one-row-per
-  // -player-per-puzzle constraint on PuzzleAttempt, in the same transaction.
   @@unique([userId, gameId, reason])
-  // The same trick for payouts a scheduler repeats: one row per user per reason
-  // per period. This is what makes the premium stipend exactly-once — an Inngest
-  // step is retried whenever its result fails to get back to Inngest, including
-  // after the transaction it ran has already committed, so the ledger insert has
-  // to be the claim rather than a record of one.
   @@unique([userId, reason, periodKey])
   @@index([userId, createdAt(sort: Desc)])
 }
@@ -427,25 +302,16 @@ model RatingSnapshot {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// The rating after this game settled.
   rating Int
 
-  /// The change that produced it, so a reader need not diff adjacent rows —
-  /// and so the oldest row still knows where the curve started (`rating - delta`).
   delta Int
 
-  /// The game that moved it. Nullable for the same reason the ledger's is: a
-  /// deleted game must not take the rating history down with it.
   gameId String?
   game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
-  // At most one snapshot per player per game: the settle path is already
-  // idempotent via `Game.rewardsGranted`, and this is the constraint that says
-  // so in the schema rather than only in the code.
   @@unique([userId, gameId])
-  // The only query: this player's curve, newest first, windowed.
   @@index([userId, createdAt(sort: Desc)])
 }
 
@@ -459,31 +325,20 @@ model RatingSnapshot {
 model Puzzle {
   id String @id @default(cuid())
 
-  // The key in the corpus this row came from ("00sHx" for a Lichess puzzle), so
-  // a re-import rewrites a puzzle in place instead of duplicating it. Rows
-  // authored here carry their own stable key rather than a generated one.
   externalId String @unique
 
   fen   String
   moves String[]
 
-  // On the same Elo scale players are rated on, which is what makes serving a
-  // puzzle "near your rating" mean anything.
   rating Int
 
-  // Tactical motifs — "fork", "backRankMate", "mateIn2". Free-form, and only
-  // used for display and filtering.
   themes String[]
 
-  /// Where the position came from, when the corpus records it.
   sourceUrl String?
 
-  /// Counters for the catalog view. Neither is load-bearing.
   plays  Int @default(0)
   solves Int @default(0)
 
-  /// The UTC day this puzzle is the daily one for. At most one puzzle per day;
-  /// the unique index is what makes assigning it idempotent under a race.
   dailyOn DateTime? @unique @db.Date
 
   createdAt DateTime @default(now())
@@ -491,12 +346,7 @@ model Puzzle {
   attempts PuzzleAttempt[]
   rushRuns PuzzleRushRun[]
 
-  // The serving query is "a puzzle near this rating I have not attempted".
   @@index([rating])
-  // Theme filtering is `themes @> ARRAY['fork']`, which a b-tree cannot answer
-  // at all. GIN is the index for array containment, and without it picking a
-  // themed puzzle degrades to a sequential scan of the whole corpus — fine over
-  // the seeded dozen, and not over an imported two hundred thousand.
   @@index([themes(ops: ArrayOps)], type: Gin)
 }
 
@@ -511,7 +361,6 @@ model PuzzleAttempt {
   solved   Boolean
   hintUsed Boolean @default(false)
 
-  /// How long the solve took, when the client reports it.
   msSpent Int?
 
   ratingBefore Int
@@ -522,15 +371,10 @@ model PuzzleAttempt {
 
   createdAt DateTime @default(now())
 
-  // One scored attempt per player per puzzle. This is the idempotency key for
-  // the payout — a retried submission collides here rather than paying twice —
-  // and it is also what stops the same puzzle being farmed for coins. Replaying
-  // a puzzle you have already attempted is allowed; it just pays nothing.
   @@unique([userId, puzzleId])
   @@index([userId, createdAt(sort: Desc)])
 }
 
-/// How a Puzzle Rush run ends: a clock, or a third mistake.
 enum PuzzleRushMode {
   THREE_MINUTE
   FIVE_MINUTE
@@ -555,37 +399,24 @@ model PuzzleRushRun {
 
   mode PuzzleRushMode
 
-  /// Puzzles solved — the score, and what the leaderboard sorts on.
   solved Int @default(0)
-  /// Wrong answers. The third one ends the run.
   missed Int @default(0)
 
-  /// The puzzle in front of the player, or null once the run is over. The
-  /// server hands out one at a time and remembers which, so the client is never
-  /// holding a queue of solutions it is being asked to find.
   currentPuzzleId String?
   currentPuzzle   Puzzle? @relation(fields: [currentPuzzleId], references: [id], onDelete: SetNull)
 
-  /// Every puzzle served so far, so one run never asks the same question twice.
   servedPuzzleIds String[]
 
   startedAt DateTime  @default(now())
-  /// When the clock stops it. Null on a survival run, which has only the three
-  /// mistakes. The server compares against this rather than trusting a client's
-  /// own timer, which is the whole reason the run lives in a row at all.
   endsAt    DateTime?
   endedAt   DateTime?
 
   xpAwarded    Int @default(0)
   coinsAwarded Int @default(0)
 
-  /// Guards the payout against a retried finish, exactly as `Game` does.
   rewardsGranted Boolean @default(false)
 
-  /// A player's own history, newest first.
   @@index([userId, startedAt(sort: Desc)])
-  /// The leaderboard: the best runs at a given mode. Partial on "finished" is
-  /// not expressible here, so the query carries that predicate itself.
   @@index([mode, solved(sort: Desc)])
 }
 
@@ -614,14 +445,8 @@ model PuzzleCollectionClaim {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// The catalog id — "pins-20". A plain string, so retiring a collection is a
-  /// catalog edit rather than a migration over everyone's finished ones.
   collectionId String
 
-  /// How many the player had solved when they claimed it. Not load-bearing —
-  /// the count is derivable — but a claim that says "20 of 20" reads better in
-  /// a history than one that only says it happened, and the corpus can grow
-  /// under it.
   solvedAtClaim Int
 
   xpAwarded    Int
@@ -629,9 +454,7 @@ model PuzzleCollectionClaim {
 
   claimedAt DateTime @default(now())
 
-  /// One claim per player per collection. This is the payout's exactly-once.
   @@unique([userId, collectionId])
-  /// A player's own claims, newest first.
   @@index([userId, claimedAt(sort: Desc)])
 }
 
@@ -670,29 +493,15 @@ model RepertoireLine {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// The ECO code and name the book gave this line when it was added. Copied
-  /// rather than looked up, so a line whose name is later edited in the catalog
-  /// still reads as the thing the player thought they were adding — and one
-  /// dropped from the catalog entirely is still drillable.
   eco  String
   name String
 
-  /// The line in SAN, from the initial array.
   moves String[]
 
-  /// Whose moves the player has to find. The other side is played for them.
   side RepertoireSide
 
-  /// `side` and `moves` joined, which is the line's identity.
-  ///
-  /// A derived column, and only because Prisma cannot put a `@@unique` on a
-  /// list field — Postgres would index the array happily, but an index the
-  /// schema cannot express is one every future `migrate diff` reports as drift.
-  /// Written by the service on insert and never read for anything but this.
   lineKey String
 
-  // Spaced repetition. See `ReviewState` in @openchess/shared for what each
-  // one means and why the streak is tracked apart from the review count.
   ease           Float     @default(2.5)
   intervalDays   Int       @default(0)
   reviews        Int       @default(0)
@@ -703,11 +512,7 @@ model RepertoireLine {
 
   createdAt DateTime @default(now())
 
-  /// One entry per line per colour per player: adding a line twice is the same
-  /// line, and two rows for it would mean drilling it twice as often for no
-  /// reason anybody chose.
   @@unique([userId, lineKey])
-  /// The only query that matters: this player's queue, soonest due first.
   @@index([userId, dueAt])
 }
 
@@ -725,7 +530,6 @@ enum ChallengeColor {
   RANDOM
 }
 
-/// The clock a challenge is played on, naming a preset in @openchess/shared.
 enum ClockPreset {
   BULLET
   BLITZ
@@ -740,40 +544,29 @@ enum ClockPreset {
 model Challenge {
   id String @id @default(cuid())
 
-  /// Short, human-typeable, unique: what one player reads out to another.
   code String @unique
 
   challengerId String
   challenger   User   @relation("Challenger", fields: [challengerId], references: [id], onDelete: Cascade)
 
-  /// Null on an open challenge, which the code alone admits you to.
   challengedId String?
   challenged   User?   @relation("Challenged", fields: [challengedId], references: [id], onDelete: Cascade)
 
-  /// The side the challenger asked for. RANDOM is drawn when the game is made.
   color ChallengeColor @default(RANDOM)
 
-  /// The rules to play under. The array itself is drawn when the game is made,
-  /// not here — a challenge that sat in the inbox overnight should still deal a
-  /// fresh position rather than one its sender got to look at first.
   variant GameVariant @default(STANDARD)
 
-  /// Null for an untimed game.
   clock ClockPreset?
 
   status ChallengeStatus @default(PENDING)
 
-  /// The game this became, once accepted. Unique: one challenge, one game.
   gameId String? @unique
   game   Game?   @relation(fields: [gameId], references: [id], onDelete: SetNull)
 
   createdAt   DateTime  @default(now())
-  /// After this the challenge is dead whatever its status says; the accept path
-  /// checks the clock rather than relying on a sweeper having run.
   expiresAt   DateTime
   respondedAt DateTime?
 
-  // The two list queries: what is waiting for me, and what am I waiting on.
   @@index([challengedId, status, createdAt(sort: Desc)])
   @@index([challengerId, status, createdAt(sort: Desc)])
 }
@@ -809,22 +602,18 @@ enum FriendshipStatus {
 model Friendship {
   id String @id @default(cuid())
 
-  /// Who asked.
   requesterId String
   requester   User   @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
 
-  /// Who was asked.
   addresseeId String
   addressee   User   @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
 
   status FriendshipStatus @default(PENDING)
 
   createdAt   DateTime  @default(now())
-  /// When it was accepted or declined. Null while it is still a question.
   respondedAt DateTime?
 
   @@unique([requesterId, addresseeId])
-  // The three list queries: my friends (both halves), and my pending inbox.
   @@index([addresseeId, status])
   @@index([requesterId, status])
 }
@@ -870,23 +659,12 @@ model GameMessage {
   senderId String
   sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
-  /// Which conversation this belongs to. Defaulted, so every row written before
-  /// the watchers had a channel is what it always was: something a player said.
   scope ChatScope @default(PLAYERS)
 
-  /// The catalog key — "goodGame", "goodLuck". Validated against the catalog on
-  /// the way in, and left a plain string here so retiring a phrase is a catalog
-  /// edit rather than a migration over everyone's finished games.
   phrase String
 
   createdAt DateTime @default(now())
 
-  // The only query: one conversation of this game's, oldest first. Scoped, and
-  // not merely filtered after the fact — a reader that fetched both and threw
-  // half away would be one `where` clause away from leaking the players' talk
-  // into the gallery.
   @@index([gameId, scope, createdAt])
-  // Flood control counts a sender's own rows in one conversation; see
-  // `MAX_MESSAGES_PER_SENDER`.
   @@index([gameId, senderId, scope])
 }

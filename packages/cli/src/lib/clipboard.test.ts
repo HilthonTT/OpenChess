@@ -5,7 +5,6 @@ const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 const PREFIX = `${ESC}]52;c;`;
 
-/** A terminal that honours OSC 52, and remembers what it was sent. */
 function terminal() {
   const written: string[] = [];
 
@@ -13,7 +12,6 @@ function terminal() {
     isTTY: true,
     write: (chunk: string) => written.push(chunk),
     written,
-    /** What the last sequence would have put on the clipboard. */
     clipboard: () => {
       const sequence = written.at(-1) ?? "";
       return Buffer.from(sequence.slice(PREFIX.length, -1), "base64").toString(
@@ -31,8 +29,6 @@ describe("osc52", () => {
   });
 
   test("encodes as UTF-8, not as code units", () => {
-    // The board's pieces are the reason this matters: a FEN is ASCII, but the
-    // move list and a PGN's tags are not necessarily.
     const sequence = osc52("Rosé ♞");
 
     expect(
@@ -50,8 +46,6 @@ describe("copyToClipboard", () => {
   });
 
   test("writes nothing when stdout isn't a terminal", () => {
-    // Redirected output is a file or a pipe; an escape sequence in either is
-    // corruption of something somebody meant to read.
     const written: string[] = [];
     const outcome = copyToClipboard("e4", {
       write: (chunk: string) => written.push(chunk),
@@ -72,8 +66,6 @@ describe("copyToClipboard", () => {
     const out = terminal();
     const huge = "x".repeat(MAX_SEQUENCE_LENGTH);
 
-    // Truncation is the failure worth avoiding: half a base64 payload is a
-    // clipboard holding half a game, and nothing says so.
     expect(copyToClipboard(huge, out)).toEqual({
       ok: false,
       reason: "it's too long for the terminal's clipboard",

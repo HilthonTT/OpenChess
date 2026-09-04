@@ -15,45 +15,19 @@ import {
   type ScreenName,
 } from "./screens";
 
-/**
- * Router state for the route being opened. A screen that takes a name carries
- * one; Analysis carries whichever of a position or a file it was pointed at,
- * since `--fen` and `--pgn` open it on something that was never a game here.
- */
 export type LaunchState =
   | { username: string }
   | { fen: string }
   | { pgnPath: string };
 
-/** Where a successful parse lands the app. */
 export type LaunchOptions = {
   path: string;
   state?: LaunchState;
-  /**
-   * The theme for this session, or undefined to keep the saved one. `--theme`
-   * is a look at one, not a change to the one you keep: it deliberately does
-   * not write to the preferences file the picker writes to.
-   */
   theme?: Theme;
-  /**
-   * Whether the terminal is rung when the queue pairs you or the opponent
-   * moves. Undefined leaves whatever `OPENCHESS_BELL` said, which is the usual
-   * case: the flags exist to overrule that setting for one session, in either
-   * direction, so `--bell` is as necessary as `--no-bell`.
-   */
   bell?: boolean;
-  /**
-   * The piece set for this session, or undefined to keep the saved one. Like
-   * `--theme`, it does not write to the preferences file the picker writes to.
-   */
   pieceSet?: PieceSet;
 };
 
-/**
- * Either the app should start, or there is one thing to say and nothing to
- * run. Parsing returns which; it never prints or exits itself, so the whole of
- * it can be tested without a terminal.
- */
 export type ParsedArgs =
   | { kind: "launch"; options: LaunchOptions }
   | { kind: "print"; text: string; code: number };
@@ -65,21 +39,14 @@ const PIECES_FLAG = "--pieces";
 const FEN_FLAG = "--fen";
 const PGN_FLAG = "--pgn";
 
-/** The screen `--fen` and `--pgn` are shorthand for. */
 const ANALYSIS_SCREEN = "analysis";
 
-/** The most fields a FEN has: placement, turn, castling, en passant, two clocks. */
 const FEN_FIELDS = 6;
 
 function fail(text: string): ParsedArgs {
   return { kind: "print", text, code: 1 };
 }
 
-/**
- * A theme name reduced to the letters and digits in it, so the spelling on the
- * command line does not have to match the one in the picker: `rose-pine`,
- * `Rosé Pine` and `rosepine` all name the same theme.
- */
 function normalizeThemeName(value: string): string {
   return value
     .normalize("NFD")
@@ -92,10 +59,6 @@ function resolveTheme(query: string): Theme | undefined {
   return THEMES.find((theme) => normalizeThemeName(theme.name) === wanted);
 }
 
-/**
- * What to say about a theme nobody has. There are thirty-odd of them, so a
- * misspelling gets the handful it looks like rather than the whole list.
- */
 function unknownThemeText(query: string): string {
   const wanted = normalizeThemeName(query);
   const near =
@@ -114,7 +77,6 @@ function unknownThemeText(query: string): string {
   return lines.join("\n");
 }
 
-/** The sets there are, with what each is for, for `--pieces` and its errors. */
 function pieceSetListText(): string {
   const width = Math.max(...PIECE_SETS.map((set) => set.length));
   return PIECE_SETS.map(
@@ -137,12 +99,6 @@ function unknownScreenText(name: string): string {
   ].join("\n");
 }
 
-/**
- * The value written after a flag, and the last argument index it spent.
- *
- * `--flag=value` carries its own and must not eat the word after it; the
- * separate spelling spends the argument that follows.
- */
 function flagValue(
   argv: readonly string[],
   index: number,
@@ -155,16 +111,6 @@ function flagValue(
     : { value: argv[index + 1], last: index + 1 };
 }
 
-/**
- * The FEN written after `--fen`, and the last argument index it spent.
- *
- * A FEN is six space-separated fields, so one the shell was not asked to keep
- * together arrives as six arguments rather than one — and typing the quotes is
- * exactly what someone pasting a position from another tool forgets. Fields are
- * gathered until the line runs out, another flag starts, or a screen is named,
- * which is what lets both spellings work without either being able to swallow
- * the rest of the command line.
- */
 function readFen(
   argv: readonly string[],
   index: number,
@@ -190,11 +136,6 @@ function readFen(
   return { fen: fields.join(" "), last };
 }
 
-/**
- * Whether `fen` is one the engine can set a board up from. Checked here rather
- * than on the screen so a mistyped position prints a line and leaves, instead
- * of clearing the terminal to say so.
- */
 function isValidFen(fen: string): boolean {
   try {
     parseFen(fen);
@@ -204,7 +145,6 @@ function isValidFen(fen: string): boolean {
   }
 }
 
-/** The label a screen is invoked by, with its placeholder when it needs one. */
 function screenUsage(name: ScreenName): string {
   const screen = screenByName(name);
   const argument = screen ? screenArgument(screen) : undefined;
@@ -262,12 +202,6 @@ function themeListText(): string {
   return THEMES.map((theme) => theme.name).join("\n");
 }
 
-/**
- * The flags that ask a question rather than start a game, answered wherever
- * they appear and before the rest of the line is judged. Somebody who typed a
- * flag wrong and added `--help` to find out why should get the help, not the
- * complaint about the flag.
- */
 function query(argv: readonly string[]): ParsedArgs | undefined {
   if (argv.includes("-h") || argv.includes("--help")) {
     return { kind: "print", text: helpText(), code: 0 };
@@ -284,13 +218,6 @@ function query(argv: readonly string[]): ParsedArgs | undefined {
   return undefined;
 }
 
-/**
- * Read the command line.
- *
- * `--theme=nord` and `--theme nord` are the same, and so are `--local` and
- * `local`: the flag spelling exists because it is what people try, and there
- * is no reason for it to be wrong.
- */
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const asked = query(argv);
   if (asked) {
@@ -382,9 +309,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       continue;
     }
 
-    // Read before the general flag branch below, which would otherwise take
-    // these for misspelled screens. The last one on the line wins, as the last
-    // `--theme` does.
     if (arg === BELL_FLAG || arg === NO_BELL_FLAG) {
       bell = arg === BELL_FLAG;
       continue;
@@ -409,7 +333,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       continue;
     }
 
-    // A bare word is the screen, and then whatever that screen is about.
     if (screen === undefined) {
       if (!isScreenName(arg)) {
         return fail(unknownScreenText(arg));
@@ -426,8 +349,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     return fail(`Unexpected argument "${arg}".`);
   }
 
-  // Both name a position to open Analysis on, and the screen shows one game at
-  // a time, so there is no reading of the two together worth guessing at.
   if (fen !== undefined && pgnPath !== undefined) {
     return fail(`Pick one: ${FEN_FLAG} or ${PGN_FLAG}, not both.`);
   }
@@ -462,7 +383,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     };
   }
 
-  // No screen named: the menu, which is where the game starts anyway.
   if (screen === undefined) {
     return { kind: "launch", options: { path: "/", theme, bell, pieceSet } };
   }

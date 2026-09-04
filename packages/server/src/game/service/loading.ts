@@ -5,7 +5,6 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import { throwProblem } from "../../lib/problem-details";
 import { type OpponentView, colorOf, replay } from "./views";
 
-/** The other human's public face, for the PvP header. */
 export async function opponentFor(
   tx: Prisma.TransactionClient,
   row: GameRow,
@@ -31,7 +30,6 @@ export async function opponentFor(
     : null;
 }
 
-/** Load a game the caller is actually a player in. */
 export async function loadFor(
   tx: Prisma.TransactionClient,
   gameId: string,

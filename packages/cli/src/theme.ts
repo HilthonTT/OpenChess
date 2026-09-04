@@ -1,10 +1,6 @@
-/** Shared palette, based on classic chessboard colors. */
 export const theme = {
-  /** Light squares */
   cream: "#F0D9B5",
-  /** Dark squares */
   walnut: "#B58863",
-  /** Highlight accent */
   gold: "#E2B45A",
   text: "#C9C9C9",
   dim: "#8A8A8A",
@@ -12,11 +8,6 @@ export const theme = {
   selectionBg: "#33291C",
 } as const;
 
-/**
- * The semantic palette the chrome (title, menu, hint bar) is painted with.
- * Mirrors the shape of the static {@link theme} above so components can swap a
- * hard-coded `theme.X` for a themed `ui.X` with no other changes.
- */
 export type UITheme = {
   cream: string;
   walnut: string;
@@ -27,12 +18,6 @@ export type UITheme = {
   selectionBg: string;
 };
 
-/**
- * Derive the chrome palette from an active theme's colors. The default
- * "Classic Chess" theme maps `selection → cream`, `planMode → walnut`,
- * `primary → gold`, `dimSeparator → faint`, so this reproduces the original
- * static look exactly while letting every other theme repaint the UI.
- */
 export function toUITheme(colors: ThemeColors): UITheme {
   return {
     cream: colors.selection,
@@ -45,29 +30,18 @@ export function toUITheme(colors: ThemeColors): UITheme {
   };
 }
 
-/**
- * The palette the chessboard is painted with. Like {@link UITheme} this is
- * derived from the active theme's colors rather than stored per theme, so every
- * theme in {@link THEMES} repaints the board for free.
- */
 export type BoardTheme = {
   border: string;
   coordinate: string;
   whitePiece: string;
   blackPiece: string;
-  /** The square the player is standing on. */
   cursorBg: string;
   cursorFg: string;
-  /** The piece the player picked up. */
   selectedBg: string;
   selectedFg: string;
-  /** Both squares of the move just played. */
   lastMoveBg: string;
-  /** The dot marking an empty square the selected piece may move to. */
   moveHint: string;
-  /** A piece the selected piece may capture. */
   captureHint: string;
-  /** The king of a side that is in check. */
   checkBg: string;
   checkFg: string;
 };
@@ -110,7 +84,6 @@ export type Theme = {
   colors: ThemeColors;
 };
 
-/** Default theme derived from the classic chessboard palette above. */
 const CLASSIC_CHESS: Theme = {
   name: "Classic Chess",
   colors: {

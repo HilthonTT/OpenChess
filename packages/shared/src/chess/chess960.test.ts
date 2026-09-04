@@ -49,7 +49,6 @@ function square(name: string): number {
   return index;
 }
 
-/** The back rank of a position, as piece letters from the a-file. */
 function backRankOf(position: Position, rank: number): string {
   let text = "";
   for (let file = 0; file < 8; file += 1) {
@@ -145,9 +144,6 @@ describe("the opening FEN", () => {
       const field = chess960Fen(index).split(" ")[2]!;
       const rank = chess960BackRank(index);
 
-      // `KQkq` is written whenever it can only mean one thing — which is any
-      // array whose king and rooks happen to sit on e, a and h, not only the
-      // ordinary one. Everything else names the files outright.
       if (
         rank.indexOf("k") === 4 &&
         rank.indexOf("r") === 0 &&
@@ -176,25 +172,7 @@ describe("the opening FEN", () => {
   });
 });
 
-/**
- * Castling is the whole of what Chess960 changes, and the interesting cases are
- * the ones a normal array can never produce: a king that castles without moving
- * at all, a rook that lands on the square the king just left, and a king that
- * travels *left* to castle king-side. Rather than hand-pick the arrays that do
- * that, this runs all 960 of them.
- *
- * The board is cleared down to the one king and the one rook being tested.
- * Two things make that necessary rather than merely convenient. Leaving both of
- * a side's rooks on the rank would not do: in an array like `bbqnnrkr` the
- * queen-side rook stands on f1, which is where the king-side rook has to land,
- * so that castle is genuinely — and correctly — unavailable. Nor can the enemy
- * army be mirrored onto the far rank, because in that same array black's rook
- * would sit on f8 covering f1, a square white's king crosses on its way to c1,
- * which forbids the castle just as correctly. Both are real rules; neither is
- * what this test is asking about.
- */
 describe("castling from a shuffled array", () => {
-  /** One king and one rook, alone on the board, entitled to castle. */
   function bareCastlingPosition(
     index: number,
     side: "king" | "queen",
@@ -252,8 +230,6 @@ describe("castling from a shuffled array", () => {
           "R",
         );
 
-        // And nothing is left behind. A king or rook duplicated onto its own
-        // origin is exactly the bug that overlapping squares invite.
         const rank = backRankOf(after, 0).replace(/\./g, "");
         expect(rank.split("").sort().join(""), label).toBe("KR");
       }
@@ -283,8 +259,6 @@ describe("castling from a shuffled array", () => {
 
         expect(after.castling.whiteKingSide, `#${index}`).toBe(false);
         expect(after.castling.whiteQueenSide, `#${index}`).toBe(false);
-        // The opponent's are untouched by it — even when the mover's rook
-        // happens to pass over the file the opponent's rook started on.
         expect(after.castling.blackKingSide, `#${index}`).toBe(true);
         expect(after.castling.blackQueenSide, `#${index}`).toBe(true);
       }
@@ -298,8 +272,6 @@ describe("castling from a shuffled array", () => {
         const legal = generateLegalMoves(position);
         const castle = legal.find((m) => m.isCastle)!;
 
-        // A bare rank means a castle often gives check; that decoration is not
-        // what is being asked about here.
         expect(
           toSan(position, castle, legal).replace(/[+#]$/, ""),
           `#${index}`,
@@ -318,8 +290,6 @@ describe("castling is written king-takes-rook", () => {
   });
 
   test("a shuffled game names the rook's square", () => {
-    // King on g1, rooks on b1 and h1: both castles are open, and each is
-    // written as the king taking its own rook.
     const game = createGame("1r4kr/8/8/8/8/8/8/1R4KR w HBhb - 0 1");
     const castles = game.legalMoves.filter((move) => move.isCastle);
 
@@ -327,7 +297,6 @@ describe("castling is written king-takes-rook", () => {
   });
 
   test("a king that castles without moving is still a castle", () => {
-    // King already on g1 with the rook on h1: `kingTo` is where it stands.
     const game = createGame("1r4kr/8/8/8/8/8/8/1R4KR w HBhb - 0 1");
     const move = findUciMove(game, "g1h1");
 
@@ -340,8 +309,6 @@ describe("castling is written king-takes-rook", () => {
   });
 
   test("a rook that lands on the square the king left", () => {
-    // King on d1, queen-side rook on a1: the king goes d1 -> c1 and the rook
-    // a1 -> d1, straight onto the square the king vacated.
     const game = createGame("r2k3r/8/8/8/8/8/8/R2K3R w HAha - 0 1");
     const move = findUciMove(game, "d1a1");
 
@@ -361,15 +328,12 @@ describe("the rules castling still has to obey", () => {
   });
 
   test("not through an attacked square", () => {
-    // The king walks b1 -> c1 castling queen-side; a rook on c8 covers c1.
     const game = createGame("2r5/8/8/8/8/8/8/1R4KR w HBhb - 0 1");
     const queenSide = game.legalMoves.find((move) => move.isCastle === "queen");
     expect(queenSide).toBeUndefined();
   });
 
   test("not with a piece in the rook's way", () => {
-    // Everything is clear for the king (g1 stays put, f1 is empty) but the
-    // queen-side rook on b1 has to reach d1, and c1 is occupied.
     const game = createGame("1r4kr/8/8/8/8/8/8/1RN3KR w HBhb - 0 1");
     const sides = game.legalMoves
       .filter((move) => move.isCastle)
@@ -379,9 +343,6 @@ describe("the rules castling still has to obey", () => {
   });
 
   test("a b-file square the king never crosses may be attacked", () => {
-    // Queen-side castling from a king on d1: the rook crosses b1 and the king
-    // does not, so a rook bearing down the b-file does not forbid it — exactly
-    // as b1 does not in an ordinary game.
     const game = createGame("1r6/8/8/8/8/8/8/R2K3R w HAha - 0 1");
     const queenSide = game.legalMoves.find((move) => move.isCastle === "queen");
 
@@ -413,8 +374,6 @@ describe("the castling setup a FEN carries", () => {
   });
 
   test("KQkq on a shuffled array means the outermost rooks", () => {
-    // Same array written both ways: `KQkq` has to resolve to the same files the
-    // Shredder spelling names outright.
     const shredder = parseFen(
       "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w HFhf - 0 1",
     );
@@ -466,12 +425,8 @@ describe("a whole shuffled game", () => {
     expect(game.history[2]!.san).toBe("O-O");
     expect(game.history[3]!.san).toBe("O-O");
 
-    // The queen-side rook has since moved off b1, so `b1c1` is an ordinary
-    // rook move rather than a castle — the notation is the same either way,
-    // which is why the record has to be replayed and not merely read.
     expect(game.history[4]!.move.isCastle).toBeNull();
 
-    // And the same list replays onto the same board from the same start.
     let replayed = createGame(fen);
     for (const uci of moves) {
       replayed = play(replayed, findUciMove(replayed, uci)!);
@@ -486,8 +441,6 @@ describe("a whole shuffled game", () => {
     const castled = play(game, findUciMove(game, "g1h1")!);
     expect(toFen(castled.position)).not.toBe(before);
 
-    // `undo` restores the saved position rather than unwinding the move, so
-    // this is really a check that the saved one was never mutated in place.
     expect(toFen(undo(castled).position)).toBe(before);
   });
 

@@ -21,7 +21,6 @@ function getInitialPieceSet(): PieceSet {
 type PieceSetContextValue = {
   pieceSet: PieceSet;
   setPieceSet: (set: PieceSet) => void;
-  /** Draw with a set for this session only, without persisting it to disk. */
   previewPieceSet: (set: PieceSet) => void;
 };
 
@@ -37,18 +36,12 @@ export function usePieceSetContext(): PieceSetContextValue {
   return value;
 }
 
-/** The set the board and the captured-piece panels should draw with. */
 export function usePieceSet(): PieceSet {
   return usePieceSetContext().pieceSet;
 }
 
 type PieceSetProviderProps = {
   children: ReactNode;
-  /**
-   * A set to start on instead of the saved one — what `--pieces` passes in.
-   * Like `--theme`, it is only the starting point: nothing here writes it to
-   * disk, so a set asked for on the command line lasts one session.
-   */
   initialPieceSet?: PieceSet;
 };
 

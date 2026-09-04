@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import { PERSONALITIES } from "@openchess/shared";
 import type { PersonalityId } from "@openchess/shared";
@@ -33,7 +33,7 @@ export function History({
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
-  const [_attempt, setAttempt] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,21 +56,25 @@ export function History({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
+  const loadingMore = useRef(false);
   const loadMore = useCallback(() => {
-    if (cursor === null) {
+    if (cursor === null || loadingMore.current) {
       return;
     }
+    loadingMore.current = true;
     void listFinishedGames({ cursor })
       .then((page) => {
         setGames((prev) => [...(prev ?? []), ...page.games]);
         setCursor(page.nextCursor);
       })
-      .catch((cause) => setError(errorMessage(cause)));
+      .catch((cause) => setError(errorMessage(cause)))
+      .finally(() => {
+        loadingMore.current = false;
+      });
   }, [cursor]);
 
-  /** Write the highlighted game out as PGN, without leaving the list. */
   const exportSelected = useCallback(async () => {
     const game = games?.[index];
     if (!game) {
@@ -100,7 +104,6 @@ export function History({
       case "j": {
         const next = Math.min(games.length - 1, index + 1);
         setIndex(next);
-        // Fetch the next page as the selection nears the end of the list.
         if (next >= games.length - 2) {
           loadMore();
         }
@@ -157,7 +160,6 @@ export function History({
   );
 }
 
-/** Column widths for the games table. */
 const WHEN_W = 12;
 
 const KIND_W = 18;
@@ -187,11 +189,6 @@ function historyKind(entry: GameHistoryEntry): string {
   return `Online 1v1${rules}`;
 }
 
-/**
- * What to call the bot a game was played against. A game recorded before the
- * bots had names has none, and "Engine" is the honest answer — inventing one
- * from the tier would put a personality's name on a game it never played.
- */
 export function botName(personality: PersonalityId | null): string {
   return personality ? PERSONALITIES[personality].name : "Engine";
 }

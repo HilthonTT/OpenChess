@@ -9,9 +9,8 @@ import {
 } from "react";
 import { useKeyboard, useRenderer } from "@opentui/react";
 
-/** Bottom layer that is always present; screens register their responders on it. */
 export const BASE_LAYER_ID = "base";
-/** Pressed together with ctrl, walks the responder chain and exits if unhandled. */
+
 const EXIT_KEY = "c";
 
 type Responder = () => boolean;
@@ -76,7 +75,6 @@ export function KeyboardLayerProvider({ children }: Props) {
     [],
   );
 
-  // Single ctrl+c handler that walks the responder chain
   useKeyboard((key) => {
     if (!key.ctrl || key.name !== EXIT_KEY) {
       return;
@@ -95,8 +93,6 @@ export function KeyboardLayerProvider({ children }: Props) {
       }
     }
 
-    // No responder handled it - exit. destroy() alone doesn't stop the
-    // process, and live polling intervals would keep Bun alive.
     renderer.destroy();
     process.exit(0);
   });

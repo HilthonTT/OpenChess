@@ -7,10 +7,6 @@ import { SCREENS } from "./lib/screens";
 import { createAppRouter } from "./router";
 import { THEMES } from "./theme";
 
-/**
- * Boots the app the way `openchess …` does — through the same parse and the
- * same router — so what these assert is what a command line actually opens.
- */
 async function launch(...argv: string[]) {
   const parsed = parseArgs(argv);
   if (parsed.kind !== "launch") {
@@ -25,8 +21,6 @@ async function launch(...argv: string[]) {
 
   return {
     frame: () => setup.captureCharFrame(),
-    // A lone ESC byte is ambiguous, so the parser holds it briefly to see
-    // whether an escape sequence follows. Wait it out rather than race it.
     escape: async () => {
       await act(async () => {
         setup.mockInput.pressEscape();
@@ -50,7 +44,6 @@ describe("opening from the command line", () => {
 
     expect(frame).toContain("Local 1v1");
     expect(frame).toContain("A   B   C   D   E   F   G   H");
-    // The menu's own footer is gone: this is the board, not the list.
     expect(frame).not.toContain("quick pick");
   });
 
@@ -70,8 +63,6 @@ describe("opening from the command line", () => {
   });
 
   test("a screen's argument reaches the screen", async () => {
-    // Signed out there is no profile to fetch, but the name asked for is the
-    // one the screen reports it cannot show.
     const app = await launch("profile", "hikaru");
     expect(app.frame()).toContain("hikaru");
   });
@@ -83,8 +74,6 @@ describe("opening from the command line", () => {
     }
 
     const app = await launch("local", "--theme", "nord");
-    // captureCharFrame drops color, so assert on the state the provider was
-    // handed rather than on pixels: the screen still renders, on Nord.
     expect(app.frame()).toContain("Local 1v1");
     expect(parseArgs(["--theme", "nord"])).toMatchObject({
       kind: "launch",

@@ -14,10 +14,6 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-// Metered behind auth so it keys by user, like the game routes. Purchasing
-// spends currency and races on the coin balance, so a burst of concurrent
-// buys is exactly what must not be free — the balance is protected by
-// Serializable isolation in `purchaseTitle`, and this keeps the burst small.
 base.use(
   "*",
   requireAuth,
@@ -65,8 +61,6 @@ const purchase = createRoute({
   },
 });
 
-// Chained so the exported type carries the routes — `hc<AppType>` builds the
-// typed CLI client from it, and statement registrations would leave it blind.
 const router = base
   .openapi(catalog, async (c) => {
     const titles = await listTitles(c.get("user"));

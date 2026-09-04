@@ -63,25 +63,12 @@ const KEYMAP: Keymap = {
 const SUBTITLE = "Find the move the position is asking for";
 const WIDTH = 58;
 
-/**
- * The tactics trainer.
- *
- * The line is never sent to this screen — that is the whole design. Each move
- * goes to the server, which replays the attempt and answers "right, and here is
- * the reply" or "wrong, and here is the answer". So the board here is rebuilt
- * from the position and the moves that have actually landed, not from a
- * solution it is holding and pretending not to look at.
- */
 export function Puzzles() {
   const auth = useAuth();
   const theme = useUITheme();
 
   const dialog = useDialog();
 
-  // A theme can arrive with the navigation — the Collections screen sends one
-  // when you ask to train the set you are six puzzles short of. Read once, as
-  // the initial value: it is where the screen opens, not something that keeps
-  // overriding the picker afterwards.
   const location = useLocation();
   const opened = location.state as { theme?: string } | null;
 
@@ -123,9 +110,6 @@ export function Puzzles() {
     };
   }, [attempt, auth.status, mode, themeKey]);
 
-  // Fetched once and kept, since the picker is opened far more often than the
-  // corpus changes — and a dialog that has to wait on a request before it can
-  // show anything is a dialog nobody uses twice.
   useEffect(() => {
     if (auth.status !== "signed-in") {
       return;
@@ -138,7 +122,6 @@ export function Puzzles() {
           setThemes(list);
         }
       })
-      // A themes list that will not load costs the filter, not the screen.
       .catch(() => undefined);
 
     return () => {
@@ -160,7 +143,6 @@ export function Puzzles() {
           themes={themes}
           onSelect={(picked) => {
             setThemeKey(picked);
-            // A theme change is a different queue, so the daily is left behind.
             setMode("rated");
             setAttempt((value) => value + 1);
           }}
@@ -228,10 +210,8 @@ export function Puzzles() {
   );
 }
 
-/** What the screen is showing right now, which decides the whole footer. */
 type Phase = "solving" | "solved" | "failed";
 
-/** Null when the puzzle had already been attempted, so nothing was owed. */
 type PuzzleRewards = PuzzleMoveResult["rewards"];
 
 function PuzzleBoard({
@@ -248,7 +228,6 @@ function PuzzleBoard({
   rating: number;
   streak: number;
   daily: boolean;
-  /** The theme being trained, or null for the whole catalog. */
   themeLabel: string | null;
   onNext: () => void;
   onToggleDaily: () => void;
@@ -260,13 +239,7 @@ function PuzzleBoard({
 
   useKeymap(KEYMAP);
 
-  /**
-   * The board, rebuilt from the puzzle's position plus every move the server
-   * has confirmed. Kept as UCI rather than as a `Game` so that "what has
-   * landed" and "what is on screen" cannot drift apart: the game is derived.
-   */
   const [line, setLine] = useState<string[]>(() => [puzzle.openingMove]);
-  /** Only our own moves, which is what the server wants sent back. */
   const [ourMoves, setOurMoves] = useState<string[]>([]);
 
   const [phase, setPhase] = useState<Phase>("solving");
@@ -301,7 +274,6 @@ function PuzzleBoard({
   });
   const { beginCommit, setMessage } = selection;
 
-  /** Bank a solve: the header numbers, the toasts, and the wallet refresh. */
   const announce = useCallback(
     (rewards: PuzzleRewards) => {
       if (!rewards) {
@@ -326,13 +298,11 @@ function PuzzleBoard({
         });
       }
 
-      // The payout moved the header's coins and XP.
       void auth.refresh();
     },
     [auth, toast],
   );
 
-  /** Send a move and fold whatever comes back into the board. */
   const commit = useCallback(
     async (from: number, to: number, choice?: PromotionPiece) => {
       const move = beginCommit(from, to, choice);
@@ -355,7 +325,6 @@ function PuzzleBoard({
         setOurMoves(moves);
 
         if (result.outcome === "continue") {
-          // Our move and the reply the line forces, in the order they happened.
           setLine((current) => [...current, uci, result.reply ?? ""]);
           setNote("Right — keep going");
           return;
@@ -388,11 +357,6 @@ function PuzzleBoard({
     [announce, beginCommit, ourMoves, puzzle.id, setMessage],
   );
 
-  /**
-   * The hint moves the cursor onto the piece that has the move. In a terminal
-   * that is a better hint than a highlight would be: it points *and* leaves the
-   * player one keypress from picking the piece up.
-   */
   const takeHint = useCallback(async () => {
     if (over || pending) {
       return;
@@ -421,7 +385,6 @@ function PuzzleBoard({
     setPending(true);
     try {
       const result = await revealPuzzle(puzzle.id, ourMoves);
-      // The whole line from the start, so the board can walk to the finish.
       setLine(result.line);
       setSolution(result.solution);
       setPhase("failed");
@@ -445,8 +408,6 @@ function PuzzleBoard({
             onNext();
           }
           break;
-        // `h` is cursor-left on every board screen in the app, so the hint
-        // takes its own key rather than shadowing it here alone.
         case "t":
           void takeHint();
           break;
@@ -458,7 +419,6 @@ function PuzzleBoard({
             onToggleDaily();
           }
           break;
-        // `/` opens the theme picker, matching the explorer's search key.
         case "/":
           if (!pending) {
             onChooseTheme();
@@ -569,11 +529,6 @@ function PuzzleBoard({
   );
 }
 
-/**
- * The board after a list of UCI moves. A move that will not replay stops the
- * walk rather than throwing: the alternative is a crashed screen over a
- * server response we could simply render less of.
- */
 function replayLine(fen: string, moves: string[]): Game {
   let game = createGame(fen);
 

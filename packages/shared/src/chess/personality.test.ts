@@ -121,20 +121,16 @@ describe("the Rookie", () => {
       seen.add(`${move!.from}-${move!.to}`);
     }
 
-    // Twenty moves are available; a bot playing at random should find well
-    // more than a handful of them in sixty tries.
     expect(seen.size).toBeGreaterThan(8);
   });
 
   test("and misses a free queen, which a searching bot does not", () => {
-    // The black queen on d5 is hanging to the rook on d2.
     const position = parseFen("k7/8/8/3q4/8/8/3R4/K7 w - - 0 1");
 
     const rookieTakes = Array.from({ length: 40 }, () =>
       toAlgebraic(findBestMove(position, "rookie")!.to),
     ).filter((square) => square === "d5").length;
 
-    // It has no reason to prefer the capture, so it should mostly not play it.
     expect(rookieTakes).toBeLessThan(20);
     expect(toAlgebraic(findBestMove(position, "maestro")!.to)).toBe("d5");
   });
@@ -142,8 +138,6 @@ describe("the Rookie", () => {
 
 describe("a slip", () => {
   test("is taken when the draw comes in under the chance", () => {
-    // `random` is consumed first by the slip check and then to pick the move,
-    // so a draw of 0 slips and lands on the first legal move.
     const move = findBestMove(START, "gambiteer", [], { random: () => 0 });
     const first = generateLegalMoves(START)[0]!;
 
@@ -152,8 +146,6 @@ describe("a slip", () => {
   });
 
   test("and never by a bot with no chance of one", () => {
-    // The Maestro slips with probability zero, so even a draw of 0 has to
-    // reach the book or the search rather than a random move.
     const position = parseFen("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1");
     const move = findBestMove(position, "maestro", [], { random: () => 0 });
 
@@ -162,7 +154,6 @@ describe("a slip", () => {
 });
 
 describe("what a bot values", () => {
-  /** White is a pawn down but far better developed. */
   const gambit = parseFen(
     "rnbqkbnr/ppp1pppp/8/8/2BpP3/5N2/PPP2PPP/RNBQK2R b KQkq - 1 4",
   );
@@ -172,24 +163,17 @@ describe("what a bot values", () => {
   });
 
   test("the Gambiteer minds being a pawn down less than the Fortress", () => {
-    // Scores are from the side to move's point of view, and black is the one
-    // holding the extra pawn — so a bot that cares about material scores this
-    // *higher* for black than one that cares about activity does.
     const byGambiteer = evaluate(gambit, PERSONALITIES.gambiteer.weights);
     const byFortress = evaluate(gambit, PERSONALITIES.fortress.weights);
 
     expect(byFortress).toBeGreaterThan(byGambiteer);
   });
 
-  /** The house weights with one term moved, so a test can isolate that term. */
   function only(term: keyof typeof DEFAULT_EVAL_WEIGHTS, value: number) {
     return { ...DEFAULT_EVAL_WEIGHTS, [term]: value };
   }
 
   test("the king-safety weight reaches the pawn shield", () => {
-    // Two rooks and a queen a side, so the position is still a middlegame —
-    // the shield term is midgame-only, and with bare kings it would be worth
-    // nothing whatever the weight said. White's g-pawn has left the shield.
     const holed = parseFen("r2q1rk1/5ppp/8/8/6P1/8/5P1P/R2Q1RK1 w - - 0 1");
 
     expect(evaluate(holed, only("kingSafety", 2))).toBeLessThan(
@@ -198,8 +182,6 @@ describe("what a bot values", () => {
   });
 
   test("the material weight reaches the piece values", () => {
-    // Black is the one holding the extra pawn, and scores are from the side to
-    // move's point of view — so caring more about material scores this higher.
     expect(evaluate(gambit, only("material", 1.5))).toBeGreaterThan(
       evaluate(gambit, only("material", 0.5)),
     );
@@ -228,8 +210,6 @@ describe("what a bot values", () => {
   });
 
   test("scaling every weight together changes nothing anyone can see", () => {
-    // Only ratios matter, which is worth pinning: it is the property that makes
-    // these numbers tunable one at a time.
     const doubled = Object.fromEntries(
       Object.entries(DEFAULT_EVAL_WEIGHTS).map(([key, value]) => [
         key,
@@ -242,12 +222,9 @@ describe("what a bot values", () => {
 });
 
 describe("contempt", () => {
-  /** Bare kings: every line from here is a draw by insufficient material. */
   const drawn = parseFen("k7/8/8/8/8/8/8/K7 w - - 0 1");
 
   test("scores a dead draw as dead level by default", () => {
-    // Compared rather than matched, because negating a zero score produces a
-    // negative zero, and `toBe` can tell those apart where chess cannot.
     expect(search(drawn, { depth: 2 }).score === 0).toBe(true);
   });
 
@@ -266,7 +243,6 @@ describe("contempt", () => {
 });
 
 describe("opening taste", () => {
-  /** The game after a line of SAN from the initial array. */
   function after(...sans: string[]) {
     let game = createGame();
     for (const san of sans) {
@@ -277,11 +253,6 @@ describe("opening taste", () => {
 
   const openGame = after("e4", "e5");
 
-  /**
-   * How often `style` lands on `san`, over a ticket swept evenly across the
-   * whole range. Sweeping rather than sampling `Math.random` makes this an
-   * exact reading of the weighting instead of a coin toss with a threshold.
-   */
   function shareOf(san: string, style: "gambit" | "solid" | null): number {
     const wanted = findSanMove(openGame, san)!;
     const samples = 400;

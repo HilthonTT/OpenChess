@@ -48,20 +48,11 @@ const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
   "temporarily_unavailable",
 ]);
 
-/**
- * Recover the CLI's callback port from the `state`.
- *
- * Returns `null` on anything malformed rather than throwing, so a hostile
- * `state` is an ordinary 400 and not a 500 with a stack trace.
- */
 export function portFromState(state: string): number | null {
   if (state.length > MAX_STATE_LENGTH) {
     return null;
   }
 
-  // The CLI sends a single base64url JSON payload. Taking the first
-  // dot-segment keeps us working if a signed `payload.signature` format ever
-  // replaces it.
   const [encoded] = state.split(".");
   if (!encoded) {
     return null;
@@ -69,8 +60,6 @@ export function portFromState(state: string): number | null {
 
   let payload: unknown;
   try {
-    // `Buffer.from(.., "base64url")` never throws — it silently drops invalid
-    // characters — so JSON.parse is what actually rejects garbage here.
     payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   } catch {
     return null;
@@ -134,8 +123,6 @@ const router = base.openapi(callback, async (c) => {
 
   const port = portFromState(state);
   if (port === null) {
-    // The state is attacker-supplied and can be arbitrarily long; log enough
-    // to recognize it, not enough to let a caller stuff the logs.
     c.var.logger?.warn(
       { state: state.slice(0, 128) },
       "Rejected malformed OAuth state",

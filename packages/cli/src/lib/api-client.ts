@@ -3,7 +3,6 @@ import type { AppType } from "@openchess/server";
 import { clearAuth, getAuth } from "./auth";
 import { refreshAccessToken } from "./oauth";
 
-/** Renew this far before expiry, so a request never rides a dying token. */
 const REFRESH_MARGIN_MS = 60_000;
 
 export const apiClient = hc<AppType>(
@@ -15,9 +14,6 @@ export const apiClient = hc<AppType>(
     ) => {
       let auth = getAuth();
 
-      // Proactive renewal: expired-token 401s are routine (~1-hour life), and
-      // renewing ahead of the deadline spares every poll the failed round
-      // trip. Best-effort — a miss just falls through to the 401 path below.
       if (
         auth?.refreshToken &&
         auth.expiresAt !== undefined &&
@@ -39,9 +35,6 @@ export const apiClient = hc<AppType>(
         return response;
       }
 
-      // The server rejected the token anyway. One refresh-and-replay before
-      // giving up; the request bodies hono's client sends are strings, so a
-      // replay is safe.
       const outcome = await refreshAccessToken();
 
       if (outcome.status === "refreshed") {
@@ -51,12 +44,9 @@ export const apiClient = hc<AppType>(
       }
 
       if (outcome.status === "rejected") {
-        // The session is truly over; listeners flip the UI to signed-out.
         clearAuth();
       }
 
-      // "unavailable" keeps the stored auth: Clerk being down is not proof
-      // the session ended, and the next request will try again.
       return response;
     },
   },

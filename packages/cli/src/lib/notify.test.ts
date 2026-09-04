@@ -11,7 +11,6 @@ import {
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 
-/** A terminal that honours both sequences, and remembers what it was sent. */
 function terminal() {
   const written: string[] = [];
 
@@ -19,7 +18,6 @@ function terminal() {
     isTTY: true,
     write: (chunk: string) => written.push(chunk),
     written,
-    /** What the last write would have shown as a notification. */
     body: () => {
       const chunk = written.at(-1) ?? "";
       return chunk.slice(`${BEL}${ESC}]9;`.length, -1);
@@ -46,9 +44,6 @@ describe("sanitizeMessage", () => {
   });
 
   test("strips the control characters that would end the sequence early", () => {
-    // The names in these messages come from other players. A name carrying a
-    // BEL would close the OSC string and leave whatever followed it to be read
-    // as terminal input rather than as text.
     const hostile = `${BEL}${ESC}]0;pwned${BEL}`;
 
     expect(sanitizeMessage(`${hostile} offers a draw`)).toBe(
@@ -81,8 +76,6 @@ describe("notify", () => {
     const out = terminal();
 
     expect(notify("your move", out)).toEqual({ ok: true });
-    // One write, and the bell is in it on its own: a terminal that ignores
-    // OSC 9 would otherwise swallow the only part of this it understands.
     expect(out.written).toHaveLength(1);
     expect(out.written[0]?.startsWith(BEL)).toBe(true);
     expect(out.body()).toBe("OpenChess — your move");

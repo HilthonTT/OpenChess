@@ -49,8 +49,6 @@ function summarize(row: GameRow, userId: string): GameSummary {
     variant: row.variant,
     difficulty: row.difficulty,
     personality: row.mode === "AI" ? botFor(row).id : null,
-    // Every row we list here was queried by this user's own id on one side or
-    // the other, so the color is never actually null.
     yourColor: colorOf(row, userId) ?? "w",
     result: row.result,
     ply: row.moves.length,
@@ -59,7 +57,6 @@ function summarize(row: GameRow, userId: string): GameSummary {
   };
 }
 
-/** The caller's finished games, newest first, cursor-paginated on `(endedAt, id)`. */
 export async function listGames(input: {
   user: User;
   limit: number;
@@ -71,9 +68,6 @@ export async function listGames(input: {
       OR: [{ whitePlayerId: input.user.id }, { blackPlayerId: input.user.id }],
       endedAt: { not: null },
       ...(input.result ? { result: input.result } : {}),
-      // Strictly after the cursor row in `(endedAt, id)` order: ties on the
-      // timestamp fall through to the id, so rows that settled in the same
-      // instant are never skipped at a page boundary.
       ...(input.cursor
         ? {
             AND: [
@@ -88,7 +82,6 @@ export async function listGames(input: {
         : {}),
     },
     orderBy: [{ endedAt: "desc" }, { id: "desc" }],
-    // One extra row tells us whether another page exists without a second query.
     take: input.limit + 1,
   });
 
@@ -97,21 +90,12 @@ export async function listGames(input: {
 
   return {
     games: page.map((row) => summarize(row, input.user.id)),
-    // The `<iso>_<id>` compound `paginationQuerySchema` validates and
-    // `decodeCursor` splits. Opaque to clients, which round-trip it verbatim.
     nextCursor: last?.endedAt
       ? `${last.endedAt.toISOString()}_${last.id}`
       : null,
   };
 }
 
-/**
- * The archival PGN of a finished game the caller played.
- *
- * Read off the row rather than rebuilt: `claimGame` wrote it at settlement with
- * the players' names as they stood then, and regenerating it here would quietly
- * rename anyone who has changed their username since.
- */
 export async function getGamePgn(
   gameId: string,
   user: User,
@@ -129,8 +113,6 @@ export async function getGamePgn(
 
   return {
     pgn: row.pgn,
-    // Enough to tell two downloads apart in a folder, and safe as a filename on
-    // every platform without escaping.
     filename: `openchess-${date}-${row.id.slice(-6)}-${game.history.length}ply.pgn`,
   };
 }
@@ -140,7 +122,6 @@ export type SpectatorView = {
   white: OpponentView | null;
   black: OpponentView | null;
   variant: GameVariant;
-  /** The array it began from; see `GameView.startFen`. */
   startFen: string | null;
   fen: string;
   turn: Color;
@@ -152,20 +133,12 @@ export type SpectatorView = {
   result: GameResult | null;
   timeControl: TimeControlView | null;
   clock: ClockView | null;
-  /**
-   * The side with a draw offer standing, or null when none is. A watcher can see
-   * one for the same reason they can see the clock: it is part of what is
-   * happening on a public board, and "Black has offered a draw" is half the story
-   * of the next move. There is still nothing here to act on.
-   */
   drawOfferFrom: Color | null;
-  /** A standing takeback offer, shown for the same reason the draw offer is. */
   takebackOfferFrom: Color | null;
   startedAt: string;
   endedAt: string | null;
 };
 
-/** Both players' public faces, for a board nobody watching is playing on. */
 async function playersOf(
   row: GameRow,
 ): Promise<{ white: OpponentView | null; black: OpponentView | null }> {
@@ -225,20 +198,6 @@ function spectatorView(
   };
 }
 
-/**
- * Watch a game you are not playing in.
- *
- * Deliberately a different shape from `GameView` rather than the same one with
- * fields blanked: a spectator has no colour, no legal moves and no rewards, and
- * handing them a view that claims otherwise would invite a client to offer
- * actions the server will refuse. There is nothing here a player could not
- * already see — an online game is public while it is being played — and the
- * legal-move list, the one thing a watcher could use to play someone else's
- * board, is simply absent.
- *
- * Only PvP games can be watched. An AI game is a private practice board; the
- * bot has no audience and its human did not sign up for one.
- */
 export async function watchGame(gameId: string): Promise<SpectatorView> {
   const row = await db.game.findUnique({ where: { id: gameId } });
 
@@ -257,7 +216,6 @@ export type LiveGameSummary = {
   id: string;
   white: OpponentView | null;
   black: OpponentView | null;
-  /** The two players' ratings, for sorting the list by how good the game is. */
   whiteRating: number | null;
   blackRating: number | null;
   ply: number;
@@ -265,24 +223,12 @@ export type LiveGameSummary = {
   startedAt: string;
 };
 
-/** How many live games the watch list will show at once. */
 const MAX_LIVE_GAMES = 30;
 
-/**
- * The games being played right now, best first.
- *
- * "Best" is the lower of the two ratings: a 2000 playing an 800 is a less
- * interesting board than two 1500s, and ranking on the average would put it
- * above them. Games that have not started — paired but with no move played —
- * are left out; there is nothing to watch yet, and half of them are abandoned
- * pairings that will be aborted.
- */
 export async function listLiveGames(): Promise<LiveGameSummary[]> {
   const rows = await db.game.findMany({
     where: { mode: "PVP", endedAt: null },
     orderBy: { startedAt: "desc" },
-    // Over-fetched: the ply filter and the rating sort both happen below, and a
-    // window this size covers any plausible number of concurrent games.
     take: MAX_LIVE_GAMES * 4,
     include: {
       whitePlayer: {
@@ -335,7 +281,6 @@ export async function listLiveGames(): Promise<LiveGameSummary[]> {
     .slice(0, MAX_LIVE_GAMES);
 }
 
-/** Games still in progress. Lets a client offer "resume" instead of stranding rows. */
 export async function listActiveGames(user: User): Promise<GameSummary[]> {
   const rows = await db.game.findMany({
     where: {

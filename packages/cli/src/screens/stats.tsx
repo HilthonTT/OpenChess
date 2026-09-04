@@ -31,15 +31,11 @@ const KEYMAP: Keymap = {
 };
 
 const WIDTH = 52;
-/** Label column width; values line up in a second column. */
+
 const LABEL_W = 14;
-/** Cells in the XP progress bar. */
+
 const BAR_W = 20;
-/**
- * Changes in the rating sparkline. One less than the XP bar's width because the
- * line also plots the rating *before* the first change, so `BAR_W - 1` changes
- * draw `BAR_W` bars and the two rows come out the same length.
- */
+
 const CURVE_POINTS = BAR_W - 1;
 
 type Data = {
@@ -54,7 +50,6 @@ export function Stats() {
 
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Bumped to refetch, e.g. after r or a fixed error. */
   const [attempt, setAttempt] = useState(0);
 
   const signedIn = auth.status === "signed-in";
@@ -71,9 +66,6 @@ export function Stats() {
       fetchProfile(),
       fetchStats(),
       fetchRatingHistory(CURVE_POINTS),
-      // Supplementary, so it is allowed to fail on its own: a rush endpoint
-      // having a bad day should cost this one block, not blank the whole card
-      // behind an error about a feature the player may never have opened.
       fetchRushBests().catch(() => [] as RushBest[]),
     ])
       .then(([profile, stats, curve, rush]) => {
@@ -138,19 +130,13 @@ function Card({ data }: { data: Data }) {
   const games = stats.wins + stats.losses + stats.draws;
   const winRate = games > 0 ? Math.round((stats.wins / games) * 100) : null;
 
-  // The curve is plotted from where the window opened, so the first bar is the
-  // rating *before* its first change rather than after it — otherwise the line
-  // would draw a rise that happened off its left edge as if it were flat.
   const ratings = [
     curve.startingRating,
     ...curve.history.map((point) => point.rating),
   ];
-  // One point is a straight line, not a curve: nothing has changed yet.
   const line = curve.history.length > 0 ? sparkline(ratings) : null;
   const swing = curve.current - curve.startingRating;
 
-  // xpIntoLevel + xpToNextLevel spans the whole level band, so this fraction
-  // is in [0, 1) by construction.
   const span = profile.xpIntoLevel + profile.xpToNextLevel;
   const filled =
     span > 0 ? Math.round((profile.xpIntoLevel / span) * BAR_W) : 0;
@@ -177,11 +163,6 @@ function Card({ data }: { data: Data }) {
           ) : null}
         </Row>
         {line === null ? null : (
-          // "Trend", not "last N games": a point is a rating *change*, and a
-          // draw between equals moves Elo by zero, so the bars would undercount
-          // games played. Bar heights are relative to this window's own range —
-          // see `sparkline` — which is why the signed swing is printed beside
-          // them, making the line readable as a quantity and not only a shape.
           <Row label="Trend">
             <span fg={theme.gold}>{line}</span>
             <span fg={theme.dim}>{`  ${swing >= 0 ? "+" : ""}${swing}`}</span>
@@ -206,8 +187,6 @@ function Card({ data }: { data: Data }) {
           <span fg={theme.dim}>{` now · best ${stats.topWinStreak}`}</span>
         </Row>
         <Row label="Daily streak">
-          {/* A broken run is shown greyed rather than zeroed: the number is
-              still true, it just cannot be extended any more. */}
           <span fg={stats.loginStreakAlive ? theme.gold : theme.faint}>
             {`${stats.currentLoginStreak} ${
               stats.currentLoginStreak === 1 ? "day" : "days"
@@ -231,20 +210,9 @@ function Card({ data }: { data: Data }) {
   );
 }
 
-/**
- * Best Puzzle Rush score per mode.
- *
- * Kept apart from the record above rather than folded into it, because a rush
- * score is not on the same axis as anything else here: it moves no rating and
- * counts no games, so a row of it beside the win/loss record would invite the
- * two to be read as one measure of how you are doing.
- */
 function RushBests({ bests }: { bests: RushBest[] }) {
   const theme = useUITheme();
 
-  // Modes are listed from the catalog rather than from the response, so a mode
-  // never run still shows — "you have not tried survival" is the useful answer,
-  // and a list that grew a row the first time you played one would be worse.
   const played = bests.filter((entry) => entry.runs > 0);
 
   return (

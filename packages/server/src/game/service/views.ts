@@ -52,7 +52,6 @@ export type RewardView = {
 
 export type OpponentView = {
   username: string;
-  /** The label of their equipped title, if any. */
   title: string | null;
 };
 
@@ -62,15 +61,9 @@ export type TimeControlView = {
 };
 
 export type ClockView = {
-  /** Milliseconds left for each side as of the last committed move. */
   whiteMs: number;
   blackMs: number;
-  /**
-   * When the running side's clock started — the last move's commit, or the
-   * game's start. A reader ticks `running`'s time down from here.
-   */
   turnStartedAt: string;
-  /** Whose clock is running. Only meaningful while the game is live. */
   running: Color;
 };
 
@@ -78,17 +71,9 @@ export type GameView = {
   id: string;
   mode: GameRow["mode"];
   variant: GameVariant;
-  /**
-   * The array the game began from, or null when it is the ordinary one. A
-   * client rebuilds the board by replaying `history`, and replaying a shuffled
-   * game's moves onto the standard array puts the wrong pieces everywhere —
-   * so this is not decoration, it is what makes the history readable.
-   */
   startFen: string | null;
   difficulty: Difficulty | null;
-  /** Which bot is playing, in an AI game; null in a PvP game. */
   personality: PersonalityId | null;
-  /** The other human in a PvP game; null in an AI game. */
   opponent: OpponentView | null;
   yourColor: Color;
   fen: string;
@@ -100,32 +85,13 @@ export type GameView = {
   captured: { byWhite: string[]; byBlack: string[] };
   materialBalance: number;
   result: GameResult | null;
-  /** The game's clock, or null when it is untimed. */
   timeControl: TimeControlView | null;
-  /** Live clock readings, or null when the game is untimed. */
   clock: ClockView | null;
-  /**
-   * The side with a draw offer standing, or null when none is. Compare it with
-   * `yourColor`: your own offer is waiting on them, theirs is yours to answer.
-   * Always null on a settled game — ending one clears any offer with it.
-   */
   drawOfferFrom: Color | null;
-  /**
-   * The side with a takeback offer standing, or null when none is. Read the
-   * same way as `drawOfferFrom`: yours is waiting on them, theirs is yours to
-   * answer. Always null on an AI game, where a takeback is taken rather than
-   * asked for, and null again the moment anyone moves.
-   */
   takebackOfferFrom: Color | null;
-  /**
-   * How many moves have been taken back. Non-zero only on an AI game, and the
-   * reason its payout will be nothing — a screen shows it so the forfeit is
-   * visible before the game ends rather than as a surprise at the end of it.
-   */
   takebacks: number;
   startedAt: string;
   endedAt: string | null;
-  /** Populated only on the response that ends the game. */
   rewards: RewardView | null;
 };
 
@@ -136,7 +102,6 @@ const PGN_RESULT: Record<GameResult, PgnResult> = {
   ABORTED: "*",
 };
 
-/** Which side `userId` is playing, or null when they are not in this game. */
 export function colorOf(row: GameRow, userId: string): Color | null {
   if (row.whitePlayerId === userId) {
     return "w";
@@ -171,7 +136,6 @@ export function fromHistory(entry: HistoryEntry): MoveView {
   };
 }
 
-/** The game's clock preset, or null when it carries no time control. */
 export function timeControlView(row: GameRow): TimeControlView | null {
   if (row.initialSeconds === null || row.incrementSeconds === null) {
     return null;
@@ -182,7 +146,6 @@ export function timeControlView(row: GameRow): TimeControlView | null {
   };
 }
 
-/** The live clock, or null when the game is untimed. */
 export function clockView(row: GameRow, game: Game): ClockView | null {
   if (
     row.whiteTimeMs === null ||
@@ -199,7 +162,6 @@ export function clockView(row: GameRow, game: Game): ClockView | null {
   };
 }
 
-/** The stored clock as a plain pair, or null when the game is untimed. */
 export function clockState(row: GameRow): ClockState | null {
   if (row.whiteTimeMs === null || row.blackTimeMs === null) {
     return null;
@@ -230,8 +192,6 @@ export function view(
     turn: game.position.turn,
     status: game.status,
     ply: game.history.length,
-    // Only ever the mover's own options, and only while the game is live — the
-    // client has no business being handed the bot's replies to choose from.
     legalMoves:
       live && game.position.turn === color
         ? game.legalMoves.map((move) =>
@@ -253,18 +213,8 @@ export function view(
   };
 }
 
-/**
- * Rebuild the engine game from its stored moves.
- *
- * A row whose moves do not replay is corrupt — we wrote it, so this is our bug
- * and not the caller's. It earns a 500 rather than a 4xx.
- */
 export function replay(row: GameRow): Game {
   try {
-    // `startFen` is null on a standard game and `fromRecord` falls back to the
-    // ordinary array. On a shuffled one it is the only record of which of the
-    // 960 was dealt, and replaying without it would not merely mislabel the
-    // game — the moves would land on different pieces.
     return fromRecord({ fen: row.startFen ?? undefined, moves: row.moves });
   } catch (error) {
     throw new Error(

@@ -19,17 +19,14 @@ export const titleSchema = z
     requiredLevel: z.number().int(),
     isPurchasable: z.boolean(),
     owned: z.boolean(),
-    /** Whether the caller can afford it *and* is high enough level. */
     affordable: z.boolean(),
     equipped: z.boolean(),
-    /** What you can do with the title: buy it, or display it. */
     _links: titleLinksSchema,
   })
   .openapi("Title");
 
 export const equipTitleSchema = z
   .object({
-    /** Null clears the equipped title. */
     titleId: z.string().nullable(),
   })
   .openapi("EquipTitle");
@@ -47,7 +44,6 @@ export const profileSchema = z
       .pick({ id: true, code: true, label: true, rarity: true })
       .nullable(),
     createdAt: z.string(),
-    /** The rest of your account, one hop away. */
     _links: profileLinksSchema,
   })
   .openapi("Profile");
@@ -59,15 +55,9 @@ export const statsSchema = z
     draws: z.number().int(),
     currentWinStreak: z.number().int(),
     topWinStreak: z.number().int(),
-    /** Consecutive days checked in. Zero for a player who never has. */
     currentLoginStreak: z.number().int(),
     topLoginStreak: z.number().int(),
-    /** The last day claimed, `YYYY-MM-DD` UTC, or null. */
     lastCheckInDay: z.string().nullable().openapi({ example: "2026-07-23" }),
-    /**
-     * Whether `currentLoginStreak` can still be extended — false once a day has
-     * been missed and the next check-in will restart the run at one.
-     */
     loginStreakAlive: z.boolean(),
     rating: z.number().int(),
   })
@@ -75,11 +65,8 @@ export const statsSchema = z
 
 export const ratingPointSchema = z
   .object({
-    /** The rating after that game settled. */
     rating: z.number().int().openapi({ example: 1214 }),
-    /** The change that produced it. Never zero — a point is a change. */
     delta: z.number().int().openapi({ example: 14 }),
-    /** The game that moved it, or null if it has since been deleted. */
     gameId: z.string().nullable(),
     createdAt: z.string(),
   })
@@ -87,44 +74,25 @@ export const ratingPointSchema = z
 
 export const ratingHistorySchema = z
   .object({
-    /**
-     * Oldest first, so the array plots left to right. This is a window onto the
-     * most recent `limit` changes and not a paginated list: a chart wants the
-     * recent shape of the curve, and there is nothing to page back through.
-     */
     history: z.array(ratingPointSchema),
-    /**
-     * Where the window opens — the rating before its first point, which is what
-     * a chart needs to anchor its left edge. Equal to `current` when the history
-     * is empty.
-     */
     startingRating: z.number().int().openapi({ example: 1200 }),
-    /** The rating now, straight off the stats row. */
     current: z.number().int().openapi({ example: 1214 }),
-    /**
-     * The highest rating ever reached, over all history rather than the window.
-     * Null for a player who has never played a rated game.
-     */
     peak: z.number().int().nullable(),
   })
   .openapi("RatingHistory");
 
 export const checkInSchema = z
   .object({
-    /** True when this request is what claimed the day. */
     claimed: z.boolean(),
     current: z.number().int().openapi({ example: 3 }),
     best: z.number().int().openapi({ example: 12 }),
-    /** The UTC day claimed. */
     day: z.string().openapi({ example: "2026-07-23" }),
-    /** What today paid, achievement bonuses included. Zeroes if already claimed. */
     reward: z.object({
       xp: z.number().int(),
       coins: z.number().int(),
     }),
     levelBefore: z.number().int(),
     levelAfter: z.number().int(),
-    /** The wallet after the payout. */
     coins: z.number().int(),
     unlocked: z.array(unlockSchema),
   })
@@ -174,7 +142,6 @@ export const leaderboardEntrySchema = z
     rating: z.number().int(),
     wins: z.number().int(),
     title: z.string().nullable(),
-    /** True for the caller's own row. */
     you: z.boolean(),
   })
   .openapi("LeaderboardEntry");

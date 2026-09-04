@@ -23,15 +23,9 @@ export function createRouter() {
   });
 }
 
-/**
- * A router for routes behind `requireAuth` + `requireUser`, whose handlers can
- * read the resolved local player off `c.get("user")`.
- */
 export function createPlayerRouter() {
   return new OpenAPIHono<PlayerEnv>({
     strict: false,
-    // `defaultHook` is written against AppBindings, whose Variables are a subset
-    // of PlayerEnv's; Hono's Env generic is invariant, so widening needs a cast.
     defaultHook: defaultHook as unknown as Hook<
       unknown,
       PlayerEnv,
@@ -41,16 +35,8 @@ export function createPlayerRouter() {
   });
 }
 
-/**
- * Five seconds is right for a request that computes an answer and returns it,
- * and fatal for one whose whole job is to stay open — an SSE stream lives for
- * as long as the game does. Server-Sent Events paths are exempted rather than
- * the ceiling being raised for everyone: a slow ordinary request is still a bug
- * worth cutting off at five seconds.
- */
 const STREAMING_PATHS = /\/events$/;
 
-/** Whether `pathname` is a stream, and so exempt from the request timeout. */
 export function isStreamingPath(pathname: string): boolean {
   return STREAMING_PATHS.test(pathname);
 }
@@ -63,8 +49,6 @@ const requestTimeout = createMiddleware(async (c, next) => {
   return timeout(5_000)(c, next);
 });
 
-// In production the allowlist comes from ALLOWED_ORIGINS; locally we accept
-// any localhost/127.0.0.1 origin.
 function createCORS() {
   return env.NODE_ENV === "production"
     ? createEnvironmentBasedCORS()
@@ -74,12 +58,6 @@ function createCORS() {
 export default function createApp() {
   const app = createRouter();
 
-  // First in the chain, so the request span covers every middleware below it.
-  //
-  // Guarded on the DSN rather than always registered: `sentry()` calls
-  // `Sentry.init` as a side effect, and the test suite builds an app per file —
-  // an unguarded middleware would ship the errors those tests throw on purpose
-  // to the real project.
   if (env.SENTRY_DSN) {
     app.use(
       sentry(app, {
@@ -87,9 +65,6 @@ export default function createApp() {
         environment: env.NODE_ENV,
         tracesSampleRate: env.SENTRY_TRACES_SAMPLE_RATE,
         enableLogs: true,
-        // The middleware would otherwise capture `c.error` on its way out. Our
-        // `onError` reports the same exception with the requestId attached, so
-        // leave the reporting to it instead of filing every failure twice.
         shouldHandleError: () => false,
       }),
     );

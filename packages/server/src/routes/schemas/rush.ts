@@ -21,30 +21,22 @@ export const rushRunSchema = z
   .object({
     id: z.string(),
     mode: rushModeSchema,
-    /** The score. */
     solved: z.number().int(),
     missed: z.number().int(),
     livesLeft: z.number().int().openapi({ example: 3 }),
-    /** The puzzle to solve now; null once the run is over. */
     puzzle: puzzleSchema.nullable(),
-    /** When the clock stops it; null on a survival run. */
     endsAt: z.string().nullable().openapi({ example: null }),
     endedAt: z.string().nullable().openapi({ example: null }),
     over: z.boolean(),
-    /** Present only on the response that ends the run. */
     rewards: rushRewardSchema.nullable(),
-    /** Your best at this mode, this run included. */
     best: z.number().int(),
   })
   .openapi("PuzzleRushRun");
 
 export const rushMoveResultSchema = rushRunSchema
   .extend({
-    /** What the last move did; null when the run was already over. */
     outcome: z.enum(["continue", "solved", "wrong"]).nullable(),
-    /** The forced reply, when the puzzle is not finished yet. UCI. */
     reply: z.string().nullable(),
-    /** Revealed once the puzzle is done with, right or wrong. */
     solution: z.array(z.string()).nullable(),
   })
   .openapi("PuzzleRushMoveResult");

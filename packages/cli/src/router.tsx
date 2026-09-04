@@ -22,11 +22,6 @@ import { Challenges } from "./screens/challenges";
 import { Friends } from "./screens/friends";
 import { Profile } from "./screens/profile";
 
-/**
- * What each screen renders, keyed by the screen list rather than written out
- * as routes: a screen the command line advertises then always has something to
- * open, and one with no entry here cannot be routed to quietly.
- */
 const SCREEN_ELEMENTS: Record<ScreenName, ReactNode> = {
   local: <LocalGame />,
   online: <OnlineGame />,
@@ -47,13 +42,6 @@ const SCREEN_ELEMENTS: Record<ScreenName, ReactNode> = {
   profile: <Profile />,
 };
 
-/**
- * The app, opened where the command line asked for.
- *
- * A screen named on the command line is stacked on top of the menu rather than
- * replacing it, so escaping out of one opened with `openchess puzzles` lands
- * where escaping out of one opened from the menu does.
- */
 export function createAppRouter({
   path,
   state,

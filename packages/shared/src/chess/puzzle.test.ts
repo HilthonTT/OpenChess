@@ -16,10 +16,6 @@ import {
   type Puzzle,
 } from "./puzzle";
 
-/**
- * Fool's mate, as a puzzle: after 1. f3 e5 white plays 2. g4?? and black mates
- * with 2... Qh4#. One solver move, and the solver is black.
- */
 const FOOLS_MATE: Puzzle = {
   id: "fools",
   fen: "rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq e6 0 2",
@@ -28,11 +24,6 @@ const FOOLS_MATE: Puzzle = {
   themes: ["mateIn1", "opening"],
 };
 
-/**
- * A ladder mate on the back rank: black loosens with ...b6, white doubles up
- * with Ra8, and after the rook trade Rxa8 is mate. Two solver moves, so it
- * exercises the opponent's reply being played by the session itself.
- */
 const LADDER: Puzzle = {
   id: "ladder",
   fen: "3r2k1/1p3ppp/8/8/8/8/R7/R5K1 b - - 0 1",
@@ -41,10 +32,6 @@ const LADDER: Puzzle = {
   themes: ["backRankMate", "mateIn2"],
 };
 
-/**
- * A back rank where two different rooks mate. The line records Ra8#; Rb8# is
- * just as final, and a solver who finds it must not be told they were wrong.
- */
 const TWO_MATES: Puzzle = {
   id: "two-mates",
   fen: "6k1/3p1ppp/8/8/8/8/1R6/R5K1 b - - 0 1",
@@ -57,7 +44,6 @@ describe("startPuzzle", () => {
   test("plays the opening move and hands the board to the solver", () => {
     const session = startPuzzle(FOOLS_MATE);
 
-    // White's g4 is the blunder; black is on the move and has the tactic.
     expect(session.you).toBe("b");
     expect(session.game.position.turn).toBe("b");
     expect(session.game.history).toHaveLength(1);
@@ -101,7 +87,6 @@ describe("submitPuzzleMove", () => {
 
     expect(result.outcome).toBe("continue");
     expect(result.session.status).toBe("solving");
-    // Our move and the reply are both on the board: the solver is up again.
     expect(result.session.game.history).toHaveLength(3);
     expect(result.session.game.position.turn).toBe("w");
     expect(result.session.index).toBe(3);
@@ -118,9 +103,6 @@ describe("submitPuzzleMove", () => {
     expect(result.session.game.status).toBe("checkmate");
   });
 
-  // The one deliberate departure from the recorded line: Ra8# is on file, but
-  // Rb8# mates just as dead, and telling a player who mated that they were
-  // wrong is indefensible.
   test("a mate that is not the recorded move is still accepted", () => {
     const result = submitPuzzleMove(startPuzzle(TWO_MATES), "b2b8");
 
@@ -171,7 +153,6 @@ describe("revealPuzzle", () => {
     const revealed = revealPuzzle(startPuzzle(LADDER));
 
     expect(revealed.status).toBe("failed");
-    // The blunder plus the three moves that were left.
     expect(revealed.game.history).toHaveLength(4);
     expect(revealed.game.status).toBe("checkmate");
   });

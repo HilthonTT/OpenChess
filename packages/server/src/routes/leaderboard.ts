@@ -29,9 +29,6 @@ const board = createRoute({
   request: {
     query: z.object({
       sort: z.enum(["rating", "level", "wins"]).default("rating"),
-      // Bounded because the page becomes an OFFSET: an astronomical value is
-      // a full-table scan on request, and past 2^53 the arithmetic itself
-      // breaks. No leaderboard anyone reads is ten thousand pages deep.
       page: z.coerce.number().int().min(1).max(10_000).default(1),
       limit: z.coerce.number().int().min(1).max(100).default(50),
     }),
@@ -50,8 +47,6 @@ const board = createRoute({
   },
 });
 
-// Chained so the exported type carries the route — `hc<AppType>` builds the
-// typed CLI client from it, and a statement registration would leave it blind.
 const router = base.openapi(board, async (c) => {
   const { sort, page, limit } = c.req.valid("query");
 

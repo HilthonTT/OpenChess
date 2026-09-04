@@ -8,39 +8,16 @@ import { normalizeUsername } from "../lib/users";
 import { friendshipWith, type FriendshipState } from "./friends";
 import { presenceFor, type PresenceView } from "./presence";
 
-/**
- * Other players, as seen from outside.
- *
- * Everything here is deliberately a *subset* of what `/me` returns, and the
- * subset is the point. A profile carries what a player has already made public
- * by playing — their record, their rating, the title they chose to wear — and
- * nothing they have not: no wallet, no ledger, no Clerk id, no email. The way
- * that is enforced is by projecting explicitly, field by field, rather than by
- * loading the row and deleting what should not be there. A field added to
- * `User` tomorrow is invisible here until someone writes it down, which is the
- * right default for the one shape in the API that shows one player to another.
- *
- * The rest of the API already treats finished games as public — the watch list
- * shows live games to anyone signed in, and the leaderboard shows names and
- * ratings — so nothing on a profile is newly visible. It is the same facts,
- * gathered in one place.
- */
-
-/** Recent games shown on a profile. Enough to read the shape of a run of play. */
 const RECENT_GAMES = 8;
 
-/** Rating points a profile carries, for the sparkline beside the number. */
 const CURVE_POINTS = 20;
 
-/** Unlocked achievements named on a profile, newest first. */
 const RECENT_ACHIEVEMENTS = 3;
 
 export type ProfileGameView = {
   id: string;
   mode: "AI" | "PVP";
-  /** The other player, or the bot's name in an AI game. */
   opponent: string | null;
-  /** The result from the profiled player's point of view. */
   outcome: "win" | "loss" | "draw" | "aborted";
   result: GameResult;
   ply: number;
@@ -56,7 +33,6 @@ export type PublicProfile = {
   xpIntoLevel: number;
   xpToNextLevel: number;
   rating: number;
-  /** Best rating ever reached, or null for a player with no rated history. */
   peakRating: number | null;
   puzzleRating: number;
   puzzlesSolved: number;
@@ -65,27 +41,16 @@ export type PublicProfile = {
   draws: number;
   currentWinStreak: number;
   topWinStreak: number;
-  /** The daily check-in run. The number only — never the day it was claimed. */
   topLoginStreak: number;
   achievementsUnlocked: number;
   recentAchievements: Array<{ code: string; name: string; unlockedAt: string }>;
-  /** The rating curve, oldest first, for a sparkline. */
   ratingHistory: number[];
   recentGames: ProfileGameView[];
   presence: PresenceView;
-  /** How the caller stands with them, and the row that changes it. */
   friendship: { state: FriendshipState; friendshipId: string | null };
-  /** When they joined. Date only, to the day. */
   joinedAt: string;
 };
 
-/**
- * Which way a finished game went for `userId`.
- *
- * An aborted game is not a draw and is reported as itself: nobody's record
- * moved, and folding it into the draws column would put a game nobody played
- * onto a profile.
- */
 function outcomeFor(
   result: GameResult,
   playedWhite: boolean,
@@ -99,13 +64,6 @@ function outcomeFor(
   return (result === "WHITE_WIN") === playedWhite ? "win" : "loss";
 }
 
-/**
- * A player by name.
- *
- * The typed name is normalized rather than the comparison being made
- * case-insensitive: usernames are stored lower case, and this way the lookup is
- * an index hit on `@unique` instead of an `ILIKE` scan. See `normalizeUsername`.
- */
 async function findByUsername(username: string) {
   return db.user.findUnique({
     where: { username: normalizeUsername(username) },
@@ -178,17 +136,11 @@ export async function getPublicProfile(input: {
           achievement: { select: { code: true, name: true } },
         },
       }),
-      // Secret achievements are counted but never named: the count is a score,
-      // and withholding it would misreport the player's total to protect a
-      // surprise the name alone is what spoils.
       db.userAchievement.count({ where: { userId: row.id } }),
     ]);
 
   const progress = levelProgress(row.experience);
 
-  // Oldest first, and anchored the way the Stats screen anchors its own curve:
-  // the first value is the rating *before* the window's first change, so a rise
-  // that happened off the left edge is not drawn as flat.
   const points = [...curve].reverse();
   const oldest = points[0];
 
@@ -246,7 +198,6 @@ export async function getPublicProfile(input: {
   };
 }
 
-/** How many players a search returns. Enough to pick from, short enough to read. */
 const SEARCH_LIMIT = 10;
 
 export type PlayerSearchResult = {
@@ -259,20 +210,6 @@ export type PlayerSearchResult = {
   friendship: FriendshipState;
 };
 
-/**
- * Find players by the start of their username.
- *
- * A prefix match rather than a substring one, and that is a decision rather
- * than a limitation: `contains` cannot use an index at all, so it would be a
- * sequential scan of every account — and it would also turn the search box into
- * a way to enumerate players by fishing for common letters. A prefix is what
- * someone typing a name they already know actually needs, and the
- * `text_pattern_ops` index answers it without reading the table.
- *
- * The query is lower-cased rather than compared case-insensitively, for the
- * reason spelled out on `normalizeUsername`: `ILIKE` would put that index right
- * back out of reach.
- */
 export async function searchPlayers(input: {
   user: User;
   query: string;
@@ -280,8 +217,6 @@ export async function searchPlayers(input: {
 }): Promise<PlayerSearchResult[]> {
   const query = normalizeUsername(input.query);
 
-  // The empty prefix matches everyone; answering it would be a player dump
-  // rather than a search.
   if (query.length === 0) {
     return [];
   }
@@ -309,8 +244,6 @@ export async function searchPlayers(input: {
 
   const ids = rows.map((row) => row.id);
 
-  // Both resolved for the whole page at once. A per-row query for either would
-  // make a ten-name search eleven round trips.
   const [presence, standings] = await Promise.all([
     presenceFor(
       rows.map((row) => ({ id: row.id, lastSeenAt: row.lastSeenAt })),
@@ -337,8 +270,7 @@ export async function searchPlayers(input: {
       row.status === "ACCEPTED"
         ? "friends"
         : row.status === "DECLINED"
-          ? // A decline reads as "you may ask", exactly as it does on a profile.
-            "none"
+          ? "none"
           : row.requesterId === input.user.id
             ? "requestSent"
             : "requestReceived",

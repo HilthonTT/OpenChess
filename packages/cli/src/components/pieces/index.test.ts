@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { EMPTY, type SquareContent } from "@openchess/shared";
 import { PIECE_SETS, TEXT_PRESENTATION, renderPiece } from "./index";
 
-/** Every piece there is, both colors. */
 const PIECES: SquareContent[] = [
   "K",
   "Q",
@@ -26,8 +25,6 @@ describe("renderPiece", () => {
   });
 
   test("every figurine carries the text-presentation selector", () => {
-    // Without it Windows Terminal draws several of these from Segoe UI Emoji,
-    // in the emoji's own colors, and the theme's `fg` is ignored.
     for (const piece of PIECES) {
       expect(renderPiece(piece, "unicode")).toEndWith(TEXT_PRESENTATION);
     }
@@ -46,8 +43,6 @@ describe("renderPiece", () => {
   });
 
   test("the letters set carries no variation selector", () => {
-    // The whole point of it is to be what a font without chess glyphs can draw,
-    // so nothing here should reach for a fallback font.
     for (const piece of PIECES) {
       expect(renderPiece(piece, "letters")).not.toContain(TEXT_PRESENTATION);
     }
@@ -62,8 +57,6 @@ describe("renderPiece", () => {
   });
 
   test("no set draws two pieces the same", () => {
-    // A board where the rook and the queen share a glyph is unreadable, which
-    // is the failure this whole setting exists to avoid.
     for (const set of PIECE_SETS) {
       const drawn = PIECES.map((piece) => renderPiece(piece, set));
       expect(new Set(drawn).size).toBe(PIECES.length);

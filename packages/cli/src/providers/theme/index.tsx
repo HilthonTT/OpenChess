@@ -16,8 +16,6 @@ function getInitialTheme(): Theme {
 }
 
 function persistTheme(theme: Theme): void {
-  // Through `updatePreferences` rather than a write of its own: the piece set
-  // lives in the same file, and writing only `themeName` would erase it.
   updatePreferences({ themeName: theme.name });
 }
 
@@ -25,7 +23,6 @@ type ThemeContextValue = {
   colors: ThemeColors;
   currentTheme: Theme;
   setTheme: (theme: Theme) => void;
-  /** Apply a theme for this session only, without persisting it to disk. */
   previewTheme: (theme: Theme) => void;
 };
 
@@ -51,11 +48,6 @@ export function useBoardTheme(): BoardTheme {
 
 type ThemeProviderProps = {
   children: ReactNode;
-  /**
-   * A theme to start on instead of the saved one — what `--theme` passes in.
-   * It is only the starting point: nothing here writes it to disk, so a theme
-   * asked for on the command line lasts exactly as long as the session does.
-   */
   initialTheme?: Theme;
 };
 

@@ -15,21 +15,6 @@ import { reorderByScore, shuffle } from "./ordering";
 import type { SearchState } from "./state";
 import { beginGeneration } from "./transposition";
 
-/**
- * Search `position` within `limits` and report the best move found.
- *
- * `history` is the positions the game passed through on its way here, most
- * recent last, so the search can recognise a repetition that predates the root.
- * Only the moves since the last capture or pawn push can matter, and only those
- * are read.
- *
- * The search deepens by one ply at a time rather than going straight for the
- * target depth, which sounds wasteful and is the opposite: each pass leaves the
- * transposition table full of best moves for the next one to try first, and a
- * well-ordered search of depth n costs a fraction of a badly ordered one. It also
- * means there is always a complete answer to hand, which is what makes searching
- * against a clock possible at all.
- */
 export function search(
   position: Position,
   limits: SearchLimits = {},
@@ -73,9 +58,6 @@ export function search(
   }
 
   if (limits.randomize === true) {
-    // Ties are broken by whichever equal move the ordering happens to reach
-    // first, so shuffling before the first pass is what keeps the engine from
-    // playing an identical game every time.
     shuffle(moves);
   }
 
@@ -121,8 +103,6 @@ export function search(
           0,
         );
         if (!state.aborted && score > alpha) {
-          // It beat the best so far, so the cheap answer was not enough: the
-          // real score decides whether it takes the place.
           score = -negamax(
             state,
             child,
@@ -151,9 +131,6 @@ export function search(
       }
     }
 
-    // A part-finished pass is still worth keeping. Root moves are searched in
-    // the previous pass's order, so the ones it got through are the candidates,
-    // and a deeper verdict on those beats a shallower verdict on all of them.
     if (iterationBest !== null) {
       bestMove = iterationBest;
       bestScore = iterationScore;
@@ -164,8 +141,6 @@ export function search(
       break;
     }
 
-    // Nothing left to learn: a forced mate is as good as the search gets, and a
-    // position with one legal move does not need an opinion.
     if (Math.abs(bestScore) >= MATE_THRESHOLD || moves.length === 1) {
       break;
     }

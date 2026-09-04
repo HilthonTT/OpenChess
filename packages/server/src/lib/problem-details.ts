@@ -16,16 +16,6 @@ import {
 import env from "../env";
 import type { AppBindings } from "./types";
 
-/**
- * Serving RFC 9457 problems.
- *
- * The shape itself is the API's contract with its clients, so it lives in
- * `@openchess/shared` and the CLI reads the very same definition; this module is
- * the server's half — turning a failure into a problem, rendering it, and
- * describing it to OpenAPI. Re-exported so server code has one import site.
- *
- * @see https://www.rfc-editor.org/rfc/rfc9457
- */
 export {
   PROBLEM_JSON_MEDIA_TYPE,
   ProblemType,
@@ -33,11 +23,6 @@ export {
   type ValidationIssue,
 };
 
-/**
- * `stoker` exports status codes and reason phrases as parallel modules keyed by
- * the same names (`NOT_FOUND` -> 404 / "Not Found"), so we can join them into
- * the code -> phrase lookup that RFC 9457's `title` wants.
- */
 const PHRASE_BY_STATUS: ReadonlyMap<number, string> = new Map(
   Object.entries(HttpStatusCodes).flatMap(([name, status]) => {
     const phrase = (HttpStatusPhrases as Record<string, string | undefined>)[
@@ -55,7 +40,6 @@ export function phraseForStatus(status: number): string {
 
 export const validationIssueSchema = z
   .object({
-    /** Dotted path to the offending field, empty for the root value. */
     path: z.string(),
     message: z.string(),
     code: z.string().optional(),
@@ -68,33 +52,18 @@ export const problemDetailsSchema = z
     title: z.string().openapi({ example: HttpStatusPhrases.NOT_FOUND }),
     status: z.number().int().openapi({ example: HttpStatusCodes.NOT_FOUND }),
     detail: z.string().optional(),
-    /** The request URI this problem occurred for. */
     instance: z.string().optional(),
-    /** Correlates the response with the server log line. */
     requestId: z.string().optional(),
-    /** Present on validation failures. */
     errors: z.array(validationIssueSchema).optional(),
-    /** Non-production only: the stack of an unhandled error. */
     stack: z.string().optional(),
   })
   .openapi("ProblemDetails");
 
-/**
- * The schema describes what we serve; `ProblemDetails` describes what the CLI
- * parses. Those have to be the same thing, so pin them to each other: a member
- * added to one and not the other stops compiling rather than quietly shipping an
- * API the client can't read.
- *
- * The schema can't simply be built from the shared type — it carries OpenAPI
- * metadata, which would drag `@hono/zod-openapi` into every client that only
- * wanted to read an error.
- */
 type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 
 true satisfies Exactly<z.infer<typeof problemDetailsSchema>, ProblemDetails>;
 true satisfies Exactly<z.infer<typeof validationIssueSchema>, ValidationIssue>;
 
-/** Describes a problem+json response body in an OpenAPI route definition. */
 export function problemDetailsContent(description: string) {
   return {
     description,
@@ -109,7 +78,6 @@ type ProblemInput = Omit<ProblemDetails, "type" | "title" | "status"> &
     status: ContentfulStatusCode;
   };
 
-/** Fill in the members RFC 9457 lets us default: `type` and `title`. */
 export function createProblemDetails(input: ProblemInput): ProblemDetails {
   const { status, type = ProblemType.BLANK, title, ...rest } = input;
 
@@ -121,10 +89,6 @@ export function createProblemDetails(input: ProblemInput): ProblemDetails {
   };
 }
 
-/**
- * Serialize a problem. `c.json` would force `application/json`, and the whole
- * point of the RFC is the `application/problem+json` content type.
- */
 export function problemResponse(c: Context, problem: ProblemDetails) {
   return c.body(
     JSON.stringify(problem),
@@ -135,7 +99,6 @@ export function problemResponse(c: Context, problem: ProblemDetails) {
   );
 }
 
-/** Build a problem from the request context, stamping `instance` and `requestId`. */
 export function problemFor(c: Context, input: ProblemInput): ProblemDetails {
   return createProblemDetails({
     instance: c.req.path,
@@ -144,7 +107,6 @@ export function problemFor(c: Context, input: ProblemInput): ProblemDetails {
   });
 }
 
-/** Raise an HTTP error from a handler; `onError` renders it as problem+json. */
 export function throwProblem(
   status: ContentfulStatusCode,
   detail?: string,
@@ -154,14 +116,6 @@ export function throwProblem(
   });
 }
 
-/**
- * Translate a thrown value into a problem.
- *
- * An `HTTPException` is a deliberate, client-facing error, so its message
- * becomes the `detail`. Anything else escaped by accident: it gets a bare 500,
- * and its message and stack are withheld outside development so an internal
- * failure can't leak table names or file paths to a caller.
- */
 export function problemFromError(
   error: Error,
   options: { debug: boolean },
@@ -169,7 +123,6 @@ export function problemFromError(
   if (error instanceof HTTPException) {
     return {
       status: error.status,
-      // HTTPException defaults `message` to the empty string, not the phrase.
       detail: error.message || phraseForStatus(error.status),
     };
   }
@@ -182,24 +135,8 @@ export function problemFromError(
   return { status, detail: error.message, stack: error.stack };
 }
 
-/**
- * File a failure with Sentry, for the same errors we log.
- *
- * The Sentry middleware can capture `c.error` by itself, and `create-app` tells
- * it not to, so that reporting happens here instead. Two things come of that.
- * The event is tagged with the requestId that the caller was handed in the
- * problem body and that the log line already carries, so a bug report quoting
- * that id leads straight to the stack trace. And "worth reporting" stays the one
- * judgement made below — the status we actually served — rather than being
- * decided a second time, slightly differently, inside the SDK.
- *
- * A 4xx never reaches here: it is the caller getting it wrong, and paging
- * ourselves over every mistyped game id is how an alert channel gets muted.
- */
 function reportToSentry(c: Context, error: Error) {
   Sentry.captureException(error, {
-    // An HTTPException is a failure we raised on purpose; anything else escaped
-    // a handler, which is what `handled: false` means to Sentry's grouping.
     mechanism: {
       type: "hono.on_error",
       handled: error instanceof HTTPException,
@@ -211,8 +148,6 @@ function reportToSentry(c: Context, error: Error) {
 }
 
 export const onError: ErrorHandler<AppBindings> = (error, c) => {
-  // An HTTPException may carry a hand-built response; honor it rather than
-  // overwriting a deliberate redirect or custom body.
   if (error instanceof HTTPException && error.res) {
     return error.res;
   }
@@ -238,11 +173,6 @@ export const notFound: NotFoundHandler<AppBindings> = (c) => {
   );
 };
 
-/**
- * Renders `@hono/zod-openapi` validation failures as a problem, listing every
- * offending field under the `errors` extension member rather than surfacing
- * only the first issue.
- */
 export const defaultHook: Hook<unknown, AppBindings, string, unknown> = (
   result,
   c,

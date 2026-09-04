@@ -3,16 +3,10 @@ import type { MiddlewareHandler } from "hono";
 export interface SecurityHeadersOptions {
   noCacheHeaders?: boolean;
   additionalHeaders?: Record<string, string>;
-  /** Override the CSP directives, or pass false to omit the header entirely. */
   contentSecurityPolicy?: Record<string, string[]> | false;
-  /** Advertise Report-To/NEL endpoints. Off unless those routes actually exist. */
   reportingEndpoints?: boolean;
 }
 
-/**
- * Locked down for a JSON API: nothing should ever be loaded or framed. Routes
- * that serve HTML (the API reference) override this with their own policy.
- */
 const DEFAULT_CSP_DIRECTIVES: Record<string, string[]> = {
   "default-src": ["'none'"],
   "frame-ancestors": ["'none'"],
@@ -36,8 +30,6 @@ export class SecurityHeaders {
 
       "X-Content-Type-Options": "nosniff",
 
-      // Disables the legacy XSS auditor: its heuristics were themselves
-      // exploitable, and CSP is the real control. 0 is the recommended value.
       "X-XSS-Protection": "0",
 
       "X-Frame-Options": "DENY",
@@ -59,7 +51,7 @@ export class SecurityHeaders {
         "picture-in-picture=()",
         "sync-xhr=()",
         "usb=()",
-        "interest-cohort=()", // Opt out of FLoC
+        "interest-cohort=()",
       ].join(", "),
 
       "Cross-Origin-Embedder-Policy": "require-corp",
@@ -120,7 +112,6 @@ export class SecurityHeaders {
       res.headers.set(name, value);
     }
 
-    // A route that already set its own policy (the API reference page) keeps it.
     if (
       options?.contentSecurityPolicy !== false &&
       !res.headers.has("Content-Security-Policy")
@@ -147,7 +138,6 @@ export class SecurityHeaders {
       }
     }
 
-    // Remove potentially dangerous headers
     res.headers.delete("X-Powered-By");
     res.headers.delete("Server");
   }

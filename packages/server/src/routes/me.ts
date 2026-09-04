@@ -193,9 +193,6 @@ const transactions = createRoute({
   },
 });
 
-// Chained rather than registered as separate statements: `.openapi()` returns a
-// router carrying the new route in its type, so only the chained value knows the
-// full shape. That type is what `hc<AppType>` builds the typed CLI client from.
 const router = base
   .openapi(profile, async (c) => {
     return c.json(

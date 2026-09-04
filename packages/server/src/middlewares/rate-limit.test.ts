@@ -5,11 +5,6 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import type { AuthenticatedEnv } from "./require-auth";
 import { rateLimit } from "./rate-limit";
 
-/**
- * The middleware keys its buckets off `userId`, which `requireAuth` normally
- * provides. A stub that stamps the id straight onto the context keeps these
- * tests about counting, not about authentication.
- */
 function appFor(options: { windowMs: number; max: number }) {
   const app = new Hono<AuthenticatedEnv>();
 
@@ -61,7 +56,6 @@ describe("rateLimit", () => {
       HttpStatusCodes.TOO_MANY_REQUESTS,
     );
 
-    // Alice exhausting her budget must not spend Bob's.
     expect((await request(app, "bob")).status).toBe(HttpStatusCodes.OK);
   });
 

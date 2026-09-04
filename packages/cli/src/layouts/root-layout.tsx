@@ -6,9 +6,7 @@ import { AppProviders } from "../providers";
 import { ThemeRoot } from "./themed-root";
 
 type RootLayoutProps = {
-  /** Passed down from `--theme`; undefined keeps the saved preference. */
   initialTheme?: Theme;
-  /** Passed down from `--pieces`; undefined keeps the saved preference. */
   initialPieceSet?: PieceSet;
 };
 

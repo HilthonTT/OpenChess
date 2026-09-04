@@ -18,7 +18,7 @@ const KEYMAP: Keymap = {
 };
 
 const WIDTH = 64;
-/** Rows in the viewport. Sized so the list plus its chrome fits 80x24. */
+
 const VISIBLE = 10;
 
 export function Achievements() {
@@ -28,7 +28,6 @@ export function Achievements() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(0);
-  /** Bumped to refetch, e.g. after r or a fixed error. */
   const [attempt, setAttempt] = useState(0);
 
   const signedIn = auth.status === "signed-in";
@@ -94,7 +93,6 @@ export function Achievements() {
       case "end":
         setCursor(last);
         break;
-      // g / G, the vim pair for "top" and "bottom".
       case "g":
         setCursor(key.shift ? last : 0);
         break;
@@ -166,12 +164,10 @@ function Notice({ text }: { text: string }) {
   return <text fg={theme.dim}>{text}</text>;
 }
 
-/** Column widths, left to right. */
 const MARK_W = 2;
 const NAME_W = 36;
 const NUM_W = 10;
 
-/** Trim an over-long name rather than let it push the columns apart. */
 function fit(value: string, width: number): string {
   return value.length > width
     ? `${value.slice(0, width - 1)}…`
@@ -193,8 +189,6 @@ function List({
     return <Notice text="No achievements yet — the catalog is empty." />;
   }
 
-  // Keep the cursor mid-window while scrolling so there is always context on
-  // both sides of it, clamped at either end of the catalog.
   const offset = Math.max(
     0,
     Math.min(cursor - Math.floor(VISIBLE / 2), entries.length - VISIBLE),
@@ -205,8 +199,6 @@ function List({
   const heading = (label: string) => <span fg={theme.faint}>{label}</span>;
 
   return (
-    // A refresh in flight keeps the old rows on screen, just dimmed, so the
-    // list doesn't blank out under the cursor.
     <box flexDirection="column" width={WIDTH - 6}>
       <text>
         {heading("".padEnd(MARK_W))}

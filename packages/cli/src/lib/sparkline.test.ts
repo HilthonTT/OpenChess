@@ -24,21 +24,15 @@ describe("sparkline", () => {
   });
 
   test("a flat series sits mid-height rather than at an arbitrary end", () => {
-    // No range to scale against: picking a floor or a ceiling here would make a
-    // player whose rating never moved look either bottomed out or maxed out.
     expect(sparkline([1200, 1200, 1200])).toBe("▅▅▅");
     expect(sparkline([1200])).toBe("▅");
   });
 
   test("scaling is relative to the series, not to zero", () => {
-    // The whole point of the choice: a fifteen-point wobble is legible. Scaled
-    // against zero, every one of these would be the same full-height bar.
     expect(sparkline([1200, 1207, 1215])).toBe("▁▄█");
   });
 
   test("negative values are just another range", () => {
-    // The exact midpoint of eight blocks falls between two of them and rounds
-    // up, which is the same tie-break the flat case above lands on.
     expect(sparkline([-20, -10, 0])).toBe("▁▅█");
   });
 });

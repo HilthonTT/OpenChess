@@ -4,7 +4,6 @@ import { createGame } from "./game";
 import { fromRecord, playSan } from "./pgn";
 import { toMovetext, toPgn } from "./pgn-text";
 
-/** Scholar's mate: 1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6?? 4. Qxf7# */
 const SCHOLARS_MATE = ["e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6", "Qxf7"];
 
 function played(sans: string[]) {
@@ -32,7 +31,6 @@ describe("toMovetext", () => {
     }
   });
 
-  // `movePairs` renders a missing white move as "…", which no PGN reader accepts.
   test("a game that starts on black's move uses PGN's ellipsis, not a typographic one", () => {
     const game = fromRecord({
       fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
@@ -77,7 +75,6 @@ describe("toPgn", () => {
   test("a game with no moves is still a legal PGN", () => {
     const pgn = toPgn(createGame(), { result: "*" });
 
-    // A blank line separates the tag pair section from the movetext.
     expect(pgn).toContain("\n\n*");
   });
 
@@ -87,7 +84,6 @@ describe("toPgn", () => {
     expect(pgn).toContain('[White "al\\"ice"]');
   });
 
-  // Without SetUp+FEN a reader would replay the moves from the initial array.
   test("a game from a custom position declares SetUp and FEN", () => {
     const fen = "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1";
     const game = fromRecord({ fen, moves: ["e2e4"] });

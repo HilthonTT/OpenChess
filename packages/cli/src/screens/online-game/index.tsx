@@ -13,24 +13,15 @@ import { SUBTITLE, TITLE } from "./constants";
 import { OnlineMatch } from "./match";
 import { QueueSetup, Searching } from "./queue";
 
-/**
- * Online 1v1: matched by the server's queue, played move by move over the
- * same authoritative API as AI games, with the opponent's moves arriving by
- * poll. Rating here is the real thing — PvP is the only place it moves.
- */
 export function OnlineGame() {
   const auth = useAuth();
   const theme = useUITheme();
   const location = useLocation();
   const [match, setMatch] = useState<ServerGame | null>(null);
-  // `undefined` until the player picks a clock; `null` is an untimed queue.
   const [timeControl, setTimeControl] = useState<
     TimeControlKey | null | undefined
   >(undefined);
 
-  // A game handed to us by name rather than by the queue — an accepted
-  // challenge, or a rematch. The board opens straight on it, skipping both the
-  // clock picker and the search.
   const openGameId =
     (location.state as { gameId?: string } | null)?.gameId ?? null;
   const [opening, setOpening] = useState(openGameId !== null);
@@ -65,7 +56,6 @@ export function OnlineGame() {
   }, [openGameId]);
 
   const onMatched = useCallback((game: ServerGame) => setMatch(game), []);
-  // A rematch drops back into the same queue, keeping the chosen clock.
   const onRequeue = useCallback(() => setMatch(null), []);
 
   if (auth.status !== "signed-in") {

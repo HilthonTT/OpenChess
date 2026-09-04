@@ -9,12 +9,6 @@ import {
 } from "../pieces";
 import { DialogSearchList } from "../dialog-search-list";
 
-/**
- * A back rank in each set, so the row shows the thing being chosen rather than
- * describing it. Which is the whole point of the dialog: someone opens it
- * *because* the figurines came out wrong, and a name alone would not tell them
- * whether the alternative renders any better in their terminal.
- */
 const SAMPLE = ["R", "N", "B", "Q", "K", "P"] as const;
 
 function sampleFor(set: PieceSet): string {
@@ -27,7 +21,6 @@ export const PieceSetDialogContent = () => {
   const originalRef = useRef<PieceSet>(pieceSet);
   const confirmedRef = useRef<boolean>(false);
 
-  // Put the board back if the dialog is dismissed rather than confirmed.
   useEffect(() => {
     return () => {
       if (!confirmedRef.current) {

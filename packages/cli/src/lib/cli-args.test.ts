@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { parseArgs } from "./cli-args";
 import { SCREENS } from "./screens";
 
-/** The launch options, or a failure if the parse printed instead. */
 function launch(...argv: string[]) {
   const parsed = parseArgs(argv);
   if (parsed.kind !== "launch") {
@@ -11,7 +10,6 @@ function launch(...argv: string[]) {
   return parsed.options;
 }
 
-/** The message and code, or a failure if the parse launched instead. */
 function printed(...argv: string[]) {
   const parsed = parseArgs(argv);
   if (parsed.kind !== "print") {
@@ -33,7 +31,6 @@ describe("screens", () => {
 
   test("every screen in the list can be named", () => {
     for (const screen of SCREENS) {
-      // The ones that take an argument need it before they will launch.
       const argv =
         screen.name === "profile" ? [screen.name, "hikaru"] : [screen.name];
       expect(launch(...argv).path).toBe(screen.path);
@@ -181,8 +178,6 @@ describe("--theme", () => {
 
 describe("the bell", () => {
   test("is left to OPENCHESS_BELL when neither flag is given", () => {
-    // Undefined rather than true: the parse has no opinion to impose, and the
-    // environment's answer is read where the bell itself is.
     expect(launch().bell).toBeUndefined();
     expect(launch("online").bell).toBeUndefined();
   });
@@ -210,8 +205,6 @@ describe("the bell", () => {
   });
 
   test("is not mistaken for a screen", () => {
-    // The flag branch under it reads "--no-bell" as a screen called "no-bell",
-    // which is the failure this ordering exists to prevent.
     expect(launch("--no-bell").path).toBe("/");
   });
 
@@ -237,8 +230,6 @@ describe("--fen", () => {
   });
 
   test("reads a FEN the shell was not asked to keep together", () => {
-    // What someone pasting a position from another tool actually types: six
-    // fields, six arguments, no quotes anywhere.
     expect(launch("--fen", ...MATE.split(" ")).state).toEqual({ fen: MATE });
   });
 
@@ -254,8 +245,6 @@ describe("--fen", () => {
   });
 
   test("stops gathering fields at a screen name", () => {
-    // Gathered greedily but never past a screen, so the conflict below is
-    // reported rather than "rush" disappearing into the position.
     const { text, code } = printed(
       "--fen",
       "8/8/8/8/8/8/8/K6k",
@@ -306,8 +295,6 @@ describe("--pgn", () => {
   });
 
   test("the joined form does not swallow the screen after it", () => {
-    // Nothing else may be opened alongside it, so the screen it would have
-    // eaten is reported as the conflict it is.
     expect(printed("--pgn=game.pgn", "rush").code).toBe(1);
   });
 
@@ -369,7 +356,6 @@ describe("messages", () => {
     const { text, code } = printed("--themes");
     expect(code).toBe(0);
     expect(text.split("\n")).toContain("Nord");
-    // Every listed name has to be one --theme will take back.
     for (const name of text.split("\n")) {
       expect(launch("--theme", name).theme?.name).toBe(name);
     }

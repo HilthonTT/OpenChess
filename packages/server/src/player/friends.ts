@@ -6,42 +6,10 @@ import { throwProblem } from "../lib/problem-details";
 import { normalizeUsername } from "../lib/users";
 import { presenceFor, type PresenceView } from "./presence";
 
-/**
- * Friends.
- *
- * A friendship is one directed row — who asked, who was asked, and whether they
- * said yes. See the `Friendship` model for why it is one row rather than two,
- * and why the pair `(A,B)`/`(B,A)` cannot be constrained in the schema.
- *
- * The invariant this module owns is the one the schema cannot: **at most one
- * live row per unordered pair**. Every path that could create a second one
- * resolves it instead of adding to it —
- *
- * - Asking someone who has already asked you *accepts* their request. Two
- *   players who have each asked to be friends have agreed, and the order the
- *   two requests happened to land in is not a reason to leave them both
- *   pending. It is the same reading two simultaneous draw offers get.
- * - Asking someone you already asked returns the request already standing,
- *   rather than a second one in their list.
- * - Asking someone who declined you starts the request over, because a decline
- *   is an answer to one request and not a permanent verdict.
- *
- * The unique index is still the backstop under a race: two requests racing in
- * opposite directions can both find nothing and both try to insert, and the
- * loser retries the whole routine — at which point the winner's row is there to
- * be found and accepted.
- */
-
 const UNIQUE_VIOLATION = "P2002";
 
-/**
- * A ceiling on outstanding requests, mirroring the challenge cap. Not a rate
- * limit — the route has one — but a bound on how much of other people's lists
- * one player can occupy.
- */
 const MAX_PENDING_REQUESTS = 50;
 
-/** How many friends one account may hold. Generous; a guard, not a product decision. */
 const MAX_FRIENDS = 500;
 
 function isUniqueViolation(error: unknown): boolean {
@@ -51,19 +19,15 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
-/** The public face of a player, as a friend list row shows them. */
 export type FriendView = {
-  /** The friendship row, which is what accept/decline/remove address. */
   id: string;
   userId: string;
   username: string;
-  /** The label of their equipped title, if any. */
   title: string | null;
   rating: number;
   level: number;
   presence: PresenceView;
   status: FriendshipStatus;
-  /** True when the caller is the one who sent the request. */
   outgoing: boolean;
   createdAt: string;
 };
@@ -103,7 +67,6 @@ type FriendshipWithPeople = Prisma.FriendshipGetPayload<{
 
 type Person = FriendshipWithPeople["requester"];
 
-/** Whichever end of the row is not the caller. */
 function otherSide(row: FriendshipWithPeople, userId: string): Person {
   return row.requesterId === userId ? row.addressee : row.requester;
 }
@@ -132,7 +95,6 @@ function view(
   };
 }
 
-/** Resolve presence for every player named across a set of rows, in one pass. */
 async function presenceAcross(
   rows: FriendshipWithPeople[],
   userId: string,
@@ -152,14 +114,6 @@ async function presenceAcross(
   );
 }
 
-/**
- * Your friends, and the requests at either end.
- *
- * One query for all three lists rather than three: the rows differ only by
- * status and direction, both of which are already on the row, and splitting
- * them would also mean resolving presence three times over an overlapping set
- * of people.
- */
 export async function listFriends(user: User): Promise<FriendLists> {
   const rows = await db.friendship.findMany({
     where: {
@@ -175,8 +129,6 @@ export async function listFriends(user: User): Promise<FriendLists> {
   const rendered = rows.map((row) => view(row, user.id, presence));
 
   return {
-    // Friends sort by presence and then by name: the list is read to find
-    // somebody to play, so whoever can actually be played belongs at the top.
     friends: rendered
       .filter((row) => row.status === "ACCEPTED")
       .sort(byPresenceThenName),
@@ -201,7 +153,6 @@ function byPresenceThenName(a: FriendView, b: FriendView): number {
   return rank !== 0 ? rank : a.username.localeCompare(b.username);
 }
 
-/** The single row between two players, whichever direction it was written in. */
 async function findBetween(
   a: string,
   b: string,
@@ -217,20 +168,10 @@ async function findBetween(
   });
 }
 
-/**
- * Ask someone to be friends — or answer the ask they already made.
- *
- * See the module comment for why the second reading exists. The return value
- * says which happened: an `ACCEPTED` row means the request was mutual and you
- * are friends now, not that anything was auto-approved on the other player's
- * behalf.
- */
 export async function requestFriend(input: {
   user: User;
   username: string;
 }): Promise<FriendView> {
-  // Normalized, not compared case-insensitively — see `normalizeUsername`. This
-  // is an index hit on `@unique`; `mode: "insensitive"` would be a table scan.
   const target = await db.user.findUnique({
     where: { username: normalizeUsername(input.username) },
     select: { id: true },
@@ -257,27 +198,19 @@ export async function requestFriend(input: {
   }
 
   if (existing?.status === "PENDING") {
-    // Theirs: this request is the answer to it.
     if (existing.addresseeId === input.user.id) {
       return acceptFriend({ user: input.user, friendshipId: existing.id });
     }
 
-    // Ours, already standing. Handing back the same row is what stops a player
-    // filling somebody's list by pressing the key twice.
     return single(existing, input.user.id);
   }
 
   await assertCapacity(input.user.id);
 
-  // A declined row is reused rather than left in the way: `@@unique` is on the
-  // pair, so a fresh insert would collide with the decline forever, and a
-  // decline is an answer to one request rather than a permanent verdict.
   if (existing) {
     const revived = await db.friendship.update({
       where: { id: existing.id },
       data: {
-        // Rewritten to the current direction: whoever is asking now is the
-        // requester, even if last time it was the other way round.
         requesterId: input.user.id,
         addresseeId: target.id,
         status: "PENDING",
@@ -302,8 +235,6 @@ export async function requestFriend(input: {
       throw error;
     }
 
-    // Two requests raced. Whichever one lost re-reads the row the winner wrote
-    // and answers it, which is the same resolution the non-racing path takes.
     const winner = await findBetween(input.user.id, target.id);
 
     if (!winner) {
@@ -316,16 +247,28 @@ export async function requestFriend(input: {
   }
 }
 
-/** Refuse a request that would take either player past their limits. */
+async function friendCount(userId: string): Promise<number> {
+  return db.friendship.count({
+    where: {
+      status: "ACCEPTED",
+      OR: [{ requesterId: userId }, { addresseeId: userId }],
+    },
+  });
+}
+
+async function assertFriendCapacity(
+  userId: string,
+  message: string,
+): Promise<void> {
+  if ((await friendCount(userId)) >= MAX_FRIENDS) {
+    throwProblem(HttpStatusCodes.CONFLICT, message);
+  }
+}
+
 async function assertCapacity(userId: string): Promise<void> {
   const [pending, friends] = await Promise.all([
     db.friendship.count({ where: { requesterId: userId, status: "PENDING" } }),
-    db.friendship.count({
-      where: {
-        status: "ACCEPTED",
-        OR: [{ requesterId: userId }, { addresseeId: userId }],
-      },
-    }),
+    friendCount(userId),
   ]);
 
   if (pending >= MAX_PENDING_REQUESTS) {
@@ -343,7 +286,6 @@ async function assertCapacity(userId: string): Promise<void> {
   }
 }
 
-/** Say yes. Idempotent for the player it was addressed to. */
 export async function acceptFriend(input: {
   user: User;
   friendshipId: string;
@@ -363,7 +305,14 @@ export async function acceptFriend(input: {
     return single(row, input.user.id);
   }
 
-  await assertCapacity(input.user.id);
+  await assertFriendCapacity(
+    input.user.id,
+    `You have reached the ${MAX_FRIENDS} friend limit. Remove someone before accepting another.`,
+  );
+  await assertFriendCapacity(
+    row.requesterId,
+    "They have reached their friend limit and cannot add anyone right now.",
+  );
 
   const accepted = await db.friendship.update({
     where: { id: row.id },
@@ -374,7 +323,6 @@ export async function acceptFriend(input: {
   return single(accepted, input.user.id);
 }
 
-/** Say no. Idempotent, and reversible — see `requestFriend`. */
 export async function declineFriend(input: {
   user: User;
   friendshipId: string;
@@ -398,14 +346,6 @@ export async function declineFriend(input: {
   return single(declined, input.user.id);
 }
 
-/**
- * Withdraw a request, or unfriend someone.
- *
- * One route for both because the row is the same row, and either end may end
- * it. The row is deleted rather than marked, so that either player can ask
- * again later from a clean slate — a `DECLINED` tombstone is the answer to a
- * question that was asked, and neither of these is that.
- */
 export async function removeFriend(input: {
   user: User;
   friendshipId: string;
@@ -434,7 +374,6 @@ async function load(friendshipId: string): Promise<FriendshipWithPeople> {
   return row;
 }
 
-/** One row's view, with presence resolved for the one player it names. */
 async function single(
   row: FriendshipWithPeople,
   userId: string,
@@ -442,14 +381,6 @@ async function single(
   return view(row, userId, await presenceAcross([row], userId));
 }
 
-/**
- * How the caller stands with another player.
- *
- * `none` covers a declined row as well as no row at all: from the profile
- * screen's point of view they are the same offer — "you may ask" — and
- * reporting a decline back to the player who was declined is neither useful nor
- * kind.
- */
 export type FriendshipState =
   | "self"
   | "friends"
@@ -459,7 +390,6 @@ export type FriendshipState =
 
 export type FriendshipStanding = {
   state: FriendshipState;
-  /** The row to accept, decline or remove, when there is one. */
   friendshipId: string | null;
 };
 

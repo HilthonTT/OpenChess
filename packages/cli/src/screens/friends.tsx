@@ -79,14 +79,6 @@ const TITLE = "Friends";
 const SUBTITLE = "Who's around, and who's asked";
 const WIDTH = 62;
 
-/**
- * How often the lists are refreshed.
- *
- * Slower than the challenge screen's poll, because what it is watching moves
- * slower: presence is only accurate to about a minute at the source, so polling
- * it every three seconds would ask ten times for each answer that can change.
- * A friend request arriving a few seconds late costs nobody anything.
- */
 const POLL_MS = 10_000;
 
 export function Friends() {
@@ -106,7 +98,6 @@ export function Friends() {
   return <FriendList />;
 }
 
-/** Which panel the cursor is in. */
 type Pane = "friends" | "incoming" | "outgoing";
 
 const PANES: Pane[] = ["friends", "incoming", "outgoing"];
@@ -132,13 +123,10 @@ function FriendList() {
   const [pending, setPending] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  // Stood down while the search is up, on the same condition the keyboard
-  // handler below tests: those are the search's keys, not this list's.
   useKeymap(adding ? null : LIST_KEYMAP);
 
   const [pane, setPane] = useState<Pane>("friends");
   const [index, setIndex] = useState(0);
-  /** Removing is one keypress from being irreversible; `x` again confirms it. */
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const apply = useCallback(
@@ -168,8 +156,6 @@ function FriendList() {
         }
       }
 
-      // Guarded so a request still in flight at unmount cannot reschedule the
-      // loop onto a screen that is no longer there.
       if (!cancelled) {
         timer = setTimeout(() => void load(), POLL_MS);
       }
@@ -197,7 +183,6 @@ function FriendList() {
     }
   }, [apply]);
 
-  /** Run an action against the selected row, then resync from the server. */
   const act = useCallback(
     async (label: string, action: () => Promise<unknown>) => {
       setPending(true);
@@ -216,14 +201,6 @@ function FriendList() {
     [refresh],
   );
 
-  /**
-   * Challenge a friend.
-   *
-   * Handed to the Challenges screen with the name filled in rather than sent
-   * from here: a challenge carries a clock, a colour and a variant, and the
-   * screen that already asks for all three is the honest place to send one
-   * from. This is the shortcut, not a second way to do it.
-   */
   const challenge = useCallback(
     (username: string) => {
       void navigate("/challenges", { state: { opponent: username } });
@@ -243,7 +220,6 @@ function FriendList() {
       return;
     }
 
-    // Any key that is not the confirm calls the pending removal off.
     if (confirmingRemove && key.name !== "x") {
       setConfirmingRemove(false);
     }
@@ -276,8 +252,6 @@ function FriendList() {
         if (!selected) {
           break;
         }
-        // On the inbox, enter is the answer to the question the row is asking;
-        // everywhere else there is no question, so it opens the player.
         if (pane === "incoming") {
           void act(`${selected.username} is now a friend.`, () =>
             acceptFriend(selected.id),
@@ -417,7 +391,6 @@ function FriendList() {
 const NAME_W = 24;
 const PRESENCE_W = 12;
 
-/** How each presence state is drawn. A dot, so the column reads at a glance. */
 const PRESENCE_MARK: Record<PresenceState, string> = {
   playing: "◉",
   online: "●",
@@ -435,7 +408,6 @@ function presenceColor(
       : theme.faint;
 }
 
-/** Rows shown per panel. Three panels have to share one 24-row terminal. */
 const PANEL_ROWS = 5;
 
 function Panel({
@@ -500,20 +472,12 @@ function Panel({
   );
 }
 
-/** Trim an over-long name rather than let it push the columns apart. */
 function fit(value: string, width: number): string {
   return value.length > width
     ? `${value.slice(0, width - 1)}…`
     : value.padEnd(width);
 }
 
-/**
- * Find somebody and ask them.
- *
- * The search runs as you type rather than on a submit key, because the whole
- * point is to answer "did I spell it right" before the request is sent — and
- * an exact name typed in full still works without ever looking at the results.
- */
 function AddFriend({
   onDone,
   onCancel,
@@ -548,8 +512,6 @@ function AddFriend({
           setIndex(0);
         }
       })
-      // A failed search is not worth an error box over an input the player is
-      // still typing into; the next keystroke tries again.
       .catch(() => {
         if (!cancelled) {
           setResults([]);
@@ -562,8 +524,6 @@ function AddFriend({
   }, [query]);
 
   const send = useCallback(async () => {
-    // The highlighted result if there is one, otherwise whatever was typed —
-    // so a name entered in full does not need the list to have caught up.
     const username = results[index]?.username ?? query.trim();
 
     if (username === "") {
@@ -577,8 +537,6 @@ function AddFriend({
       const friend = await addFriend(username);
 
       onDone(
-        // An accepted row means they had already asked us; saying "request
-        // sent" there would be wrong in a way the player would notice.
         friend.status === "ACCEPTED"
           ? `${friend.username} had already asked — you're friends.`
           : `Asked ${friend.username}.`,
@@ -594,8 +552,6 @@ function AddFriend({
       return;
     }
 
-    // The input has focus and swallows printable keys, so what is left here are
-    // the ones a text field never sees.
     if (key.name === "return" || key.name === "enter") {
       void send();
       return;
@@ -653,8 +609,6 @@ function AddFriend({
                   <span fg={theme.dim}>
                     {String(player.rating).padEnd(PRESENCE_W)}
                   </span>
-                  {/* Saying where you already stand is what stops the player
-                      asking someone they have already asked. */}
                   <span fg={theme.faint}>
                     {player.friendship === "friends"
                       ? "already friends"

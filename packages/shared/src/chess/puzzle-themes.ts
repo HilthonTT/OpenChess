@@ -1,32 +1,9 @@
-/**
- * Puzzle themes.
- *
- * A stored puzzle's `themes` are free-form strings, because they arrive with an
- * imported corpus and the corpus decides what it tags. This is the display side
- * of that: the ones worth naming, what to call them, and which of them a player
- * would sensibly ask to train.
- *
- * The keys are Lichess's, since that is where the corpus comes from. Nothing
- * here is authoritative — a theme not in this list still filters and still
- * shows, it just shows under its raw key. That is deliberate: a catalog that
- * silently dropped unknown themes would make a freshly imported corpus look
- * half-empty.
- *
- * @see https://database.lichess.org/#puzzles
- */
-
 export type PuzzleThemeGroup = "motif" | "mate" | "phase" | "length" | "goal";
 
 export type PuzzleTheme = {
-  /** The tag as it appears in a puzzle's `themes`. */
   key: string;
   label: string;
   group: PuzzleThemeGroup;
-  /**
-   * Whether it makes sense to train this one on its own. The motifs and the
-   * mating patterns do; "crushing" and "middlegame" describe a puzzle rather
-   * than name a thing to practise, so they are shown but not offered.
-   */
   trainable: boolean;
 };
 
@@ -40,7 +17,6 @@ function theme(
 }
 
 export const PUZZLE_THEMES: readonly PuzzleTheme[] = [
-  // The tactical motifs — what a trainer is actually for.
   theme("fork", "Fork", "motif"),
   theme("pin", "Pin", "motif"),
   theme("skewer", "Skewer", "motif"),
@@ -75,7 +51,6 @@ export const PUZZLE_THEMES: readonly PuzzleTheme[] = [
   theme("knightEndgame", "Knight endgame", "motif"),
   theme("queenRookEndgame", "Queen and rook endgame", "motif"),
 
-  // Mating patterns.
   theme("mate", "Mate", "mate"),
   theme("mateIn1", "Mate in 1", "mate"),
   theme("mateIn2", "Mate in 2", "mate"),
@@ -91,7 +66,6 @@ export const PUZZLE_THEMES: readonly PuzzleTheme[] = [
   theme("dovetailMate", "Dovetail mate", "mate"),
   theme("hookMate", "Hook mate", "mate"),
 
-  // What the puzzle is worth, and where it comes from. Shown, not trained.
   theme("opening", "Opening", "phase", false),
   theme("middlegame", "Middlegame", "phase", false),
   theme("endgame", "Endgame", "phase", false),
@@ -109,16 +83,10 @@ export const PUZZLE_THEMES: readonly PuzzleTheme[] = [
 
 const BY_KEY = new Map(PUZZLE_THEMES.map((entry) => [entry.key, entry]));
 
-/** The catalog entry for `key`, or null when the corpus tagged something new. */
 export function findPuzzleTheme(key: string): PuzzleTheme | null {
   return BY_KEY.get(key) ?? null;
 }
 
-/**
- * What to show a theme as. Falls back to un-camel-casing the raw key, so a
- * theme the catalog has never heard of still reads as words rather than as
- * `queenRookEndgame`.
- */
 export function puzzleThemeLabel(key: string): string {
   const known = BY_KEY.get(key);
   if (known) {
@@ -129,7 +97,6 @@ export function puzzleThemeLabel(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** The themes worth offering as something to train. */
 export const TRAINABLE_PUZZLE_THEMES: readonly PuzzleTheme[] =
   PUZZLE_THEMES.filter((entry) => entry.trainable);
 

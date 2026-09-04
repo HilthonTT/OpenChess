@@ -29,39 +29,12 @@ import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { useToast } from "../providers/toast";
 
-/**
- * The opening repertoire, and the drill that keeps it.
- *
- * Two screens in one file because they are two states of one thing: a list of
- * the lines you have decided are yours, and — once you pick one — the board
- * where you have to play it from memory. Escaping out of the board goes back to
- * the list rather than out of the screen, which is what makes drilling several
- * lines in a row one gesture instead of five.
- *
- * The drill runs entirely locally. The server stored the line as SAN and this
- * replays it move by move: your side you have to find, the other side is played
- * for you. A round trip per move would be honest — it is what the puzzle
- * trainer does — but it is answering a different question. A puzzle withholds
- * the solution because the solution is what is being asked for; a repertoire
- * line is one you *chose*, and you can read it off the list any time you like.
- * There is nothing here to withhold, so nothing is worth the latency.
- *
- * One request goes out, at the end: how many moves you got wrong and how long
- * it took. Everything the schedule does with that is the server's.
- */
-
 const TITLE = "Repertoire";
 const SUBTITLE = "Lines you play, and when to prove it";
 const WIDTH = 62;
-/** Rows in the list's viewport. Sized so the list plus its chrome fits 80x24. */
+
 const VISIBLE = 8;
 
-/**
- * How long the line's own side pauses before answering.
- *
- * Long enough to read as a move being played rather than as two pieces jumping
- * at once, short enough that a twenty-move line is not a minute of waiting.
- */
 const REPLY_MS = 400;
 
 const LIST_KEYMAP: Keymap = {
@@ -134,10 +107,6 @@ export function Repertoire() {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* The list                                                                   */
-/* -------------------------------------------------------------------------- */
-
 function LineList({ onDrill }: { onDrill: (line: RepertoireLine) => void }) {
   const theme = useUITheme();
   const { isTopLayer } = useKeyboardLayer();
@@ -149,7 +118,6 @@ function LineList({ onDrill }: { onDrill: (line: RepertoireLine) => void }) {
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(0);
   const [note, setNote] = useState<string | null>(null);
-  /** A drop is one keypress from happening; `x` again does it. */
   const [confirmingDrop, setConfirmingDrop] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
@@ -208,7 +176,6 @@ function LineList({ onDrill }: { onDrill: (line: RepertoireLine) => void }) {
       return;
     }
 
-    // A pending drop is called off by any key that isn't its own confirm.
     if (confirmingDrop && key.name !== "x") {
       setConfirmingDrop(false);
     }
@@ -228,7 +195,6 @@ function LineList({ onDrill }: { onDrill: (line: RepertoireLine) => void }) {
       case "end":
         setCursor(last);
         break;
-      // g / G, the vim pair for "top" and "bottom".
       case "g":
         setCursor(key.shift ? last : 0);
         break;
@@ -246,10 +212,6 @@ function LineList({ onDrill }: { onDrill: (line: RepertoireLine) => void }) {
         }
         break;
       case "d": {
-        // The queue in one keypress. The list is already sorted soonest-due
-        // first, so the first due row is the answer the server's own
-        // `/repertoire/next` would give — and finding it here saves a request
-        // and keeps the two from ever disagreeing on screen.
         const due = lines?.find((line) => line.due);
 
         if (due) {
@@ -329,13 +291,6 @@ function LineList({ onDrill }: { onDrill: (line: RepertoireLine) => void }) {
   );
 }
 
-/**
- * What an empty repertoire says.
- *
- * Not "no lines" — that is a fact the player can already see — but where the
- * lines come from, since there is nothing on this screen that adds one and a
- * dead end is the worst thing an empty state can be.
- */
 function Empty() {
   const theme = useUITheme();
 
@@ -352,7 +307,6 @@ function Empty() {
   );
 }
 
-/** Column widths, left to right. */
 const ECO_W = 5;
 const NAME_W = 30;
 const SIDE_W = 7;
@@ -364,12 +318,6 @@ function fit(value: string, width: number): string {
     : value.padEnd(width);
 }
 
-/**
- * How long until a line is due, in the coarsest unit that is still true.
- *
- * Days once it is more than a day out, because "in 34 days" and "in 34 days and
- * six hours" are the same fact and only one of them fits the column.
- */
 function dueIn(dueAt: string, now: number): string {
   const ms = new Date(dueAt).getTime() - now;
 
@@ -401,8 +349,6 @@ function List({
   const theme = useUITheme();
   const now = Date.now();
 
-  // Keep the cursor mid-window while scrolling so there is always context on
-  // both sides of it, clamped at either end of the list.
   const offset = Math.max(
     0,
     Math.min(cursor - Math.floor(VISIBLE / 2), lines.length - VISIBLE),
@@ -485,10 +431,6 @@ function Details({
     return null;
   }
 
-  // The moves are shown in full rather than hidden until the drill: this is a
-  // line the player chose, and there is nothing here to withhold. Somebody who
-  // wants to look it up before drilling it is doing exactly what a repertoire
-  // is for.
   const moves = line.moves
     .map((san, index) => (index % 2 === 0 ? `${index / 2 + 1}.${san}` : san))
     .join(" ");
@@ -509,26 +451,11 @@ function Details({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* The drill                                                                  */
-/* -------------------------------------------------------------------------- */
-
 type DrillPhase =
-  /** Waiting for the player to find the move at `ply`. */
   | { kind: "asking" }
-  /** The line's own side is about to answer; the board is read-only. */
   | { kind: "replying" }
-  /** Every move played. The review is on the wire, or its answer is showing. */
   | { kind: "done"; message: string };
 
-/**
- * Replay `moves` up to `ply`, from the initial array.
- *
- * Rebuilt from the start each time rather than mutated forward, for the same
- * reason the server replays a game rather than trusting a FEN: the move list is
- * the record, and a position derived from it any other way is a second source
- * of truth waiting to disagree with the first.
- */
 function positionAt(moves: string[], ply: number): Game {
   let game = createGame();
 
@@ -547,17 +474,12 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
 
   const you = line.side;
 
-  // Black's first move is white's, so a black line opens with a reply rather
-  // than a question. Both cases fall out of the same rule: the drill is asking
-  // whenever the side to move is yours.
   const [ply, setPly] = useState(0);
   const [mistakes, setMistakes] = useState(0);
   const [phase, setPhase] = useState<DrillPhase>({ kind: "asking" });
-  /** What the last move earned in the way of a remark, under the board. */
   const [remark, setRemark] = useState<string | null>(null);
 
   const startedAt = useRef(Date.now());
-  /** Guards the review against a double send if the last move re-renders. */
   const submitted = useRef(false);
 
   const game = useMemo(() => positionAt(line.moves, ply), [line.moves, ply]);
@@ -580,14 +502,6 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
   });
   const { beginCommit, clearSelection } = selection;
 
-  /**
-   * Send the result and say what came back.
-   *
-   * The line is rescheduled whatever happened, so this runs on a clean drill
-   * and a botched one alike. A drill of a line that was not due comes back with
-   * no reward, which is not a failure and is not reported as one — it is the
-   * price of practice you asked for, and the price is nothing.
-   */
   const submit = useCallback(
     async (wrong: number) => {
       if (submitted.current) {
@@ -639,13 +553,6 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
     [line.id, toast],
   );
 
-  /**
-   * Move the drill on by one ply, and decide what happens next.
-   *
-   * One function for both sides' moves, because from the line's point of view
-   * they are the same event: the position advanced, and either there is another
-   * move or the drill is over.
-   */
   const advance = useCallback(
     (atPly: number, wrong: number) => {
       const next = atPly + 1;
@@ -657,16 +564,12 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
         return;
       }
 
-      // Whose move is next: white plays the even plies.
       const mover = next % 2 === 0 ? "w" : "b";
       setPhase(mover === you ? { kind: "asking" } : { kind: "replying" });
     },
     [clearSelection, line.moves.length, submit, you],
   );
 
-  // The line's own side answers on a timer, so a move reads as a move rather
-  // than as two pieces jumping at once. Keyed on the ply, so it fires exactly
-  // once per reply and cancels cleanly if the screen goes away mid-line.
   useEffect(() => {
     if (phase.kind !== "replying") {
       return;
@@ -677,24 +580,12 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
     return () => clearTimeout(timer);
   }, [advance, mistakes, phase.kind, ply]);
 
-  // A black line opens with white's move, which nobody asked for: seed the
-  // reply phase from the position rather than from a special case at ply 0.
   useEffect(() => {
     if (phase.kind === "asking" && !finished && !yourTurn) {
       setPhase({ kind: "replying" });
     }
   }, [finished, phase.kind, yourTurn]);
 
-  /**
-   * Judge the move the player just played.
-   *
-   * Compared against the line's own move rather than against its SAN, because
-   * SAN is a rendering: `Nf3` and `Nbd2` are unambiguous only in a position,
-   * and comparing the squares is comparing the move itself. A wrong move is
-   * counted and then played *correctly* — the drill carries on down the line
-   * the player is meant to be learning, which is the only version of it worth
-   * finishing.
-   */
   const commit = useCallback(
     (from: number, to: number, choice?: PromotionPiece) => {
       const played = beginCommit(from, to, choice);
@@ -722,7 +613,6 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
     [advance, beginCommit, game, line.moves, mistakes, ply],
   );
 
-  /** Give up: play the rest of the line out, and count it as failed. */
   const surrender = useCallback(() => {
     const remaining = line.moves.length - ply;
 
@@ -732,9 +622,6 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
 
     setPly(line.moves.length);
     setRemark(null);
-    // Counted as one mistake and not as `remaining` of them: the grade only
-    // cares whether the line was clean, and inflating the number would make the
-    // review look worse than the one it is graded as.
     void submit(mistakes + 1);
   }, [line.moves.length, mistakes, ply, submit]);
 
@@ -813,8 +700,6 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
         statusText={statusText()}
       />
 
-      {/* The running count, so a drill that has already gone wrong says so
-          while it is still going rather than only at the end. */}
       <text fg={mistakes > 0 ? theme.walnut : theme.faint}>
         {mistakes === 0
           ? `${Math.min(ply, line.moves.length)}/${line.moves.length} played`

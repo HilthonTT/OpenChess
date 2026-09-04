@@ -15,7 +15,6 @@ describe("evaluatePosition", () => {
   });
 
   test("is from white's point of view regardless of side to move", () => {
-    // White is a whole queen up; the score is positive whoever is to move.
     const whiteToMove = parseFen("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
     const blackToMove = parseFen("4k3/8/8/8/8/8/8/3QK3 b - - 0 1");
 
@@ -26,7 +25,6 @@ describe("evaluatePosition", () => {
 
 describe("analyzePosition", () => {
   test("finds a mate in one and reports it from white's POV", () => {
-    // Back-rank mate: Ra8#.
     const position = parseFen("6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1");
     const analysis = analyzePosition(position);
 
@@ -36,8 +34,6 @@ describe("analyzePosition", () => {
   });
 
   test("a checkmated side scores a decisive loss with no move", () => {
-    // Fool's mate: white is mated, black to move is not — set white to move,
-    // already mated.
     const mated = parseFen(
       "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
     );
@@ -59,12 +55,10 @@ describe("analyzePosition", () => {
 
 describe("centipawnLoss", () => {
   test("white handing back an edge counts as a loss", () => {
-    // White was +200, drops to +50 after the move: 150 given up.
     expect(centipawnLoss("w", 200, 50)).toBe(150);
   });
 
   test("black is measured on the same white-POV axis, inverted", () => {
-    // Black was -200 (winning), lets it slip to -50: 150 given up.
     expect(centipawnLoss("b", -200, -50)).toBe(150);
   });
 

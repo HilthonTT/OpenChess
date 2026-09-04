@@ -7,12 +7,6 @@ const polar = new Polar({
   server: env.POLAR_SERVER,
 });
 
-/**
- * Where Polar sends the customer's browser once they are done. Deliberately not
- * derived from the incoming request: `c.req.url` is rebuilt from the Host
- * header, so a request forged with `Host: evil.com` would have us ask Polar to
- * bounce a paying customer to `https://evil.com/billing/success`.
- */
 const SUCCESS_URL = new URL(
   "/api/billing/success",
   env.PUBLIC_BASE_URL ?? `http://localhost:${env.PORT}`,
@@ -47,17 +41,6 @@ export async function createCustomerPortalUrl(customerExternalId: string) {
   return result.customerPortalUrl;
 }
 
-/**
- * Whether this customer counts as premium.
- *
- * Premium currently means "holds any active Polar subscription": the premium
- * product does not exist in Polar yet, so there is no product id to pin this
- * to. Once it is created, narrow the check to
- * `sub.productId === env.POLAR_PREMIUM_PRODUCT_ID`.
- *
- * The external id is our own `User.id` — the same id `createCheckoutUrl` is
- * called with, which is what links a checkout back to a player.
- */
 export async function hasActiveSubscription(customerExternalId: string) {
   try {
     const customerState = await polar.customers.getStateExternal({
@@ -66,8 +49,6 @@ export async function hasActiveSubscription(customerExternalId: string) {
 
     return customerState.activeSubscriptions.length > 0;
   } catch (error) {
-    // No Polar customer exists until the first checkout; that is simply "not
-    // premium", not an error.
     if (hasStatusCode(error) && error.statusCode === 404) {
       return false;
     }
@@ -76,12 +57,6 @@ export async function hasActiveSubscription(customerExternalId: string) {
   }
 }
 
-/**
- * External customer ids (our own `User.id`s) of everyone holding an active
- * subscription. One paged listing instead of a `getStateExternal` call per
- * user: the weekly stipend fans out over actual subscribers, and most players
- * are not subscribers.
- */
 export async function listActiveSubscriberExternalIds(): Promise<string[]> {
   const ids = new Set<string>();
 

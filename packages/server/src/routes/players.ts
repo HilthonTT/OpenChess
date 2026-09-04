@@ -58,9 +58,6 @@ const profile = createRoute({
   },
 });
 
-// Chained rather than registered as separate statements: `.openapi()` returns a
-// router carrying the new route in its type, and that type is what `hc<AppType>`
-// builds the typed CLI client from.
 const router = base
   .openapi(search, async (c) => {
     const { q, limit } = c.req.valid("query");

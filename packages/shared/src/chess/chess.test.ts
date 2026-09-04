@@ -24,7 +24,6 @@ import {
 } from "./game";
 import type { Position, PromotionPiece } from "./types";
 
-/** Count leaf nodes of the legal move tree — the standard move-generator check. */
 function perft(position: Position, depth: number): number {
   if (depth === 0) {
     return 1;
@@ -50,7 +49,6 @@ function square(name: string): number {
   return index;
 }
 
-/** Play a sequence of "e2e4" style moves, asserting each is legal. */
 function playMoves(fen: string, moves: string[]) {
   let game = createGame(fen);
   for (const notation of moves) {
@@ -99,7 +97,6 @@ describe("board", () => {
 });
 
 describe("perft", () => {
-  // Node counts from the Chess Programming Wiki's standard positions.
   const positions: Array<[string, string, number[]]> = [
     ["initial", STARTING_FEN, [20, 400, 8902, 197281]],
     [
@@ -165,7 +162,6 @@ describe("special moves", () => {
   });
 
   test("en passant that exposes the king is illegal", () => {
-    // White king on e5, black rook on h5: taking f6 en passant would clear the rank.
     const game = createGame("8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1");
     expect(findLegalMove(game, square("c5"), square("d6"))).toBeUndefined();
   });
@@ -187,7 +183,6 @@ describe("special moves", () => {
   });
 
   test("cannot castle through, out of, or into check", () => {
-    // Black rook on e8 attacks e1 — the king is in check.
     expect(
       findLegalMove(
         createGame("4r3/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
@@ -196,7 +191,6 @@ describe("special moves", () => {
       ),
     ).toBeUndefined();
 
-    // Black rook on f8 attacks f1, which the king would cross.
     expect(
       findLegalMove(
         createGame("5r2/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
@@ -205,7 +199,6 @@ describe("special moves", () => {
       ),
     ).toBeUndefined();
 
-    // Black rook on g8 attacks g1, the king's destination.
     expect(
       findLegalMove(
         createGame("6r1/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
@@ -214,7 +207,6 @@ describe("special moves", () => {
       ),
     ).toBeUndefined();
 
-    // b1 attacked does not prevent queenside castling; the king never crosses it.
     expect(
       findLegalMove(
         createGame("1r6/8/8/8/8/8/8/R3K2R w KQ - 0 1"),
@@ -248,7 +240,6 @@ describe("special moves", () => {
   });
 
   test("a pinned piece cannot move", () => {
-    // White knight on e2 is pinned to the king on e1 by the rook on e8.
     const game = createGame("4r2k/8/8/8/8/8/4N3/4K3 w - - 0 1");
     expect(
       game.legalMoves.filter((move) => move.from === square("e2")),
@@ -286,11 +277,9 @@ describe("game results", () => {
     expect(
       isInsufficientMaterial(parseFen("8/8/4k3/8/8/4K3/8/5N2 w - - 0 1")),
     ).toBe(true);
-    // Bishops on the same square color (f8 and c1 are both light) can never mate.
     expect(
       isInsufficientMaterial(parseFen("5b2/8/4k3/8/8/4K3/8/2B5 w - - 0 1")),
     ).toBe(true);
-    // Opposite square colors (f8 light, f1 dark): mate is possible.
     expect(
       isInsufficientMaterial(parseFen("5b2/8/4k3/8/8/4K3/8/5B2 w - - 0 1")),
     ).toBe(false);
@@ -343,7 +332,6 @@ describe("game results", () => {
 
 describe("captures and material", () => {
   test("captured pieces are tracked per side, most valuable first", () => {
-    // 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qd8 4. Nb5 a6 5. Nxc7+ Qxc7
     const game = playMoves(STARTING_FEN, [
       "e2e4",
       "d7d5",
@@ -383,7 +371,6 @@ describe("captures and material", () => {
       2,
     );
 
-    // A pawn promoting swings the balance by queen-minus-pawn.
     const promoted = playMoves("8/P6k/8/8/8/8/8/K7 w - - 0 1", ["a7a8q"]);
     expect(materialBalance(promoted.position)).toBe(9);
   });
@@ -431,12 +418,8 @@ describe("san", () => {
   });
 
   test("disambiguation by file, rank, and both", () => {
-    // Knights on b1 and f3 both reach d2 — different files.
     expect(san("4k3/8/8/8/8/5N2/8/1N2K3 w - - 0 1", "b1", "d2")).toBe("Nbd2");
-    // Rooks on a1 and a3 both reach a2 — same file, so rank disambiguates.
     expect(san("4k3/8/8/8/8/R7/8/R3K3 w - - 0 1", "a1", "a2")).toBe("R1a2");
-    // Queens on a1, a4, and d1 all reach d4: a4 shares the a-file and d1 the
-    // first rank, so neither alone identifies the mover.
     expect(san("8/8/7k/8/Q7/8/8/Q2QK3 w - - 0 1", "a1", "d4")).toBe("Qa1d4");
   });
 });

@@ -7,11 +7,6 @@ export const difficultySchema = z
   .enum(["EASY", "MEDIUM", "HARD"])
   .openapi({ example: "MEDIUM" });
 
-/**
- * Which bot, by its id in @openchess/shared's catalog. Enumerated from that
- * catalog rather than written out here, so adding a bot cannot leave the API
- * refusing to let anyone play it.
- */
 export const personalitySchema = z
   .enum(PERSONALITY_ORDER as [PersonalityId, ...PersonalityId[]])
   .openapi({ example: "maestro" });
@@ -54,12 +49,9 @@ export const timeControlSchema = z
 
 export const clockSchema = z
   .object({
-    /** Milliseconds left for each side as of the last committed move. */
     whiteMs: z.number().int(),
     blackMs: z.number().int(),
-    /** When the running side's clock started; a reader ticks down from here. */
     turnStartedAt: z.string(),
-    /** Whose clock is running. Only meaningful while the game is live. */
     running: colorSchema,
   })
   .openapi("Clock");

@@ -21,9 +21,6 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-// The same limit the challenge routes carry, for the same reason: sending a
-// request writes to someone else's list. 30/min is beyond any human and well
-// short of what it would take to flood anyone.
 base.use(
   "*",
   requireAuth,
@@ -140,9 +137,6 @@ const remove = createRoute({
   },
 });
 
-// Chained rather than registered as separate statements: `.openapi()` returns a
-// router carrying the new route in its type, and that type is what `hc<AppType>`
-// builds the typed CLI client from.
 const router = base
   .openapi(list, async (c) => {
     const lists = await listFriends(c.get("user"));

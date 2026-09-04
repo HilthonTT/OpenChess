@@ -4,18 +4,6 @@ import { db } from "@openchess/database/client";
 import { invalidateCache } from "./cache";
 import { fetchClerkProfile } from "./clerk";
 
-/**
- * Clerk owns identity; we own progression. The access token carries a Clerk user
- * id, but every foreign key in the schema — `Game.whitePlayerId`,
- * `CoinTransaction.userId` — points at our own `User.id`. This module is the
- * bridge, and it is where a local row gets created the first time we ever hear
- * from a given Clerk user.
- *
- * There is no signup endpoint and no Clerk webhook, so first-authenticated-
- * request *is* the provisioning event.
- */
-
-/** Usernames are `@unique`; a collision has to be resolved, not surfaced. */
 const MAX_USERNAME_ATTEMPTS = 5;
 
 const USERNAME_PATTERN = /[^a-z0-9_-]/g;
@@ -28,12 +16,27 @@ function isUniqueViolation(error: unknown, field: string): boolean {
     return false;
   }
 
-  // `meta.target` is the list of columns in the violated constraint.
-  const target = error.meta?.target;
-  return Array.isArray(target) && target.includes(field);
+  const meta = error.meta as
+    | {
+        target?: unknown;
+        driverAdapterError?: {
+          cause?: { constraint?: { index?: string; fields?: string[] } };
+        };
+      }
+    | undefined;
+
+  if (Array.isArray(meta?.target)) {
+    return meta.target.includes(field);
+  }
+
+  const constraint = meta?.driverAdapterError?.cause?.constraint;
+  if (constraint?.fields) {
+    return constraint.fields.includes(field);
+  }
+
+  return constraint?.index === `User_${field}_key`;
 }
 
-/** Four random base-36 characters: enough to break a collision, short enough to read. */
 function suffix(): string {
   return Math.random().toString(36).slice(2, 6);
 }
@@ -43,45 +46,18 @@ function sanitize(candidate: string): string | null {
   return cleaned.length >= 3 ? cleaned.slice(0, 24) : null;
 }
 
-/**
- * A typed-in name, as it is actually stored.
- *
- * Every username in the database is lower case: `sanitize` above lower-cases
- * whatever Clerk supplied and strips it to `[a-z0-9_-]`, and the `player_xxxx`
- * fallback is lower case by construction. That invariant is what lets every
- * lookup elsewhere — the friend request, the profile, the search — be plain
- * equality or a plain prefix instead of a case-insensitive comparison.
- *
- * The difference is not cosmetic. Prisma's `mode: "insensitive"` compiles to
- * `ILIKE`, which cannot use the unique index on `username` and cannot use a
- * `lower(username)` index either, so a case-insensitive search would be a
- * sequential scan of every account. Normalizing the *input* keeps the indexes
- * in play and still lets a player type `Magnus`.
- *
- * If a name ever gets written by a path that does not go through `sanitize`,
- * this is the assumption that breaks, and it breaks by failing to find people
- * rather than by finding the wrong ones.
- */
 export function normalizeUsername(typed: string): string {
   return typed.trim().toLowerCase();
 }
 
-/** Prefer what the user chose in Clerk; anything else falls back to noise. */
 async function baseUsername(clerkUserId: string): Promise<string> {
   const profile = await fetchClerkProfile(clerkUserId);
 
-  // Never derived from the email address: usernames are public — leaderboards,
-  // the PvP header — and an email local part like jane.doe.1987 identifies its
-  // owner even with the domain stripped.
   const candidate = profile.username ? sanitize(profile.username) : null;
 
   return candidate ?? `player_${suffix()}`;
 }
 
-/**
- * The local `User` for a Clerk id, creating it — with its `UserStats` — if this
- * is the first we have seen of them.
- */
 export async function getOrCreateUser(clerkUserId: string): Promise<User> {
   const existing = await db.user.findUnique({ where: { clerkUserId } });
   if (existing) {
@@ -91,7 +67,6 @@ export async function getOrCreateUser(clerkUserId: string): Promise<User> {
   const base = await baseUsername(clerkUserId);
 
   for (let attempt = 0; attempt < MAX_USERNAME_ATTEMPTS; attempt++) {
-    // The first try uses the name as-is; every retry disambiguates it.
     const username = attempt === 0 ? base : `${base}_${suffix()}`;
 
     try {
@@ -99,19 +74,14 @@ export async function getOrCreateUser(clerkUserId: string): Promise<User> {
         data: {
           clerkUserId,
           username,
-          // A user without stats would make every read of the leaderboard and
-          // the reward pipeline null-check a row that should always exist.
           stats: { create: {} },
         },
       });
 
-      // A new row changes the leaderboard's total and its tail pages.
       await invalidateCache("leaderboard");
 
       return created;
     } catch (error) {
-      // Two concurrent first requests from the same user race here. The loser
-      // reads back the winner's row rather than failing the request.
       if (isUniqueViolation(error, "clerkUserId")) {
         const winner = await db.user.findUnique({ where: { clerkUserId } });
         if (winner) {

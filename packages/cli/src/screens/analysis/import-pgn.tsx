@@ -18,36 +18,15 @@ import { errorMessage } from "../../lib/utils";
 
 import { IMPORT_KEYMAP, WIDTH } from "./keymaps";
 
-/**
- * Everything the review board needs, whichever way the game got here — off the
- * server, or out of a PGN file. Keeping the board blind to the difference is
- * what lets an imported game get the same treatment as one you played.
- */
 export type ReviewSource = {
-  /** The moves in SAN. */
   history: string[];
   startingFen: string;
-  /** Which way up to draw the board. */
   orientation: Color;
   subtitle: string;
-  /** Present only for a game the server holds, which is what can be exported. */
   gameId: string | null;
-  /**
-   * The headers a copied PGN carries. Whoever built the source knows the names
-   * and the result; the board only knows the moves, and a game copied out of
-   * here with `[White "?"]` on it would have lost the part worth keeping.
-   */
   pgn?: PgnDetails;
 };
 
-/**
- * A bare position to review, as `--fen` hands one over.
- *
- * A position is a game with no moves in it, which the review board already
- * draws: one frame, the engine's read on it, and nothing to step through. The
- * board is oriented for whoever is to move, since a position handed over on the
- * command line is nearly always one somebody is asking about from that side.
- */
 export function positionSource(fen: string): ReviewSource {
   const turn = createGame(fen).position.turn;
 
@@ -57,9 +36,6 @@ export function positionSource(fen: string): ReviewSource {
     orientation: turn,
     subtitle: `A position — ${turn === "w" ? "White" : "Black"} to move`,
     gameId: null,
-    // No players to name and no result to claim — it was a position, not a
-    // game. The FEN itself is written from `startingFen`, as it is for any
-    // game that did not begin from the standard array.
     pgn: { result: "*", tags: { event: "Position" } },
   };
 }
@@ -71,7 +47,6 @@ export function ImportPgn({
 }: {
   onImported: (source: ReviewSource) => void;
   onCancel: () => void;
-  /** A path from `--pgn`, read on arrival instead of being typed. */
   path?: string;
 }) {
   const theme = useUITheme();
@@ -105,8 +80,6 @@ export function ImportPgn({
           total > 1 ? ` · game 1 of ${total}` : ""
         }`,
         gameId: null,
-        // Copied back out, an imported game keeps the headers it arrived with:
-        // it was somebody else's game before it was on this screen.
         pgn: { result: game.result, tags: game.tags },
       });
     } catch (cause) {
@@ -115,9 +88,6 @@ export function ImportPgn({
     }
   }, [onImported, path]);
 
-  // A path from `--pgn` is read on arrival: the flag already named the file,
-  // and asking for it again would be asking twice. It stays in the input, so
-  // one that would not open can be corrected rather than retyped.
   const launched = useRef(false);
   useEffect(() => {
     if (given === undefined || launched.current) {

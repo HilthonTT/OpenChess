@@ -52,9 +52,6 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-// Puzzles are a per-player resource that pays out, so the same auth and metering
-// the game routes carry applies here. The limit is generous: solving is a round
-// trip per move, and a fast solver on a five-move line is still nowhere near it.
 base.use(
   "*",
   requireAuth,
@@ -171,10 +168,6 @@ const claim = createRoute({
     ),
   },
 });
-
-/* -------------------------------------------------------------------------- */
-/* Puzzle Rush                                                                */
-/* -------------------------------------------------------------------------- */
 
 const noSuchRun = problemDetailsContent("No such run");
 
@@ -412,9 +405,6 @@ const router = base
 
     return c.json({ themes: list }, HttpStatusCodes.OK);
   })
-  // Every fixed `/rush/...` path is registered before `/rush/{id}` and before
-  // `/{id}`, since the parameterised ones would otherwise match "leaderboard"
-  // and hand it to a lookup by id.
   .openapi(rushBoard, async (c) => {
     const { mode, limit } = c.req.valid("query");
 

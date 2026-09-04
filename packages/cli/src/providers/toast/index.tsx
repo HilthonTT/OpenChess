@@ -18,9 +18,9 @@ export { DEFAULT_DURATION, DEFAULT_VARIANT } from "./types";
 export type { ToastOptions, ToastVariant } from "./types";
 
 const TOAST_MAX_WIDTH = 60;
-/** Horizontal space kept free between the toast and the terminal edges. */
+
 const TOAST_HORIZONTAL_MARGIN = 6;
-/** Offset from the top-right corner of the terminal. */
+
 const TOAST_OFFSET = 2;
 const TOAST_TEXT_COLOR = "#E1E1E1";
 
@@ -44,10 +44,7 @@ type ToastProviderProps = {
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [currentToast, setCurrentToast] = useState<ToastOptions | null>(null);
-  // Toasts fired in the same tick (multi-achievement unlock + level-up) must
-  // all get their turn on screen, so `show` enqueues instead of replacing.
   const queueRef = useRef<ToastOptions[]>([]);
-  // Non-null exactly while a toast is on screen.
   const timeoutHandleRef = useRef<NodeJS.Timeout | null>(null);
   const showNextRef = useRef<() => void>(() => {});
 
@@ -81,8 +78,6 @@ export function ToastProvider({ children }: ToastProviderProps) {
         duration: options.duration ?? DEFAULT_DURATION,
       });
 
-      // An active toast keeps its full duration; the queue drains when its
-      // timer fires. Only kick the chain off from idle.
       if (!timeoutHandleRef.current) {
         showNext();
       }

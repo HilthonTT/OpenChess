@@ -2,15 +2,6 @@ import type { InferResponseType } from "hono/client";
 import { apiClient } from "./api-client";
 import { getProblemDetails, problemMessage } from "./http-errors";
 
-/**
- * Typed calls to the server's `/puzzles` API.
- *
- * The solving protocol is deliberately a round trip per move: the answer is the
- * thing being asked for, so the client is never handed the line. Every request
- * carries the whole attempt so far — the server replays it — which also makes a
- * retry of a request whose answer was never seen completely safe.
- */
-
 const byId = apiClient.puzzles[":id"];
 
 export type ServerPuzzle = NonNullable<
@@ -37,11 +28,6 @@ async function toError(response: {
   return new Error(problemMessage(await getProblemDetails(response)));
 }
 
-/**
- * A puzzle near your rating you have not been scored on. With `theme`, one
- * carrying that motif — still inside the rating band, so training a theme
- * cannot quietly hand you puzzles far above your level.
- */
 export async function fetchNextPuzzle(
   theme: string | null = null,
 ): Promise<NextPuzzle> {
@@ -61,7 +47,6 @@ export type PuzzleThemeEntry = InferResponseType<
   200
 >["themes"][number];
 
-/** Every theme, with how many puzzles carry it and how you have done at it. */
 export async function fetchPuzzleThemes(): Promise<PuzzleThemeEntry[]> {
   const response = await apiClient.puzzles.themes.$get();
 
@@ -73,7 +58,6 @@ export async function fetchPuzzleThemes(): Promise<PuzzleThemeEntry[]> {
   return themes;
 }
 
-/** Today's puzzle — the same one for every player. */
 export async function fetchDailyPuzzle(): Promise<NextPuzzle> {
   const response = await apiClient.puzzles.daily.$get();
 
@@ -84,10 +68,6 @@ export async function fetchDailyPuzzle(): Promise<NextPuzzle> {
   return response.json();
 }
 
-/**
- * Play a move. `moves` is every move played on this puzzle so far, in order,
- * newest last — the opponent's replies are the server's and are not sent.
- */
 export async function sendPuzzleMove(
   id: string,
   input: { moves: string[]; hintUsed?: boolean; msSpent?: number },
@@ -101,7 +81,6 @@ export async function sendPuzzleMove(
   return response.json();
 }
 
-/** The square the piece to move stands on. Halves what the solve is worth. */
 export async function fetchPuzzleHint(
   id: string,
   moves: string[],
@@ -115,7 +94,6 @@ export async function fetchPuzzleHint(
   return response.json();
 }
 
-/** Give up: settles the attempt as a failure and hands back the whole line. */
 export async function revealPuzzle(
   id: string,
   moves: string[],
@@ -129,26 +107,16 @@ export async function revealPuzzle(
   return response.json();
 }
 
-/* -------------------------------------------------------------------------- */
-/* Puzzle Rush                                                                */
-/* -------------------------------------------------------------------------- */
-
 const rushById = apiClient.puzzles.rush[":id"];
 
 export type RushMode = "THREE_MINUTE" | "FIVE_MINUTE" | "SURVIVAL";
 
-/**
- * What to call each mode. Here rather than in a screen because two of them show
- * it — the rush board and the stats card — and a mode that reads "3 min" in one
- * place and "3 minutes" in the other is a mode a player has to think about.
- */
 export const RUSH_MODE_LABEL: Record<RushMode, string> = {
   THREE_MINUTE: "3 min",
   FIVE_MINUTE: "5 min",
   SURVIVAL: "Survival",
 };
 
-/** The modes in the order they are offered, easiest commitment first. */
 export const RUSH_MODES: RushMode[] = [
   "THREE_MINUTE",
   "FIVE_MINUTE",
@@ -172,7 +140,6 @@ export type RushBest = InferResponseType<
   200
 >["bests"][number];
 
-/** Start a run. Closes any run left open, so there is only ever one live. */
 export async function startRush(mode: RushMode): Promise<RushRun> {
   const response = await apiClient.puzzles.rush.$post({ json: { mode } });
 
@@ -183,10 +150,6 @@ export async function startRush(mode: RushMode): Promise<RushRun> {
   return response.json();
 }
 
-/**
- * Play a move in a run. `moves` is every move played on the run's *current*
- * puzzle — the run itself is the server's to keep track of.
- */
 export async function sendRushMove(
   id: string,
   moves: string[],
@@ -203,7 +166,6 @@ export async function sendRushMove(
   return response.json();
 }
 
-/** Stop a run where it stands and bank the score. */
 export async function endRush(id: string): Promise<RushRun> {
   const response = await rushById.end.$post({ param: { id } });
 
@@ -241,7 +203,6 @@ export async function fetchRushBests(): Promise<RushBest[]> {
   return bests;
 }
 
-/** Your recent attempts, newest first. */
 export async function listPuzzleAttempts(
   limit = 20,
 ): Promise<PuzzleAttemptEntry[]> {
@@ -267,13 +228,6 @@ export type ClaimCollectionResult = InferResponseType<
   200
 >;
 
-/**
- * Every collection, with how far along each you are.
- *
- * Progress is counted server-side off the attempts you already have, so this is
- * always current with what you have solved — including work done long before a
- * collection existed.
- */
 export async function fetchPuzzleCollections(): Promise<
   PuzzleCollectionEntry[]
 > {
@@ -287,11 +241,6 @@ export async function fetchPuzzleCollections(): Promise<
   return collections;
 }
 
-/**
- * Take the reward for a finished one. Idempotent: claiming twice comes back
- * with a null `reward` rather than an error, so a retry is safe. A 409 means it
- * is not finished yet, and the message says how far along it is.
- */
 export async function claimPuzzleCollection(
   id: string,
 ): Promise<ClaimCollectionResult> {

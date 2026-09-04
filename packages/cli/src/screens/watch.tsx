@@ -60,12 +60,7 @@ const BOARD_KEYMAP: Keymap = {
   escape: "back to the list",
   sections: [
     {
-      keys: [
-        { keys: "f", label: "flip the board" },
-        // Not held back to the end as it is on your own board: this is
-        // somebody else's game, and a watcher has no move to be helped with.
-        ...COPY_KEYS,
-      ],
+      keys: [{ keys: "f", label: "flip the board" }, ...COPY_KEYS],
     },
     {
       title: "The gallery",
@@ -82,28 +77,14 @@ const BOARD_KEYMAP: Keymap = {
   ],
 };
 
-/**
- * The layer the phrase picker takes while it is open, so `f` and `y` go quiet
- * underneath it and the digits are unambiguously the picker's.
- */
 const CHAT_LAYER_ID = "watch-chat";
 
-/** The newest message's id, or "" — how a client tells one transcript from another. */
 function lastMessageId(game: { chat: { id: string }[] }): string {
   return game.chat.at(-1)?.id ?? "";
 }
 
-/** How often the list of live games is refreshed while it is on screen. */
 const LIST_POLL_MS = 10_000;
 
-/**
- * Spectating.
- *
- * The board here is fed by the same stream the players' own screens use, so a
- * watcher is never a tick behind them. What they are not given is a move list
- * to play from: the spectator payload has no legal moves in it at all, which is
- * why this screen has no cursor and no way to pick a piece up.
- */
 export function Watch() {
   const auth = useAuth();
   const [watching, setWatching] = useState<string | null>(null);
@@ -126,7 +107,6 @@ export function Watch() {
   );
 }
 
-/** Column widths for the live games table. */
 const PLAYERS_W = 30;
 const SPEED_W = 8;
 
@@ -169,8 +149,6 @@ function LiveList({ onOpen }: { onOpen: (gameId: string) => void }) {
         if (!cancelled) {
           setGames(live);
           setError(null);
-          // The list shifts under the cursor as games start and finish; keep
-          // the selection on the board rather than pointing past the end.
           setIndex((value) => Math.min(value, Math.max(0, live.length - 1)));
         }
       } catch (cause) {
@@ -292,13 +270,9 @@ function SpectatorBoard({
   const [game, setGame] = useState<SpectatorGame | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
-  /** What the last copy did, under the status line. */
   const [note, setNote] = useState<string | null>(null);
-  /** The phrase picker is open and taking the digits. */
   const [saying, setSaying] = useState(false);
 
-  // The first state arrives on the stream, but a fetch gets something on
-  // screen without waiting for the connection to come up.
   useEffect(() => {
     let cancelled = false;
 
@@ -326,11 +300,6 @@ function SpectatorBoard({
     return subscribeToSpectatorGame(gameId, {
       onState: (state) => {
         const current = latest.current;
-        // A draw offer moves neither the ply nor the result, so it is named here
-        // as well — otherwise a change that is pure negotiation is filtered out
-        // as "nothing new" and the watcher never sees it. A takeback request is
-        // the same; the takeback itself moves the ply, backwards, and needs no
-        // naming of its own.
         if (
           !current ||
           state.ply !== current.ply ||
@@ -342,9 +311,6 @@ function SpectatorBoard({
           return;
         }
 
-        // A message moves nothing on the board, so it takes the narrow path:
-        // the transcript is copied across and everything else — the flipped
-        // orientation, the copy note — is left exactly where it was.
         if (lastMessageId(state) !== lastMessageId(current)) {
           setGame((previous) =>
             previous ? { ...previous, chat: state.chat } : state,
@@ -357,13 +323,6 @@ function SpectatorBoard({
   const board = useReplayedGame(game?.history ?? [], game?.startFen ?? null);
   const over = game?.result != null;
 
-  /**
-   * The watchers' nine, led by the ones that fit where the game is.
-   *
-   * A different catalog from the players' — a watcher is commenting rather than
-   * playing, and half of what the two of them can say to each other reads as
-   * somebody else's line when it comes from the gallery.
-   */
   const phrases = useMemo(
     () =>
       chatPhrasesFor(
@@ -373,13 +332,6 @@ function SpectatorBoard({
     [game?.ply, over],
   );
 
-  /**
-   * Say one of them to the rest of the gallery.
-   *
-   * Nothing on this screen is locked while it is in flight: a watcher has no
-   * move to be held up, and the board keeps arriving from the stream either
-   * way.
-   */
   const say = useCallback(
     async (phrase: ChatPhraseId) => {
       setSaying(false);
@@ -394,8 +346,6 @@ function SpectatorBoard({
     [gameId],
   );
 
-  // The picker owns the keyboard while it is open, which is what lets it bind
-  // the digits without the screen underneath having to know they are spoken for.
   useEffect(() => {
     if (!saying) {
       return;
@@ -432,9 +382,6 @@ function SpectatorBoard({
     if (key.name === "t") {
       setSaying(true);
     }
-    // Copying is not held back to the end here as it is on a player's own
-    // board: this is a public game somebody else is playing, and the watcher
-    // has no move to be helped with.
     if (key.name === "y" && game) {
       setNote(
         key.shift
@@ -453,8 +400,6 @@ function SpectatorBoard({
     }
   });
 
-  // No `onExpire`: a watcher has no standing to settle anyone's game on time.
-  // The players' own screens do that; this one just stops counting down.
   const live = useClock({ clock: game?.clock ?? null, over });
 
   const clocks = useMemo(
@@ -472,9 +417,6 @@ function SpectatorBoard({
     [flipped, game?.black, game?.clock?.running, game?.white, live, over],
   );
 
-  // No branch for the open picker: while it is up it holds the keyboard layer,
-  // and `GameScreen` only reads escape on the base one. Escape closes the
-  // picker, and the press after that is the one that leaves the game.
   const handleEscape = useCallback(() => {
     onBack();
     return true;
@@ -520,19 +462,13 @@ function SpectatorBoard({
     if (game.result === "ABORTED") {
       return "The game was aborted";
     }
-    // A draw on a live-looking position was agreed rather than played out —
-    // checked ahead of the decisive case below, which has no winner to name.
     if (game.result === "DRAW" && board.status === "playing") {
       return "Draw agreed";
     }
     if (game.result !== null && board.status === "playing") {
-      // A result on a live-looking position: someone resigned, ran out of time
-      // or walked away.
       const winner = game.result === "WHITE_WIN" ? game.white : game.black;
       return `${faceName(winner)} wins`;
     }
-    // Part of what is happening on the board, like the clock: a watcher who
-    // cannot see the offer cannot read the next move.
     if (game.takebackOfferFrom !== null) {
       const asker = game.takebackOfferFrom === "w" ? game.white : game.black;
       return `${faceName(asker)} has asked for their move back`;
@@ -581,8 +517,6 @@ function SpectatorBoard({
 
       <text fg={over ? theme.gold : theme.dim}>{status()}</text>
 
-      {/* The gallery, never the players. What the two of them are saying to
-          each other is not on this payload at all. */}
       {saying ? (
         <PhrasePicker
           phrases={phrases}

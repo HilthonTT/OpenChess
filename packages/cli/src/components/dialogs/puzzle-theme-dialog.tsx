@@ -3,20 +3,6 @@ import { useDialog } from "../../providers/dialog";
 import { DialogSearchList } from "../dialog-search-list";
 import type { PuzzleThemeEntry } from "../../lib/puzzles";
 
-/**
- * The theme picker: what to train next.
- *
- * The list leads with everything the corpus actually has, since a theme with no
- * puzzles behind it is a filter that can only disappoint — but the ones with a
- * zero are kept at the bottom rather than hidden, because "no forks imported
- * yet" is a more useful answer than a list that quietly omits forks.
- *
- * Each row carries the player's own record at the theme, which is the whole
- * reason to have this screen rather than a flat list of tags: the interesting
- * question is not "what themes exist" but "which am I bad at".
- */
-
-/** The row that clears the filter, kept in the same list so `enter` picks it. */
 const ANY: PuzzleThemeEntry = {
   key: "",
   label: "Any theme",
@@ -40,8 +26,6 @@ export function PuzzleThemeDialogContent({
     const trainable = themes.filter((entry) => entry.trainable);
 
     const ranked = [...trainable].sort((a, b) => {
-      // Anything with puzzles behind it first, then by how much of it is left
-      // unseen — which puts the themes worth opening this dialog for on top.
       const hasA = a.available > 0 ? 1 : 0;
       const hasB = b.available > 0 ? 1 : 0;
       if (hasA !== hasB) {
@@ -82,7 +66,6 @@ export function PuzzleThemeDialogContent({
   );
 }
 
-/** The right-hand column: how many there are, and how you have done at them. */
 function describe(entry: PuzzleThemeEntry): string {
   if (entry.key === "") {
     return "the whole catalog";

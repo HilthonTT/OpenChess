@@ -4,12 +4,6 @@ export type ErrorHint = { key: string; label: string };
 
 const RETRY_HINT: ErrorHint[] = [{ key: "r", label: "retry" }];
 
-/**
- * The standard error block for a screen body: what went wrong, the message,
- * and which keys dig you out. Screens that can refetch keep the default
- * `r retry` hint; pass `hints` to offer more ways out, or `null` when the
- * screen has no recovery key to offer.
- */
 export function ErrorNotice({
   title,
   message,

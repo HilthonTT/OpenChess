@@ -18,8 +18,6 @@ import { useKeymap, type Keymap } from "../providers/keymap";
 import { useUITheme } from "../providers/theme";
 import { errorMessage } from "../lib/utils";
 
-// The one list screen where `home`, `end` and `g` move by page rather than by
-// row, since the rows it is paging through are the whole ladder.
 const KEYMAP: Keymap = {
   title: "Leaderboard",
   sections: [
@@ -37,7 +35,6 @@ const KEYMAP: Keymap = {
   ],
 };
 
-/** Rows per page. Sized so the table plus its chrome fits an 80x24 terminal. */
 const PAGE_SIZE = 15;
 const WIDTH = 62;
 
@@ -49,11 +46,6 @@ const SORT_LABELS: Record<LeaderboardSort, string> = {
 
 type Data = { entries: LeaderboardEntry[]; total: number };
 
-/**
- * The ranked player table, one page at a time. Ranks are absolute positions, so
- * the server pages by offset and the page number is the screen's whole state —
- * arrow keys move through it and the sort resets it back to the top.
- */
 export function Leaderboard() {
   const auth = useAuth();
   const navigate = useNavigate();
@@ -63,9 +55,7 @@ export function Leaderboard() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  /** Which row the cursor is on, within the current page. */
   const [index, setIndex] = useState(0);
-  /** Bumped to refetch the current page, e.g. after r or a fixed error. */
   const [attempt, setAttempt] = useState(0);
 
   const signedIn = auth.status === "signed-in";
@@ -101,8 +91,6 @@ export function Leaderboard() {
     };
   }, [sort, page, attempt, signedIn]);
 
-  // The server caps the offset, so the last reachable page is capped too — a
-  // held-down arrow key stops at the end rather than earning a 400.
   const pageCount = data
     ? Math.min(Math.max(1, Math.ceil(data.total / PAGE_SIZE)), MAX_PAGE)
     : 1;
@@ -114,7 +102,6 @@ export function Leaderboard() {
     [pageCount],
   );
 
-  /** Sorting reorders every rank, so the old page number means nothing. */
   const cycleSort = useCallback(() => {
     setSort((current) => SORTS[(SORTS.indexOf(current) + 1) % SORTS.length]!);
     setPage(1);
@@ -162,13 +149,10 @@ export function Leaderboard() {
         setPage(pageCount);
         setIndex(0);
         break;
-      // g / G, the vim pair for "top" and "bottom".
       case "g":
         setPage(key.shift ? pageCount : 1);
         setIndex(0);
         break;
-      // A rank is a name, and a name is a player worth looking at. This is the
-      // one place in the app where you meet somebody you have never played.
       case "return":
       case "space":
         if (selected) {
@@ -254,7 +238,6 @@ function Notice({ text }: { text: string }) {
   return <text fg={theme.dim}>{text}</text>;
 }
 
-/** Column widths, left to right. Ranks are absolute so allow for five digits. */
 const RANK_W = 5;
 const NAME_W = 22;
 const NUM_W = 7;
@@ -281,8 +264,6 @@ function Table({
   );
 
   return (
-    // A page in flight keeps the old rows on screen, just dimmed: blanking the
-    // table on every keypress makes paging feel like it lost your place.
     <box flexDirection="column" width={WIDTH - 6}>
       <text>
         {heading("#".padEnd(RANK_W), false)}
@@ -304,7 +285,6 @@ function Table({
   );
 }
 
-/** Trim an over-long username rather than let it push the columns apart. */
 function fit(value: string, width: number): string {
   return value.length > width
     ? `${value.slice(0, width - 1)}…`
@@ -322,10 +302,6 @@ function Row({
 }) {
   const theme = useUITheme();
 
-  // Your own row is highlighted so it stays findable while paging — it is the
-  // one row anyone is actually looking for. The cursor is drawn as a marker in
-  // the rank column rather than as a second background, so the two can be on
-  // the same row without one hiding the other.
   const fg = dimmed ? theme.faint : entry.you ? theme.cream : theme.text;
   const numbers = dimmed ? theme.faint : theme.dim;
   const name = entry.title

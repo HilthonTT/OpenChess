@@ -27,9 +27,6 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-// A private, per-player resource that pays XP, so the same auth and metering
-// the puzzle routes carry applies here. The limit is generous: a drill is one
-// request at the end of a line, not one per move.
 base.use(
   "*",
   requireAuth,
@@ -146,9 +143,6 @@ const review = createRoute({
   },
 });
 
-// Chained rather than registered separately, as the game router is and for the
-// same reason: only the chained value carries the full shape in its type, and
-// that type is what `hc<AppType>` builds the typed CLI client from.
 const router = base
   .openapi(next, async (c) => {
     const line = await nextDueLine(c.get("user"));

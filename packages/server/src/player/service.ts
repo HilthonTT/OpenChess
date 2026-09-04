@@ -6,15 +6,6 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import { cached, invalidateCache } from "../lib/cache";
 import { throwProblem } from "../lib/problem-details";
 
-/**
- * Everything that hangs off a player rather than a game: the profile, the
- * store, the ledger, the leaderboard.
- *
- * The one routine here with teeth is `purchaseTitle`, which spends currency and
- * so is written the same way the reward pipeline is — one transaction, with the
- * database's own unique constraint as the backstop against a double purchase.
- */
-
 const UNIQUE_VIOLATION = "P2002";
 const SERIALIZATION_FAILURE = "P2034";
 
@@ -71,9 +62,6 @@ export async function getStats(user: User) {
     draws: stats.draws,
     currentWinStreak: stats.currentWinStreak,
     topWinStreak: stats.topWinStreak,
-    // The check-in run, plus whether it is still extendable. A client rendering
-    // "3 days" wants to know whether that is a live streak or the remains of one
-    // already broken, and only the server's calendar can say.
     currentLoginStreak: stats.currentLoginStreak,
     topLoginStreak: stats.topLoginStreak,
     lastCheckInDay: stats.lastCheckInDay ? utcDay(stats.lastCheckInDay) : null,
@@ -85,21 +73,8 @@ export async function getStats(user: User) {
   };
 }
 
-/**
- * How many points a rating-history request returns when it does not say. Enough
- * to show the shape of a run of play without turning a sparkline into a smear.
- */
 const RATING_HISTORY_LIMIT = 30;
 
-/**
- * The player's rating curve: the most recent `limit` changes, oldest first.
- *
- * A window, not a page. There is no cursor because there is nothing to page
- * back through — a chart wants the recent shape of the curve, and a client that
- * wants the whole thing can ask for a bigger window. `peak` deliberately
- * ignores the window and aggregates over all of history, because a personal
- * best that expired out of the last thirty games is still the personal best.
- */
 export async function getRatingHistory(
   user: User,
   limit: number = RATING_HISTORY_LIMIT,
@@ -109,9 +84,6 @@ export async function getRatingHistory(
       where: { userId: user.id },
       select: { rating: true },
     }),
-    // Newest first is the indexed direction; the reverse below is what the
-    // caller actually wants. Taking the *newest* N and then reversing is not the
-    // same as taking the oldest N — the tail of the curve is the useful end.
     db.ratingSnapshot.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
@@ -134,26 +106,13 @@ export async function getRatingHistory(
       gameId: point.gameId,
       createdAt: point.createdAt.toISOString(),
     })),
-    // Undoing the oldest point's own change is what the curve stood at before
-    // the window opened — the left-hand anchor a chart needs. With no history at
-    // all there is no curve, and the current rating is the whole story.
     startingRating: oldest ? oldest.rating - oldest.delta : stats.rating,
     current: stats.rating,
     peak: peak._max.rating,
   };
 }
 
-/**
- * The achievement catalog, with the caller's unlock state on each row.
- *
- * A secret achievement is withheld until it is earned — that is the entire
- * purpose of the `secret` column, and listing them locked would give the game
- * away.
- */
 export async function listAchievements(user: User, unlockedOnly = false) {
-  // The catalog is the same for everyone and changes only when the seed runs;
-  // the caller's unlock rows are the only per-user part, so only those are
-  // read fresh. Cached as a projection: rows round-trip through JSON.
   const [catalog, unlocks] = await Promise.all([
     cached("achievements", "catalog", 300, () =>
       db.achievement.findMany({
@@ -205,8 +164,6 @@ export async function listAchievements(user: User, unlockedOnly = false) {
 }
 
 export async function listTitles(user: User) {
-  // Same split as the achievement catalog: the titles themselves are global
-  // and cacheable, ownership and affordability are computed per caller.
   const [titles, owned] = await Promise.all([
     cached("titles", "catalog", 300, () =>
       db.title.findMany({
@@ -249,7 +206,6 @@ export async function listTitles(user: User) {
   }));
 }
 
-/** Titles the caller owns. The store's `owned` flag is the same fact, seen from the shop. */
 export async function listOwnedTitles(user: User) {
   const rows = await db.userTitle.findMany({
     where: { userId: user.id },
@@ -274,7 +230,6 @@ export async function listOwnedTitles(user: User) {
   }));
 }
 
-/** Equip a title, or pass null to clear it. */
 export async function equipTitle(user: User, titleId: string | null) {
   if (titleId !== null) {
     const owned = await db.userTitle.findUnique({
@@ -291,27 +246,11 @@ export async function equipTitle(user: User, titleId: string | null) {
     data: { equippedTitleId: titleId },
   });
 
-  // The equipped title's label is displayed on leaderboard rows.
   await invalidateCache("leaderboard");
 
   return getProfile(user);
 }
 
-/**
- * Buy a title.
- *
- * Serializable, like the game reward path, because this reads the coin balance
- * and then writes an absolute new value. `@@unique([userId, titleId])` only
- * guards against buying the *same* title twice; it does nothing for two
- * *different* titles racing on one balance. Without serialization both reads
- * see the old balance and the second write silently loses the first deduction,
- * so a player with 100 coins could buy two 100-coin titles and pay for one.
- * Under Serializable the two writes to the same user row collide and the loser
- * gets a serialization failure, which we surface as a 409 the client retries.
- *
- * One transaction: check, then write the ownership row, the ledger entry, and
- * the cached balance together.
- */
 export async function purchaseTitle(user: User, titleId: string) {
   try {
     return await db.$transaction(
@@ -329,8 +268,6 @@ export async function purchaseTitle(user: User, titleId: string) {
           );
         }
 
-        // Read the balance inside the transaction: the cached one on `user` was
-        // read before the request and a concurrent game may have paid out since.
         const fresh = await tx.user.findUniqueOrThrow({
           where: { id: user.id },
         });
@@ -355,7 +292,6 @@ export async function purchaseTitle(user: User, titleId: string) {
           data: {
             userId: user.id,
             titleId: title.id,
-            // Store prices change; the receipt records what was actually paid.
             pricePaid: title.price,
           },
         });
@@ -363,7 +299,6 @@ export async function purchaseTitle(user: User, titleId: string) {
         await tx.coinTransaction.create({
           data: {
             userId: user.id,
-            // Negative: spent, not earned.
             amount: -title.price,
             reason: "PURCHASE",
             balanceAfter,
@@ -398,8 +333,6 @@ export async function purchaseTitle(user: User, titleId: string) {
     if (isUniqueViolation(error)) {
       throwProblem(HttpStatusCodes.CONFLICT, "You already own that title");
     }
-    // A concurrent spend touched the same balance; the client refetches its
-    // coins and tries again rather than silently losing a deduction.
     if (isSerializationFailure(error)) {
       throwProblem(
         HttpStatusCodes.CONFLICT,
@@ -420,10 +353,6 @@ export async function listTransactions(input: {
     where: {
       userId: input.user.id,
       ...(input.reason ? { reason: input.reason } : {}),
-      // Strictly after the cursor row in `(createdAt, id)` order: a payout
-      // `createMany`s several ledger rows in the same instant, and a
-      // bare-timestamp cursor would skip the rest of that batch at a page
-      // boundary.
       ...(input.cursor
         ? {
             OR: [
@@ -449,43 +378,23 @@ export async function listTransactions(input: {
       balanceAfter: row.balanceAfter,
       createdAt: row.createdAt.toISOString(),
     })),
-    // The `<iso>_<id>` compound `paginationQuerySchema` validates and
-    // `decodeCursor` splits. Opaque to clients, which round-trip it verbatim.
     nextCursor: last ? `${last.createdAt.toISOString()}_${last.id}` : null,
   };
 }
 
 export type LeaderboardSort = "rating" | "level" | "wins";
 
-/**
- * The leaderboard.
- *
- * Offset-paginated rather than cursor-paginated, because a rank is only
- * meaningful as an absolute position — and an offset is the only thing that
- * gives you one. Each sort lands on an index the schema already carries:
- * `UserStats.rating`, `UserStats.wins`, and `User[level, experience]`.
- */
 export async function getLeaderboard(input: {
   user: User;
   sort: LeaderboardSort;
   page: number;
   limit: number;
 }) {
-  // The board is identical for every viewer except the `you` flag, so the
-  // cached value is the viewer-independent page and `you` is stamped on per
-  // request. Invalidated wherever a leaderboard-visible fact changes (game
-  // settlement, equipping a title, a new user); the 60s TTL is the staleness
-  // ceiling if a bump is ever lost.
   const { entries, total } = await cached(
     "leaderboard",
     `${input.sort}:${input.page}:${input.limit}`,
     60,
     async () => {
-      // Every sort ends on `id` so tied players fall in a fixed order. Without
-      // a unique terminal key Postgres may order ties differently between the
-      // page-N and page-N+1 queries, so a tied player could show up on both
-      // pages or on neither, and `rank` (skip + index) would disagree run to
-      // run.
       const orderBy: Prisma.UserOrderByWithRelationInput[] =
         input.sort === "level"
           ? [{ level: "desc" }, { experience: "desc" }, { id: "asc" }]

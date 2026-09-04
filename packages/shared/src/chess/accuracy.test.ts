@@ -30,7 +30,6 @@ describe("winningChance", () => {
     expect(winningChance(-300)).toBeLessThan(30);
   });
 
-  // The whole reason accuracy is scored on this axis rather than on centipawns.
   test("a pawn is worth more when the game is level than when it is won", () => {
     const nearLevel = winningChance(0) - winningChance(-100);
     const alreadyWon = winningChance(900) - winningChance(800);
@@ -59,7 +58,6 @@ describe("buildGameReport", () => {
   test("scores each side only on its own moves", () => {
     const report = buildGameReport([
       ply({ mover: "w", san: "e4", before: 0, after: 20 }),
-      // Black hands over three pawns.
       ply({ mover: "b", san: "g5", before: 20, after: 320 }),
     ]);
 
@@ -90,8 +88,6 @@ describe("buildGameReport", () => {
     expect(report.plies.map((entry) => entry.san)).toEqual(["e4", "e5", "Nf3"]);
   });
 
-  // Without the clamp, converting a won game into a merely-winning one would
-  // read as a hundred-pawn catastrophe.
   test("clamps mate-sized scores onto the pawn axis", () => {
     const report = buildGameReport([
       ply({ mover: "w", before: 100_000, after: 900, mateInvolved: true }),

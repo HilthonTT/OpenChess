@@ -21,41 +21,13 @@ import * as matchmaking from "./matchmaking";
 import { toClockPreset, toTimeControlKey } from "./rules";
 import { getGame, initialClockData, type GameView } from "./service";
 
-/**
- * Direct challenges: playing someone you picked, rather than whoever the queue
- * hands you.
- *
- * Two shapes, one row. A challenge addressed to a player shows up in their
- * inbox; an open one is addressed to nobody and travels as a `code` — the thing
- * you read out to a friend, or paste into a chat. Accepting either one creates
- * exactly the same PvP game the queue would have, so everything downstream —
- * the clock, the stream, rating, payouts — is unchanged.
- *
- * The invariant this must not break is the queue's: at most one unfinished PvP
- * game per player. `joinPvpQueue` resumes whatever live game it finds rather
- * than pairing again, so a second live game would strand one of them. Accepting
- * therefore refuses when either side already has one, inside the same
- * serializable transaction that creates the game.
- */
-
-/** How long a challenge stands before it stops being acceptable. */
 const CHALLENGE_TTL_MS = 60 * 60_000;
 
-/**
- * A ceiling on outstanding challenges per player. Not a rate limit — the route
- * has one of those — but a cap on how much of someone else's inbox one player
- * can occupy.
- */
 const MAX_PENDING_CHALLENGES = 10;
 
-/** Postgres could not serialize a concurrent transaction. */
 const SERIALIZATION_FAILURE = "P2034";
 const UNIQUE_VIOLATION = "P2002";
 
-/**
- * The alphabet for join codes: no `0`/`O`, no `1`/`I`/`L`. A code exists to be
- * read aloud and typed back, and those are the pairs that get typed back wrong.
- */
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LENGTH = 6;
 
@@ -70,10 +42,8 @@ function generateCode(): string {
 export type ChallengeView = {
   id: string;
   code: string;
-  /** True when the caller is the one who sent it. */
   outgoing: boolean;
   challenger: { username: string; rating: number; title: string | null };
-  /** Null on an open challenge. */
   challenged: { username: string } | null;
   color: ChallengeColor;
   variant: GameVariant;
@@ -125,12 +95,6 @@ function view(row: ChallengeWithPeople, userId: string): ChallengeView {
   };
 }
 
-/**
- * Send a challenge.
- *
- * With `opponentUsername` it lands in that player's inbox; without one it is
- * open, and its code is the only way in.
- */
 export async function createChallenge(input: {
   user: User;
   opponentUsername?: string | null;
@@ -163,23 +127,6 @@ export async function createChallenge(input: {
     challengedId = opponent.id;
   }
 
-  const pending = await db.challenge.count({
-    where: {
-      challengerId: input.user.id,
-      status: "PENDING",
-      expiresAt: { gt: new Date() },
-    },
-  });
-
-  if (pending >= MAX_PENDING_CHALLENGES) {
-    throwProblem(
-      HttpStatusCodes.CONFLICT,
-      `You have ${pending} challenges still outstanding. Cancel one before sending another.`,
-    );
-  }
-
-  // A duplicate outstanding challenge to the same person is noise in their
-  // inbox, not a second game. Reuse the one already standing.
   if (challengedId !== null) {
     const existing = await db.challenge.findFirst({
       where: {
@@ -196,9 +143,21 @@ export async function createChallenge(input: {
     }
   }
 
-  // Codes are random and unique; a collision is a retry, not an error. Six
-  // characters from a 31-letter alphabet is ~900M codes, so this loop is a
-  // formality that will effectively never run twice.
+  const pending = await db.challenge.count({
+    where: {
+      challengerId: input.user.id,
+      status: "PENDING",
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (pending >= MAX_PENDING_CHALLENGES) {
+    throwProblem(
+      HttpStatusCodes.CONFLICT,
+      `You have ${pending} challenges still outstanding. Cancel one before sending another.`,
+    );
+  }
+
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       const row = await db.challenge.create({
@@ -232,12 +191,6 @@ export async function createChallenge(input: {
   );
 }
 
-/**
- * Challenge the opponent of a game you just finished to another one.
- *
- * Same clock, colours swapped — which is what "rematch" means at a board and
- * what stops the player who drew white keeping it forever.
- */
 export async function createRematch(input: {
   user: User;
   gameId: string;
@@ -298,27 +251,17 @@ export async function createRematch(input: {
     );
   }
 
-  // The clock is read back off the game rather than trusted from the client, so
-  // a rematch of a blitz game is a blitz game.
   const timeControl = timeControlOf(game.initialSeconds, game.incrementSeconds);
 
   return createChallenge({
     user: input.user,
     opponentUsername: opponent.username,
-    // Swapped: whoever had black asks for white.
     color: yourColor === "w" ? "BLACK" : "WHITE",
-    // A rematch of a shuffled game is a shuffled game — and a fresh array, not
-    // the one just played.
     variant: game.variant,
     timeControl,
   });
 }
 
-/**
- * The preset a game's stored clock numbers name, or null when the game was
- * untimed — or when its numbers match no current preset, which a rematch can
- * only honestly treat as untimed.
- */
 function timeControlOf(
   initialSeconds: number | null,
   incrementSeconds: number | null,
@@ -335,7 +278,6 @@ export type ChallengeList = {
   outgoing: ChallengeView[];
 };
 
-/** What is waiting for you, and what you are waiting on. */
 export async function listChallenges(user: User): Promise<ChallengeList> {
   const now = new Date();
 
@@ -353,8 +295,6 @@ export async function listChallenges(user: User): Promise<ChallengeList> {
     db.challenge.findMany({
       where: {
         challengerId: user.id,
-        // Accepted ones stay in the list: an outgoing challenge that just
-        // became a game is exactly what the sender is polling to find out.
         status: { in: ["PENDING", "ACCEPTED"] },
         OR: [{ status: "ACCEPTED" }, { expiresAt: { gt: now } }],
       },
@@ -370,7 +310,6 @@ export async function listChallenges(user: User): Promise<ChallengeList> {
   };
 }
 
-/** One challenge by its join code — how a typed-in code becomes something to accept. */
 export async function findChallengeByCode(
   user: User,
   code: string,
@@ -387,13 +326,6 @@ export async function findChallengeByCode(
   return view(row, user.id);
 }
 
-/**
- * Accept a challenge, creating the game.
- *
- * Serializable, and it re-checks everything inside the transaction: two players
- * racing to accept the same open code must produce one game, and a player who
- * started a queue game in the meantime must not end up with two.
- */
 export async function acceptChallenge(input: {
   user: User;
   challengeId: string;
@@ -420,8 +352,6 @@ export async function acceptChallenge(input: {
           );
         }
 
-        // An addressed challenge admits exactly one player; an open one admits
-        // whoever gets there first.
         if (row.challengedId !== null && row.challengedId !== input.user.id) {
           throwProblem(
             HttpStatusCodes.FORBIDDEN,
@@ -436,7 +366,6 @@ export async function acceptChallenge(input: {
           );
         }
 
-        // Checked against the clock rather than trusting a sweeper to have run.
         if (row.expiresAt.getTime() <= Date.now()) {
           throwProblem(HttpStatusCodes.CONFLICT, "This challenge has expired");
         }
@@ -468,9 +397,6 @@ export async function acceptChallenge(input: {
 
         const timeControl = toTimeControlKey(row.clock);
 
-        // The array is drawn here rather than when the challenge was sent, so
-        // a challenge that sat in an inbox overnight cannot have been studied
-        // by the player who sent it.
         const startFen =
           row.variant === "CHESS960" ? randomChess960Fen() : null;
 
@@ -492,8 +418,6 @@ export async function acceptChallenge(input: {
           data: {
             status: "ACCEPTED",
             gameId: game.id,
-            // An addressed challenge already names them; an open one records
-            // who actually walked through the door.
             challengedId: input.user.id,
             respondedAt: new Date(),
           },
@@ -520,15 +444,11 @@ export async function acceptChallenge(input: {
     throw error;
   }
 
-  // Both players now have a game, so neither should still be sitting in the
-  // queue waiting for a different one.
   await Promise.all([
     matchmaking.leave(input.user.id),
     matchmaking.leave(challenge.challengerId),
   ]);
 
-  // The challenger may already be watching this game's stream, having polled
-  // its way in from the challenge list.
   publishGameChanged(gameId);
 
   return {
@@ -537,7 +457,6 @@ export async function acceptChallenge(input: {
   };
 }
 
-/** Turn a challenge down. Idempotent for the player it was addressed to. */
 export async function declineChallenge(input: {
   user: User;
   challengeId: string;
@@ -571,7 +490,6 @@ export async function declineChallenge(input: {
   return view(declined, input.user.id);
 }
 
-/** Withdraw a challenge you sent. Idempotent, like declining. */
 export async function cancelChallenge(input: {
   user: User;
   challengeId: string;

@@ -78,17 +78,6 @@ const TITLE = "Puzzle Rush";
 const SUBTITLE = "Solve as many as you can before the clock or three mistakes";
 const WIDTH = 58;
 
-/**
- * Puzzle Rush.
- *
- * The same never-hold-the-answer protocol the tactics trainer uses: every move
- * goes to the server, which replays it and answers. What is different is that
- * the *run* lives on the server too — the score, the mistakes and the clock are
- * all its, and this screen holds none of them authoritatively. The countdown
- * below is drawn from `endsAt`, not counted down locally, so a paused terminal
- * or a slow network cannot buy anyone a longer run.
- */
-
 const MODES: Array<{
   mode: RushMode;
   key: string;
@@ -205,8 +194,6 @@ function Lobby({
       return;
     }
 
-    // The arrows browse the boards without committing to a run, so you can see
-    // what a mode is worth before starting one.
     if (key.name === "left" || key.name === "right") {
       setMode((current) => {
         const index = MODES.findIndex((entry) => entry.mode === current);
@@ -300,9 +287,7 @@ function RunBoard({
   const [run, setRun] = useState<RushRun | RushMoveResult>(initial);
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  /** Our own moves at the current puzzle, which is what the server wants back. */
   const [ourMoves, setOurMoves] = useState<string[]>([]);
-  /** The board: the puzzle's position plus every move the server has confirmed. */
   const [line, setLine] = useState<string[]>(() =>
     initial.puzzle ? [initial.puzzle.openingMove] : [],
   );
@@ -325,7 +310,7 @@ function RunBoard({
     initialSquare: homeSquare(you),
     initiallyFlipped: you === "b",
   });
-  const { placeCursor, resetCursor } = cursor;
+  const { placeCursor, setFlipped } = cursor;
 
   const selection = useMoveSelection({
     game,
@@ -339,7 +324,6 @@ function RunBoard({
 
   const remaining = useCountdown(run.endsAt, over);
 
-  /** Fold a server response into the screen, resetting the board on a new puzzle. */
   const absorb = useCallback(
     (result: RushMoveResult, previousPuzzleId: string | null) => {
       setRun(result);
@@ -349,17 +333,18 @@ function RunBoard({
       }
 
       if (result.puzzle && result.puzzle.id !== previousPuzzleId) {
-        // A fresh puzzle: the board starts again from its own opening move.
+        const side = replayLine(result.puzzle.fen, [result.puzzle.openingMove])
+          .position.turn;
         setLine([result.puzzle.openingMove]);
         setOurMoves([]);
         clearSelection();
-        resetCursor();
+        setFlipped(side === "b");
+        placeCursor(homeSquare(side));
       }
     },
-    [clearSelection, resetCursor],
+    [clearSelection, placeCursor, setFlipped],
   );
 
-  /** Announce a finished run once, when it finishes. */
   const announced = useRef(false);
   useEffect(() => {
     if (!over || announced.current) {
@@ -386,7 +371,6 @@ function RunBoard({
       });
     }
 
-    // The payout moved the header's coins and XP.
     void auth.refresh();
   }, [auth, over, run, toast]);
 
@@ -448,16 +432,20 @@ function RunBoard({
     }
   }, [over, pending, run.id, setMessage]);
 
-  // The clock is the server's, so a run can expire with nothing being played.
-  // One request when the countdown hits zero settles it and shows the score.
   const settled = useRef(false);
   useEffect(() => {
-    if (over || remaining === null || remaining > 0 || settled.current) {
+    if (
+      over ||
+      pending ||
+      remaining === null ||
+      remaining > 0 ||
+      settled.current
+    ) {
       return;
     }
     settled.current = true;
     void stop();
-  }, [over, remaining, stop]);
+  }, [over, pending, remaining, stop]);
 
   useGameKeys({
     selection,
@@ -595,14 +583,6 @@ function RunBoard({
   );
 }
 
-/**
- * Milliseconds left on the server's clock, ticking once a second, or null when
- * the run has none.
- *
- * Derived from `endsAt` rather than counted down from a duration: the server
- * decides when a run is over, and a local counter that drifted would either
- * cut a run short or keep showing time that had already gone.
- */
 function useCountdown(endsAt: string | null, stopped: boolean): number | null {
   const [now, setNow] = useState(() => Date.now());
 
@@ -629,11 +609,6 @@ function formatClock(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-/**
- * The board after a list of UCI moves. A move that will not replay stops the
- * walk rather than throwing: the alternative is a crashed screen over a server
- * response we could simply render less of.
- */
 function replayLine(fen: string, moves: string[]): Game {
   let game = createGame(fen);
 

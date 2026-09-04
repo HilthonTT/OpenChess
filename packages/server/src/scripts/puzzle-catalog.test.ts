@@ -11,14 +11,6 @@ import {
 
 import { PUZZLE_CATALOG } from "./puzzle-catalog";
 
-/**
- * The catalog is data, and data written by hand is data with mistakes in it.
- * These are the checks that stop an authoring slip reaching a player as an
- * unsolvable puzzle: every line must replay, every `mateIn*` must actually
- * mate, and every puzzle must be solvable by playing its own recorded answer.
- */
-
-/** Replay a whole line and hand back the final position. */
 function replay(fen: string, moves: string[]): Game {
   let game = createGame(fen);
   for (const uci of moves) {
@@ -50,7 +42,6 @@ describe("the built-in puzzle catalog", () => {
       test("is solved by its own recorded line", () => {
         let session = startPuzzle({ ...puzzle, id: puzzle.externalId });
 
-        // The solver's moves are the odd indices; walk them in order.
         for (let i = 1; i < puzzle.moves.length; i += 2) {
           const result = submitPuzzleMove(session, puzzle.moves[i]!);
           expect(result.outcome).not.toBe("wrong");
@@ -76,8 +67,6 @@ describe("the built-in puzzle catalog", () => {
 
         test(`${mateTheme}: the solver plays that many moves`, () => {
           const expected = Number(mateTheme.slice("mateIn".length));
-          // Line length is the opening blunder plus solver/reply pairs, so a
-          // mate in N is 2N moves long.
           expect(puzzle.moves).toHaveLength(expected * 2);
         });
       }

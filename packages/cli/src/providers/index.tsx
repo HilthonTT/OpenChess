@@ -11,9 +11,7 @@ import { AuthProvider } from "./auth";
 
 type Props = {
   children: ReactNode;
-  /** Passed down from `--theme`; undefined keeps the saved preference. */
   initialTheme?: Theme;
-  /** Passed down from `--pieces`; undefined keeps the saved preference. */
   initialPieceSet?: PieceSet;
 };
 
@@ -24,12 +22,9 @@ export function AppProviders({
 }: Props) {
   return (
     <ThemeProvider initialTheme={initialTheme}>
-      {/* Above the dialog provider, since the piece-set picker is a dialog and
-          the board behind it repaints as the highlight moves. */}
       <PieceSetProvider initialPieceSet={initialPieceSet}>
         <KeyboardLayerProvider>
           <DialogProvider>
-            {/* Inside the dialog provider, since `?` opens one. */}
             <KeymapProvider>
               <ToastProvider>
                 <AuthProvider>{children}</AuthProvider>

@@ -1,69 +1,16 @@
-/**
- * The built-in opening book, as named lines.
- *
- * A starter book, not a corpus: the openings a club player actually meets,
- * written as the move list that reaches them. `opening-book.ts` next door folds
- * these into a trie — one node per position, one edge per move — which is what
- * the engine picks its opening moves out of and what the explorer screen walks.
- *
- * Moves are SAN from the initial array; check and mate suffixes are optional,
- * since the book resolves each move against the position's own legal moves.
- * Every line is replayed through the engine by `opening-book.test.ts`, which
- * refuses one that does not play out — an authoring slip here would otherwise
- * reach players as a bot that has no move to make.
- *
- * `name` names the position the line *ends* on, so a line is also how a position
- * gets its label. Prefixes are named by their own entries: `Italian Game` is a
- * line in its own right, which is why `1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.c3` can
- * report Giuoco Piano while `3.Bc4` alone reports the Italian.
- *
- * `weight` is how often the book should steer into a line, relative to its
- * siblings, and it defaults to 1. It is added to *every* edge along the line
- * rather than to the last move alone, so a branch's pull is the sum of what runs
- * through it: a first move played by twenty lines outranks one played by two
- * without either needing a weight at all. The explicit weights here are only for
- * the top of the tree, where the number of lines below a move is a fact about
- * how much theory got written down rather than about how often it is played.
- *
- * ECO codes are the volume the line falls in. They are coarse by design — a
- * whole family shares one — so they are here to sort and label, not to identify.
- */
-
-/**
- * The kind of game a line is asking for, which is what lets one bot open like
- * another. Coarse on purpose — these are four temperaments, not a taxonomy —
- * and optional, since most lines are simply normal.
- *
- * - `gambit` offers material for time or the initiative.
- * - `sharp` keeps the position unbalanced and the kings uncomfortable.
- * - `solid` trades sharpness away for a structure that is hard to break.
- * - `classical` occupies the centre and develops at it, the main-line answer.
- */
 export type OpeningStyle = "gambit" | "sharp" | "solid" | "classical";
 
 export type OpeningLine = {
-  /** ECO code, e.g. `C50`. */
   eco: string;
-  /** What the position at the end of `moves` is called. */
   name: string;
-  /** The line in SAN, from the initial position. */
   moves: string[];
-  /** Relative pull along the whole line; defaults to 1. */
   weight?: number;
-  /**
-   * The temperament this line serves, when it has a clear one. Like `weight`,
-   * it is credited to every move along the line rather than to the last, so a
-   * bot asked for gambits is pulled towards `f4` from the very first move
-   * rather than only once it is already in the King's Gambit.
-   */
   style?: OpeningStyle;
 };
 
 export const OPENING_LINES: readonly OpeningLine[] = [
-  // ── 1.e4 ────────────────────────────────────────────────────────────────
   { eco: "B00", name: "King's Pawn Opening", moves: ["e4"], weight: 10 },
 
-  // 1.e4 e5 — the open games
   { eco: "C20", name: "Open Game", moves: ["e4", "e5"], weight: 4 },
   {
     eco: "C40",
@@ -78,7 +25,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     weight: 3,
   },
 
-  // Ruy López
   {
     eco: "C60",
     name: "Ruy López",
@@ -132,7 +78,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     ],
   },
 
-  // Italian
   {
     eco: "C50",
     name: "Italian Game",
@@ -190,7 +135,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Be7"],
   },
 
-  // Scotch and friends
   {
     eco: "C44",
     name: "Scotch Game",
@@ -218,7 +162,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "e5", "Nf3", "Nc6", "c3"],
   },
 
-  // Knight games
   {
     eco: "C46",
     name: "Three Knights Opening",
@@ -245,7 +188,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "e5", "Nf3", "Nc6", "Nc3", "Nf6", "Bb5", "Bb4"],
   },
 
-  // Second-move alternatives for black
   {
     eco: "C42",
     name: "Petrov's Defence",
@@ -272,7 +214,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "e5", "Nf3", "d5"],
   },
 
-  // Second-move alternatives for white
   {
     eco: "C30",
     name: "King's Gambit",
@@ -330,7 +271,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "e5", "d4", "exd4", "c3"],
   },
 
-  // Sicilian
   { eco: "B20", name: "Sicilian Defence", moves: ["e4", "c5"], weight: 6 },
   {
     eco: "B27",
@@ -418,7 +358,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "c5", "d4", "cxd4", "c3"],
   },
 
-  // French
   { eco: "C00", name: "French Defence", moves: ["e4", "e6"], weight: 4 },
   {
     eco: "C02",
@@ -458,7 +397,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     weight: 2,
   },
 
-  // Caro-Kann
   {
     eco: "B10",
     name: "Caro-Kann Defence",
@@ -504,7 +442,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["e4", "c6", "Nc3", "d5", "Nf3"],
   },
 
-  // The rest of 1.e4
   { eco: "B01", name: "Scandinavian Defence", moves: ["e4", "d5"], weight: 2 },
   {
     eco: "B01",
@@ -527,10 +464,8 @@ export const OPENING_LINES: readonly OpeningLine[] = [
   { eco: "B00", name: "Nimzowitsch Defence", moves: ["e4", "Nc6"] },
   { eco: "B00", name: "Owen's Defence", moves: ["e4", "b6"] },
 
-  // ── 1.d4 ────────────────────────────────────────────────────────────────
   { eco: "A40", name: "Queen's Pawn Opening", moves: ["d4"], weight: 9 },
 
-  // 1.d4 d5
   { eco: "D00", name: "Queen's Pawn Game", moves: ["d4", "d5"], weight: 4 },
   {
     eco: "D06",
@@ -593,7 +528,6 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["d4", "d5", "Nf3", "Nf6", "e3"],
   },
 
-  // 1.d4 Nf6 — the Indian defences
   { eco: "A45", name: "Indian Defence", moves: ["d4", "Nf6"], weight: 5 },
   {
     eco: "A45",
@@ -667,11 +601,9 @@ export const OPENING_LINES: readonly OpeningLine[] = [
     moves: ["d4", "Nf6", "c4", "c5", "d5", "b5"],
   },
 
-  // The rest of 1.d4
   { eco: "A80", name: "Dutch Defence", style: "sharp", moves: ["d4", "f5"] },
   { eco: "A40", name: "Queen's Pawn: Modern Defence", moves: ["d4", "g6"] },
 
-  // ── Flank openings ──────────────────────────────────────────────────────
   {
     eco: "A04",
     name: "Réti Opening",

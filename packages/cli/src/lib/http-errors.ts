@@ -10,12 +10,6 @@ type ErrorResponse = {
   statusText: string;
 };
 
-/**
- * Read an error response as the problem the server promises to send. A crash or
- * a proxy in front of it can still answer with something else entirely, so a
- * body that isn't a problem is discarded rather than trusted, and the status
- * line stands in for it.
- */
 export async function getProblemDetails(
   response: ErrorResponse,
 ): Promise<ProblemDetails> {
@@ -24,9 +18,7 @@ export async function getProblemDetails(
     if (isProblemDetails(body)) {
       return body;
     }
-  } catch {
-    // Not JSON at all; fall back to the status line below.
-  }
+  } catch {}
 
   return {
     type: ProblemType.BLANK,
@@ -35,12 +27,6 @@ export async function getProblemDetails(
   };
 }
 
-/**
- * The screen-ready sentence for a problem. `detail` over `title` (the RFC
- * makes `detail` the human explanation), field-level validation issues spelled
- * out so a 400 says which field, and — on server faults only — the request id,
- * which is the one token that lets a bug report be matched to a log line.
- */
 export function problemMessage(problem: ProblemDetails): string {
   const parts: string[] = [problem.detail ?? problem.title];
 
@@ -61,12 +47,6 @@ export function problemMessage(problem: ProblemDetails): string {
   return parts.join(" — ");
 }
 
-/**
- * The standard "response refused" error: reads the problem off the response
- * and wraps its screen-ready message in an `Error`, so API helpers can
- * `throw await responseError(response)` and screens can show `error.message`
- * as-is.
- */
 export async function responseError(response: ErrorResponse): Promise<Error> {
   return new Error(problemMessage(await getProblemDetails(response)));
 }

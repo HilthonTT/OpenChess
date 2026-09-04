@@ -79,18 +79,11 @@ type Phase =
   | { kind: "error"; message: string }
   | { kind: "playing"; game: ServerGame };
 
-/**
- * Play vs AI, hosted by the server: the game is persisted, the bot answers in
- * the move response, and a finished game pays out XP, coins and rating.
- */
 export function ServerAIGame() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [offline, setOffline] = useState(false);
-  /** Bumped to run the resume lookup again after an error. */
-  const [_attempt, setAttempt] = useState(0);
+  const [attempt, setAttempt] = useState(0);
 
-  // An unfinished game on the server is yours to finish, not to strand: resume
-  // the newest one instead of quietly opening another.
   useEffect(() => {
     if (offline) {
       return;
@@ -125,7 +118,7 @@ export function ServerAIGame() {
     return () => {
       cancelled = true;
     };
-  }, [offline]);
+  }, [offline, attempt]);
 
   const start = useCallback((choice: SetupChoice) => {
     setPhase({ kind: "creating" });
@@ -231,7 +224,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
   const [server, setServer] = useState(initial);
   const human = server.yourColor;
 
-  /** The two names a copied PGN is headed with. */
   const you = auth.profile?.username ?? "You";
   const bot = `OpenChess ${
     server.personality ? PERSONALITIES[server.personality].name : "Engine"
@@ -241,15 +233,8 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     initialSquare: homeSquare(human),
     initiallyFlipped: human === "b",
   });
-  /** A request is on the wire; the board is read-only until it answers. */
   const [pending, setPending] = useState(false);
   const [confirmingResign, setConfirmingResign] = useState(false);
-  /**
-   * The first takeback is one keypress from being taken, and `u` again takes
-   * it. Only the first: what the confirmation is protecting is the game's
-   * payout, and once that has been spent there is nothing left to warn about —
-   * a second prompt would be a toll on a road already paid for.
-   */
   const [confirmingTakeback, setConfirmingTakeback] = useState(false);
 
   const game = useReplayedGame(server.history, server.startFen);
@@ -276,8 +261,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         return;
       }
 
-      // The header shows level and coins off the cached profile; the payout
-      // just changed both.
       void auth.refresh();
 
       for (const unlock of rewards.unlocked) {
@@ -297,7 +280,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     [auth, clearSelection, toast],
   );
 
-  /** Refetch and accept whatever the server says; our picture was stale. */
   const resync = useCallback(async () => {
     try {
       apply(await fetchGame(server.id));
@@ -306,7 +288,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     }
   }, [apply, server.id, setMessage]);
 
-  /** Concede on time. Only ever our own flag here — the bot is not clocked. */
   const flag = useCallback(async () => {
     if (pending || over) {
       return;
@@ -378,7 +359,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     setMessage(null);
 
     try {
-      // Carry the same clock into the next game, named back from its numbers.
       const preset = server.timeControl
         ? timeControlFor(
             server.timeControl.initialSeconds,
@@ -386,8 +366,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
           )
         : null;
 
-      // A new game keeps the opponent, the clock and the rules that were just
-      // played — including a shuffled one, which the server redeals.
       const created = await createAiGame({
         personality: server.personality ?? "maestro",
         color: human === "w" ? "white" : "black",
@@ -412,10 +390,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     server.personality,
   ]);
 
-  /**
-   * Give up the game. Before the first move it is an abort — settled with no
-   * loss on the record — and once under way it is a resignation.
-   */
   const concede = useCallback(async () => {
     setConfirmingResign(false);
     setPending(true);
@@ -434,14 +408,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     }
   }, [apply, server.id, server.ply, setMessage]);
 
-  /**
-   * Take the last move back: the bot's reply and the move of ours it answered.
-   *
-   * The server does the rewinding and the charging — this only sends the
-   * request and shows what came back. A conflict means the board is not where
-   * we thought it was (nothing of ours to undo, or the game settled under us),
-   * so we refetch rather than argue.
-   */
   const takeBack = useCallback(async () => {
     setConfirmingTakeback(false);
     setPending(true);
@@ -464,8 +430,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     }
   }, [apply, server.id, setMessage]);
 
-  // Escape's extra step here: a pending resign confirmation. Leaving mid-game
-  // is fine — the game stays active and is resumed on return.
   const handleEscape = useCallback(
     () =>
       selection.handleEscape(() => {
@@ -495,15 +459,9 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         white: server.yourColor === "w" ? you : bot,
         black: server.yourColor === "b" ? you : bot,
       }),
-      // This game pays XP and coins, so the position stays on the board until
-      // it is settled: handing a live one to a stronger engine is the whole of
-      // what cheating at correspondence chess is, and a key for it would be us
-      // doing the handing. The offline engine game has the same board and no
-      // such rule, which is where to go to study a position mid-game.
       refuse: over ? null : "Not while the game is on — press y once it's over",
       onNote: setMessage,
     },
-    // A pending confirmation is called off by any key that isn't its own confirm.
     before: (name) => {
       if (confirmingResign && name !== "x") {
         setConfirmingResign(false);
@@ -515,9 +473,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     onKey: (name) => {
       switch (name) {
         case "u":
-          // The first press asks, because the first takeback is what costs the
-          // game its XP and coins; every press after that just takes it, the
-          // forfeit having already happened.
           if (pending || over) {
             break;
           }
@@ -548,7 +503,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
           }
           break;
         case "a":
-          // Once the game is settled, hand it straight to the review screen.
           if (over) {
             void navigate("/analysis", { state: { gameId: server.id } });
           }
@@ -580,7 +534,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
       return "Game aborted — press r to play again";
     }
 
-    // A result on a position that isn't terminal can only be a resignation.
     if (server.result !== null && !isGameOver(status)) {
       const won = (server.result === "WHITE_WIN") === (human === "w");
       return won
@@ -644,9 +597,6 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         clocks={clocks}
       />
 
-      {/* Said once and then left standing, rather than only at the end: a
-          player who finds out their game paid nothing on the payout line has
-          been told too late to decide anything about it. */}
       {server.takebacks > 0 && !over ? (
         <text>
           <span fg={theme.faint}>

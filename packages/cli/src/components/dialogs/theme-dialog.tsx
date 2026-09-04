@@ -10,7 +10,6 @@ export const ThemeDialogContent = () => {
   const originalThemeRef = useRef<Theme>(currentTheme);
   const confirmedRef = useRef<boolean>(false);
 
-  // Revert to original theme if the user dismisses without confirming
   useEffect(() => {
     return () => {
       if (!confirmedRef.current) {

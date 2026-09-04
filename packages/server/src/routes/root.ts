@@ -6,8 +6,6 @@ import { createRouter } from "../lib/create-app";
 import { rootLinks, rootLinksSchema } from "../lib/hateoas";
 import { TAGS } from "./tags";
 
-// Public, like `/health`: the entry point is how a client finds the routes at
-// all, so it cannot itself sit behind one of them.
 const base = createRouter();
 
 const index = createRoute({
@@ -25,8 +23,6 @@ const index = createRoute({
   },
 });
 
-// Chained so the exported type carries the route — `hc<AppType>` builds the
-// typed CLI client from it, and a statement registration would leave it blind.
 const router = base.openapi(index, (c) => {
   return c.json({ _links: rootLinks() }, HttpStatusCodes.OK);
 });

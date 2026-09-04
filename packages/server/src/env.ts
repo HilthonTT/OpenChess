@@ -4,13 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-/**
- * Resolve env files against this package, not `process.cwd()`. Both `dev:server`
- * and `test` are run from the workspace root, so a cwd-relative lookup went
- * looking for `<root>/.env.test`, found nothing, and silently loaded no file at
- * all — leaving tests to run on whatever the workspace-root `.env` happened to
- * define, real database included.
- */
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -21,12 +14,12 @@ const isTest = process.env.NODE_ENV === "test";
 expand(
   config({
     path: path.resolve(packageRoot, isTest ? ".env.test" : ".env"),
-    // Bun injects the workspace-root `.env` before this module runs, and dotenv
-    // will not overwrite an existing variable. Under test the package's own
-    // `.env.test` has to win, or a developer's real credentials leak into a run.
     override: isTest,
   }),
 );
+
+const blankAsUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === "" ? undefined : value), schema);
 
 const EnvSchema = z
   .object({
@@ -42,46 +35,23 @@ const EnvSchema = z
       "silent",
     ]),
     DATABASE_URL: z.url(),
-    // Whether a proxy we control terminates connections in front of this
-    // server. Only then is `X-Forwarded-For` worth reading: it is a plain
-    // request header, so a directly-reachable server that honours it lets any
-    // client choose the IP address its requests are recorded under. Off means
-    // the recorder logs the socket peer, which nobody can forge.
-    TRUST_PROXY: z.preprocess(
-      (value) => (value === "" ? undefined : value),
-      z.stringbool().default(false),
-    ),
-    // Comma-separated CORS allowlist, read by the production CORS manager.
-    ALLOWED_ORIGINS: z.string().optional(),
-    // The origin this API is reached on, used to build the URLs we hand to
-    // Polar for post-checkout redirects. Deriving those from the request would
-    // let a forged Host header point a paying customer at an attacker's site.
-    // Falls back to the local dev origin; required in production.
-    PUBLIC_BASE_URL: z.url().optional(),
+    TRUST_PROXY: blankAsUndefined(z.stringbool().default(false)),
+    ALLOWED_ORIGINS: blankAsUndefined(z.string().optional()),
+    PUBLIC_BASE_URL: blankAsUndefined(z.url().optional()),
     CLERK_SECRET_KEY: z.string().min(1),
     CLERK_PUBLISHABLE_KEY: z.string().min(1),
-    CLERK_OAUTH_CLIENT_ID: z.string().min(1).optional(),
-    // Unset turns Sentry off, which is what we want under `bun test` and for a
-    // contributor who has no account: no DSN, no middleware, no reporting.
-    SENTRY_DSN: z.url().optional(),
+    CLERK_OAUTH_CLIENT_ID: blankAsUndefined(z.string().min(1).optional()),
+    SENTRY_DSN: blankAsUndefined(z.url().optional()),
     SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
-    // Validated here rather than read from `process.env` at the call site, so a
-    // missing one fails the boot instead of a customer's checkout request.
     POLAR_ACCESS_TOKEN: z.string().min(1),
     POLAR_PRODUCT_ID: z.string().min(1),
     POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
-    // Read by the Inngest SDK from process.env; validated here so production
-    // fails at boot instead of serving an unauthenticated /api/inngest.
-    INNGEST_SIGNING_KEY: z.string().min(1).optional(),
-    INNGEST_DEV: z.string().optional(),
-    // Optional pair backing the read cache. Absent, the server simply runs
-    // uncached — a slower server, not a broken one.
-    UPSTASH_REDIS_REST_URL: z.url().optional(),
-    UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+    INNGEST_SIGNING_KEY: blankAsUndefined(z.string().min(1).optional()),
+    INNGEST_DEV: blankAsUndefined(z.string().optional()),
+    UPSTASH_REDIS_REST_URL: blankAsUndefined(z.url().optional()),
+    UPSTASH_REDIS_REST_TOKEN: blankAsUndefined(z.string().min(1).optional()),
   })
   .superRefine((input, ctx) => {
-    // Half an Upstash pair is a misconfiguration, not a disabled cache: fail
-    // the boot rather than surface it as a failed request later.
     if (!!input.UPSTASH_REDIS_REST_URL !== !!input.UPSTASH_REDIS_REST_TOKEN) {
       ctx.addIssue({
         code: "custom",
@@ -95,13 +65,6 @@ const EnvSchema = z
       });
     }
 
-    // The confused-deputy defence (auth.ts rejects tokens issued to other OAuth
-    // apps on the same Clerk instance) only runs when CLERK_OAUTH_CLIENT_ID is
-    // set. A *live* Clerk key means a real Clerk instance that can host other
-    // OAuth apps — so require the client id whenever a live key is in use, not
-    // just when NODE_ENV is exactly "production". A staging/preview box that
-    // forgets to set NODE_ENV but points at the live instance is the case this
-    // catches; the sk_test_ dev key stays exempt.
     if (
       input.CLERK_SECRET_KEY.startsWith("sk_live_") &&
       !input.CLERK_OAUTH_CLIENT_ID
@@ -120,10 +83,6 @@ const EnvSchema = z
       return;
     }
 
-    // In dev mode the Inngest SDK skips request-signature verification, and
-    // /api/inngest is mounted publicly (it authenticates via those very
-    // signatures) — shipping either misconfiguration lets anyone who can reach
-    // the endpoint drive our functions, e.g. mint premium coins at will.
     if (input.INNGEST_DEV) {
       ctx.addIssue({
         code: "custom",
@@ -144,8 +103,6 @@ const EnvSchema = z
       });
     }
 
-    // Clerk development instances share a demo signing key and let anyone sign
-    // up; shipping one to production means anyone can mint a valid token.
     if (input.CLERK_SECRET_KEY.startsWith("sk_test_")) {
       ctx.addIssue({
         code: "custom",
@@ -166,8 +123,6 @@ const EnvSchema = z
       });
     }
 
-    // Without this there is no trustworthy origin to send a paying customer
-    // back to, and the localhost fallback would ship to production.
     if (!input.PUBLIC_BASE_URL) {
       ctx.addIssue({
         code: "invalid_type",
@@ -178,8 +133,6 @@ const EnvSchema = z
       });
     }
 
-    // The sandbox is a separate Polar environment with play money: pointing a
-    // production deploy at it silently gives every purchase away for free.
     if (input.POLAR_SERVER !== "production") {
       ctx.addIssue({
         code: "custom",

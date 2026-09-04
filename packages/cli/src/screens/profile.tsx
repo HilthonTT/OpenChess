@@ -28,9 +28,6 @@ const KEYMAP: Keymap = {
   title: "Profile",
   sections: [
     {
-      // `f` is the friend key in each of its readings, exactly as `d` is the
-      // draw key at the board: the footer says which one is live right now,
-      // and this says what the whole range of them is.
       title: "This player",
       keys: [
         { keys: "f", label: "ask them — or accept, when they asked you" },
@@ -47,19 +44,11 @@ const KEYMAP: Keymap = {
 };
 
 const WIDTH = 56;
-/** Label column width; values line up in a second column. */
+
 const LABEL_W = 14;
-/** Cells in the XP progress bar. */
+
 const BAR_W = 20;
 
-/**
- * Somebody else's profile: what they have made public by playing.
- *
- * Reached by name rather than by id — from the friends list, from a leaderboard
- * row, from the board you are sitting at — so the screen takes a `username` in
- * its navigation state and is the same screen whichever door it was opened
- * through. Your own name works too, and reports itself as such.
- */
 export function Profile() {
   const auth = useAuth();
   const theme = useUITheme();
@@ -75,9 +64,7 @@ export function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  /** Unfriending is irreversible enough to want a second keypress. */
   const [confirmingRemove, setConfirmingRemove] = useState(false);
-  /** Bumped to refetch, after `r` or an action that changed something. */
   const [attempt, setAttempt] = useState(0);
 
   const signedIn = auth.status === "signed-in";
@@ -107,22 +94,12 @@ export function Profile() {
     };
   }, [signedIn, username, attempt]);
 
-  /**
-   * Run an action, say what it did, and refetch.
-   *
-   * `label` is what it usually did; an action that turned out to do something
-   * else returns its own line instead. That is not hypothetical — asking
-   * somebody who had already asked you makes you friends rather than sending a
-   * request, and "asked them" would be the wrong thing to print.
-   */
   const act = useCallback(
     async (label: string, action: () => Promise<unknown>) => {
       setPending(true);
       setNote(null);
 
       try {
-        // A string is the action overriding the label; anything else is just
-        // whatever the API helper happened to hand back.
         const outcome = await action();
 
         setNote(typeof outcome === "string" ? outcome : label);
@@ -148,9 +125,6 @@ export function Profile() {
     }
 
     switch (key.name) {
-      // `f` is the friend key in each of its readings, exactly as `d` is the
-      // draw key at the board: what it does is written on the footer, and what
-      // it does is always the one thing there is to do about this player.
       case "f":
         if (friendship?.state === "none") {
           void act(`Asked ${profile.username}.`, async () => {
@@ -242,8 +216,6 @@ export function Profile() {
           message="Looking a player up asks the server."
         />
       ) : username === undefined ? (
-        // The screen is only ever reached with a name in tow; without one there
-        // is nothing to show and nowhere useful to guess.
         <text fg={theme.dim}>
           Open a player from the Friends list or the leaderboard.
         </text>
@@ -302,8 +274,6 @@ function Card({ profile }: { profile: PublicProfile }) {
   const games = profile.wins + profile.losses + profile.draws;
   const winRate = games > 0 ? Math.round((profile.wins / games) * 100) : null;
 
-  // The curve arrives ready to plot — oldest first, and anchored at the rating
-  // before its first change so a rise off the left edge is not drawn flat.
   const line =
     profile.ratingHistory.length > 1 ? sparkline(profile.ratingHistory) : null;
 

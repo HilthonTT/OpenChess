@@ -3,10 +3,6 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import app from "../app";
 
-// A token-less request is rejected by `requireAuth` before any Clerk or Polar
-// call, so these run without network. (Historically untestable: an earlier
-// `mock.module("lib/auth")` in require-auth.test.ts leaked process-wide; the
-// middleware now takes its verifier by injection instead.)
 describe("billing auth guards", () => {
   test.each(["/api/billing/checkout", "/api/billing/portal"])(
     "POST %s challenges an anonymous caller",
@@ -26,9 +22,6 @@ describe("billing auth guards", () => {
 });
 
 describe("GET /billing/success", () => {
-  // Polar redirects the customer's browser here after checkout, and that
-  // browser has no bearer token. When this route sat behind `requireAuth` it
-  // 401'd every completed purchase.
   test("is reachable without a token", async () => {
     const response = await app.request("/api/billing/success");
 

@@ -26,7 +26,6 @@ function terminal() {
   };
 }
 
-/** Play a line out from the initial array. */
 function played(...moves: string[]): Game {
   return moves.reduce(playSan, createGame());
 }
@@ -73,7 +72,6 @@ describe("copying a game", () => {
 
   test("reads the result off the board when the screen doesn't name one", () => {
     const out = terminal();
-    // Fool's mate: black gives it, so the result is black's.
     copyPgn(played("f3", "e5", "g4", "Qh4#"), {}, out);
 
     expect(out.clipboard()).toContain(`[Result "0-1"]`);
@@ -107,8 +105,6 @@ describe("the headers a server game carries", () => {
   });
 
   test("an unfinished or aborted game reached no result", () => {
-    // `*` is PGN for "no result", which is what both of these are — an aborted
-    // game is not a draw, and writing it as one would invent half a point.
     expect(pgnResultOfServer(null)).toBe("*");
     expect(pgnResultOfServer("ABORTED")).toBe("*");
     expect(pgnResultOfServer("DRAW")).toBe("1/2-1/2");

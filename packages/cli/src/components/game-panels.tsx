@@ -22,7 +22,6 @@ export const PROMOTION_CHOICES: Array<[PromotionPiece, string]> = [
   ["n", "Knight"],
 ];
 
-/** How many move pairs fit beside the board without stretching the frame. */
 const VISIBLE_MOVE_PAIRS = 8;
 
 export function colorName(color: Color): string {
@@ -71,10 +70,6 @@ export function MoveList({ game }: { game: Game }) {
   );
 }
 
-/**
- * One side's haul: the label, the enemy pieces it has taken, and its material
- * lead in pawns — shown only on the side that is ahead.
- */
 function CapturedRow({
   label,
   pieces,
@@ -95,9 +90,6 @@ function CapturedRow({
       {pieces.length === 0 ? (
         <span fg={theme.faint}>—</span>
       ) : (
-        // Called through an arrow rather than passed by reference: `map` hands
-        // its callback the index as a second argument, which `renderPiece` now
-        // reads as the piece set.
         <span fg={pieceFg}>
           {pieces.map((piece) => renderPiece(piece, pieceSet)).join(" ")}
         </span>

@@ -1,15 +1,9 @@
-import {
-  STARTING_FEN,
-  isPiece,
-  parseFen,
-  pieceColor,
-  repetitionKey,
-  toFen,
-} from "./board";
+import { STARTING_FEN, isPiece, parseFen, pieceColor, toFen } from "./board";
 import {
   applyMove,
   findMove,
   generateLegalMoves,
+  repetitionKey,
   isInCheck,
   isInsufficientMaterial,
 } from "./moves";
@@ -26,20 +20,14 @@ import type {
 export type HistoryEntry = {
   move: Move;
   san: string;
-  /** The position *before* the move, so undo is a pop rather than a replay. */
   before: Position;
 };
 
-/**
- * An immutable game: every `play` returns a new `Game`, which keeps React state
- * updates trivial and makes undo a matter of keeping the old value around.
- */
 export type Game = {
   position: Position;
   legalMoves: Move[];
   status: GameStatus;
   history: HistoryEntry[];
-  /** How many times each position has occurred, for threefold repetition. */
   repetitions: ReadonlyMap<string, number>;
 };
 
@@ -62,7 +50,6 @@ function statusOf(
     return inCheck ? "checkmate" : "stalemate";
   }
 
-  // Terminal draws outrank a mere check: the game is over either way.
   if (isInsufficientMaterial(position)) {
     return "draw-insufficient-material";
   }
@@ -100,16 +87,10 @@ export function createGame(fen: string = STARTING_FEN): Game {
   return build(position, [], repetitions);
 }
 
-/** The legal moves starting from `square`, for highlighting the board. */
 export function movesFromSquare(game: Game, square: number): Move[] {
   return game.legalMoves.filter((move) => move.from === square);
 }
 
-/**
- * Look up the legal move from `from` to `to`. When the move is a promotion and
- * no `promotion` piece is given this returns the first match, so callers that
- * need the player to choose should check `needsPromotion` first.
- */
 export function findLegalMove(
   game: Game,
   from: number,
@@ -119,14 +100,12 @@ export function findLegalMove(
   return findMove(game.legalMoves, from, to, promotion);
 }
 
-/** True when moving from `from` to `to` requires picking a promotion piece. */
 export function needsPromotion(game: Game, from: number, to: number): boolean {
   return game.legalMoves.some(
     (move) => move.from === from && move.to === to && move.promotion !== null,
   );
 }
 
-/** Play a legal move, returning the new game. Throws if the move isn't legal. */
 export function play(game: Game, move: Move): Game {
   if (isGameOver(game.status)) {
     throw new Error(`Cannot move: the game is over (${game.status})`);
@@ -160,7 +139,6 @@ export function play(game: Game, move: Move): Game {
   return build(next, history, repetitions);
 }
 
-/** Take back the last move. Returns the game unchanged at the start position. */
 export function undo(game: Game): Game {
   const last = game.history[game.history.length - 1];
   if (!last) {
@@ -179,7 +157,6 @@ export function undo(game: Game): Game {
   return build(last.before, game.history.slice(0, -1), repetitions);
 }
 
-/** Conventional piece values in pawns; the king is priceless, so it counts 0. */
 const PIECE_VALUES: Record<PieceType, number> = {
   p: 1,
   n: 3,
@@ -193,10 +170,6 @@ export function pieceValue(piece: Piece): number {
   return PIECE_VALUES[piece.toLowerCase() as PieceType];
 }
 
-/**
- * The pieces each side has captured so far, most valuable first. Derived from
- * the history, so undo shrinks it automatically.
- */
 export function capturedPieces(game: Game): {
   byWhite: Piece[];
   byBlack: Piece[];
@@ -217,10 +190,6 @@ export function capturedPieces(game: Game): {
   return { byWhite, byBlack };
 }
 
-/**
- * Material balance in pawns, positive when white is ahead. Counted from the
- * board rather than the capture list so promotions score correctly.
- */
 export function materialBalance(position: Position): number {
   let balance = 0;
   for (const square of position.board) {
@@ -233,7 +202,6 @@ export function materialBalance(position: Position): number {
   return balance;
 }
 
-/** Moves grouped into numbered pairs, ready to print as a move list. */
 export function movePairs(
   game: Game,
 ): Array<{ number: number; white: string; black: string | null }> {
@@ -241,7 +209,6 @@ export function movePairs(
     [];
 
   const first = game.history[0];
-  // A game loaded from a FEN can begin with black to move.
   const startsWithBlack = first?.before.turn === "b";
   let index = 0;
   let number = first?.before.fullmoveNumber ?? 1;

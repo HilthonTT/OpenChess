@@ -24,7 +24,6 @@ import {
 } from "../rules";
 import { type RewardView, pgnFor, pvpPgnFor } from "./views";
 
-/** A settled game that paid this player nothing: an abort, from either side. */
 function nothingEarned(user: User, rating: number): RewardView {
   return {
     xp: 0,
@@ -37,12 +36,6 @@ function nothingEarned(user: User, rating: number): RewardView {
   };
 }
 
-/**
- * The compare-and-set that ends a game: if it updates no rows, someone else
- * already settled this one — a retried request, a resign racing a checkmate —
- * and the caller must not pay anyone. Everything downstream of a `true` is safe
- * precisely because this write claimed the game.
- */
 export async function claimGame(
   tx: Prisma.TransactionClient,
   input: {
@@ -50,7 +43,6 @@ export async function claimGame(
     game: Game;
     result: GameResult;
     pgn: string;
-    /** Final clock to freeze, e.g. a flagged side at zero. Omitted leaves it. */
     clock?: ClockState;
   },
 ): Promise<boolean> {
@@ -65,11 +57,6 @@ export async function claimGame(
       finalFen,
       currentFen: finalFen,
       moves: gameMoves(input.game),
-      // An offer outlives nothing: whatever ended the game — agreement, mate, a
-      // fallen flag — answered both of them, and a takeback of a move in a game
-      // that is over is not a thing anyone can accept. Cleared here rather than
-      // in each caller because this is the one write every settlement goes
-      // through.
       drawOfferedBy: null,
       takebackOfferedBy: null,
       ...(input.clock
@@ -85,16 +72,11 @@ export async function claimGame(
   return claimed.count > 0;
 }
 
-/**
- * Pay one player for one settled game: stats, achievements, XP, coins, ledger.
- * Runs only after `claimGame` succeeded, so exactly once per game per player.
- */
 async function payoutPlayer(
   tx: Prisma.TransactionClient,
   input: {
     gameId: string;
     user: User;
-    /** The player's stats row as it stood *before* this game. */
     stats: UserStats;
     outcome: Outcome;
     newRating: number;
@@ -106,20 +88,6 @@ async function payoutPlayer(
 ): Promise<RewardView> {
   const { user, stats, outcome, base } = input;
 
-  // The reward floor zeroes the *base* payout for a game too short to be a
-  // game, but wins, rating and achievements are minted here — so a sub-floor
-  // result still moved the leaderboard and unlocked count-based trophies for
-  // free. That is the win-trading farm: two accounts queue, the loser resigns at
-  // move one, and the winner banks a win, a rating bump and achievement coins at
-  // no cost. Settle such a game as a no-contest — like an abort, nobody's record
-  // moves. A genuine fast win is a checkmate (fool's/scholar's mate) and is
-  // exempt, matching how the ply floor already reasons about "not really a game".
-  //
-  // Draws are held to the same bar, which costs nothing and closes the same farm
-  // in agreement's clothing: two accounts queue and shake hands at move one,
-  // banking a `draws` apiece forever. No legitimate draw is caught by this —
-  // stalemate, repetition and insufficient material are all unreachable inside
-  // ten plies, so a sub-floor draw can only be one that was agreed.
   if (input.plies < MIN_REWARDED_PLIES && !input.byCheckmate) {
     return nothingEarned(user, stats.rating);
   }
@@ -127,14 +95,6 @@ async function payoutPlayer(
   const after = statsAfter(stats, outcome, input.newRating);
   await tx.userStats.update({ where: { userId: user.id }, data: after });
 
-  // The rating curve, written beside the scalar it is the history of, so a point
-  // can never exist for a rating that was not banked.
-  //
-  // Only when the rating actually moved. An unrated AI game and a draw between
-  // equals both land here having changed nothing, and a row for either would put
-  // a flat point on the chart that reports a game rather than a change — which
-  // is not what the series is for. That the settle path runs once per game per
-  // player (`claimGame`) is what makes this exactly-once.
   if (after.rating !== stats.rating) {
     await tx.ratingSnapshot.create({
       data: {
@@ -146,8 +106,6 @@ async function payoutPlayer(
     });
   }
 
-  // Unlock only achievements that both have a rule and exist in the table, and
-  // that this player does not already hold.
   const codes = satisfiedCodes({
     stats: after,
     outcome,
@@ -165,9 +123,6 @@ async function payoutPlayer(
   const experience = user.experience + xp;
   const levelAfter = levelFor(experience);
 
-  // One ledger row per reason: `@@unique([userId, gameId, reason])` allows
-  // exactly one GAME_REWARD and one ACHIEVEMENT per game, so the achievement
-  // bonuses are banked as a single row rather than one per unlock.
   let balance = user.coins;
   const ledger: Prisma.CoinTransactionCreateManyInput[] = [];
 
@@ -213,7 +168,6 @@ async function payoutPlayer(
   };
 }
 
-/** Finish an AI game and pay its one human, in one transaction. */
 export async function settle(
   tx: Prisma.TransactionClient,
   input: {
@@ -222,7 +176,6 @@ export async function settle(
     user: User;
     color: Color;
     result: GameResult;
-    /** Final clock to freeze; omitted leaves the stored one. */
     clock?: ClockState;
   },
 ): Promise<RewardView | null> {
@@ -239,15 +192,10 @@ export async function settle(
     clock: input.clock,
   });
 
-  // Lost the race. The winner has already paid this game out.
   if (!claimed) {
     return null;
   }
 
-  // Re-read the player inside the transaction, the way the purchase path does:
-  // the `user` on the request was loaded by middleware before it, and a
-  // concurrent purchase or payout may have moved coins or XP since. Writing
-  // absolute values computed from that stale read would silently undo them.
   const fresh = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
 
   const stats = await tx.userStats.findUniqueOrThrow({
@@ -256,7 +204,6 @@ export async function settle(
 
   const outcome = outcomeFor(result, color);
 
-  // An abort is settled but never paid: no stats, no XP, no coins.
   if (outcome === null) {
     return nothingEarned(fresh, stats.rating);
   }
@@ -280,15 +227,6 @@ export async function settle(
   });
 }
 
-/**
- * Finish a PvP game and pay both sides, in one transaction.
- *
- * Both ratings are read before either is written, so each side's Elo moves
- * against the rating their opponent actually brought into the game. The return
- * value is the *mover's* reward view — the opponent's payout happens here too,
- * but they learn the game is over from their next poll, which reports the
- * result without a payout breakdown.
- */
 export async function settlePvp(
   tx: Prisma.TransactionClient,
   input: {
@@ -296,7 +234,6 @@ export async function settlePvp(
     game: Game;
     mover: User;
     result: GameResult;
-    /** Final clock to freeze; omitted leaves the stored one. */
     clock?: ClockState;
   },
 ): Promise<RewardView | null> {
@@ -305,8 +242,6 @@ export async function settlePvp(
   const plies = game.history.length;
   const byCheckmate = game.status === "checkmate";
 
-  // A PVP row is created with both players, but `onDelete: SetNull` means a
-  // deleted account leaves an empty side. A missing side just goes unpaid.
   const sides: Array<{ color: Color; userId: string | null }> = [
     { color: "w", userId: row.whitePlayerId },
     { color: "b", userId: row.blackPlayerId },
@@ -319,8 +254,6 @@ export async function settlePvp(
       continue;
     }
 
-    // Both players re-read inside the transaction — including the mover, whose
-    // request-scoped row predates it. See the same re-read in `settle`.
     const user = await tx.user.findUnique({ where: { id: side.userId } });
 
     if (!user) {
@@ -369,8 +302,6 @@ export async function settlePvp(
             user: player.user,
             stats: player.stats,
             outcome,
-            // Against the opponent's pre-game rating — or the default when the
-            // opponent deleted their account mid-game.
             newRating: ratingAgainst(
               player.stats.rating,
               opponent?.stats.rating ?? 1200,

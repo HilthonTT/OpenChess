@@ -29,9 +29,6 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-// Sending a challenge writes to someone else's inbox, so the limit here is
-// tighter than the game routes': 30/min is far beyond any human, and well short
-// of what it would take to flood anyone.
 base.use(
   "*",
   requireAuth,
@@ -84,7 +81,6 @@ const create = createRoute({
   },
 });
 
-// Registered ahead of `/{id}` so the literal segment wins the match.
 const byCode = createRoute({
   tags: [TAGS.CHALLENGES],
   method: "get",
@@ -203,10 +199,6 @@ const router = base
     return c.json(
       {
         challenge: withChallengeLinks(challenge),
-        // A brand-new game has an empty transcript, but the shape has to carry
-        // one all the same: this response is what the accepting client opens
-        // the board from, and a `chat` that only appeared on the next request
-        // would make the field optional for every reader of it.
         game: withGameLinks(await attachChat(game, c.get("user"))),
       },
       HttpStatusCodes.OK,

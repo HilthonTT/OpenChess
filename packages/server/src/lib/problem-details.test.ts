@@ -12,7 +12,6 @@ import {
 } from "./problem-details";
 import type { ProblemDetails } from "./problem-details";
 
-/** An app exercising each route into an error path. */
 function appUnderTest() {
   const app = createApp();
 

@@ -24,7 +24,6 @@ import {
 const LONG_ENOUGH = MIN_REWARDED_PLIES + 2;
 
 describe("resultFor", () => {
-  // The side *to move* in a checkmated position is the side that has been mated.
   test("checkmate scores against the side to move", () => {
     expect(resultFor("checkmate", "w")).toBe("BLACK_WIN");
     expect(resultFor("checkmate", "b")).toBe("WHITE_WIN");
@@ -91,7 +90,6 @@ describe("rewardFor", () => {
     });
 
     expect(reward.xp).toBeGreaterThan(0);
-    // Coins on a loss would make resign-farming profitable.
     expect(reward.coins).toBe(0);
   });
 
@@ -106,7 +104,6 @@ describe("rewardFor", () => {
     ).toEqual({ xp: 0, coins: 0 });
   });
 
-  // The other anti-farm guard: a game you can rewind is a game you always win.
   test("a game with a takeback in it pays nothing, however it ended", () => {
     expect(
       rewardFor({
@@ -130,7 +127,6 @@ describe("rewardFor", () => {
     expect(rewardFor({ ...base, takebacks: 0 })).toEqual(rewardFor(base));
   });
 
-  // The anti-farm floor: start, resign, repeat must be worth exactly zero.
   test("a game too short to be a game pays nothing, even a won one", () => {
     expect(
       rewardFor({
@@ -196,7 +192,6 @@ describe("ratingAgainst", () => {
 });
 
 describe("ratingAfter", () => {
-  // The flag flipped when online 1v1 landed: rating is strictly PvP now.
   test("an AI game no longer moves rating at all", () => {
     expect(ratingAfter(1200, "win", "HARD")).toBe(1200);
     expect(ratingAfter(1200, "loss", "EASY")).toBe(1200);
@@ -233,8 +228,6 @@ describe("rewardForPvp", () => {
     expect(reward.coins).toBe(0);
   });
 
-  // A coin-paying draw is a collusion faucet: equal ratings draw for exactly
-  // zero Elo movement, so two accounts could farm repetitions forever.
   test("a draw pays XP but never coins", () => {
     const reward = rewardForPvp({
       result: "DRAW",
@@ -256,10 +249,6 @@ describe("rewardForPvp", () => {
     ).toEqual({ xp: 0, coins: 0 });
   });
 
-  // The farm this closes is agreement's version of win-trading: two accounts
-  // queue and shake hands at move one. No legitimate draw is caught by it —
-  // stalemate, repetition and insufficient material are all out of reach inside
-  // ten plies, so a sub-floor draw can only have been agreed.
   test("the floor catches an instantly agreed draw", () => {
     expect(
       rewardForPvp({
@@ -279,17 +268,11 @@ describe("rewardForPvp", () => {
 
 describe("pliesToTakeBack", () => {
   test("one ply back when you have just moved", () => {
-    // Ply 1: white opened and it is black's turn. White asking wants their own
-    // move back, and only theirs — black has not answered it.
     expect(pliesToTakeBack(1, "w")).toBe(1);
-    // Ply 2: black has replied and it is white's turn again. Black asking is in
-    // the same position white was one ply ago.
     expect(pliesToTakeBack(2, "b")).toBe(1);
   });
 
   test("two plies back once the opponent has replied", () => {
-    // Ply 2, white asking: black's reply comes off as well, or the board does
-    // not arrive at white's turn.
     expect(pliesToTakeBack(2, "w")).toBe(2);
     expect(pliesToTakeBack(3, "b")).toBe(2);
   });
@@ -300,9 +283,6 @@ describe("pliesToTakeBack", () => {
   });
 
   test("the side who has only been waiting has nothing to take back", () => {
-    // Ply 1 with black asking: white opened, black has not moved at all, and
-    // there is no move of black's under the rewind. A refusal rather than a
-    // one-ply undo of white's opening move, which black is not entitled to.
     expect(pliesToTakeBack(1, "b")).toBeNull();
   });
 
@@ -316,8 +296,6 @@ describe("pliesToTakeBack", () => {
         }
 
         const after = ply - plies;
-        // White moves on the even plies, so the side to move after the rewind
-        // is white exactly when the remaining count is even.
         const toMove = after % 2 === 0 ? "w" : "b";
 
         expect(toMove).toBe(asker);
@@ -331,8 +309,6 @@ describe("clockAfterTakeback", () => {
   const clock = { whiteTimeMs: 100_000, blackTimeMs: 90_000 };
 
   test("the running side's thinking time is spent, not returned", () => {
-    // White to move, twelve seconds on the clock, taking back their own last
-    // move (two plies: theirs and black's reply). Those twelve seconds are gone.
     const after = clockAfterTakeback({
       clock,
       running: "w",
@@ -346,8 +322,6 @@ describe("clockAfterTakeback", () => {
   });
 
   test("each undone move gives back the increment it earned", () => {
-    // Two plies undone in a 3+2: the most recent was black's (white is to
-    // move), the one under it white's. One increment comes off each.
     const after = clockAfterTakeback({
       clock,
       running: "w",
@@ -361,8 +335,6 @@ describe("clockAfterTakeback", () => {
   });
 
   test("a single undone ply charges only the side that made it", () => {
-    // Black to move, so the last ply was white's, and it is white's increment
-    // that is taken back.
     const after = clockAfterTakeback({
       clock,
       running: "b",
@@ -443,8 +415,6 @@ describe("statsAfter", () => {
     expect(after.topWinStreak).toBe(4);
   });
 
-  // Ported from the streak rule in the original draft: a repetition should not
-  // cost a player a streak they never lost.
   test("a draw neither extends nor breaks the streak", () => {
     const after = statsAfter(before, "draw", 1200);
 
@@ -475,13 +445,11 @@ describe("clock helpers", () => {
 
   test("hasFlagged is true once the elapsed time reaches the clock", () => {
     expect(hasFlagged(clock, "w", 29_999)).toBe(false);
-    // Reaching exactly zero is a fallen flag, like a physical clock.
     expect(hasFlagged(clock, "w", 30_000)).toBe(true);
     expect(hasFlagged(clock, "w", 31_000)).toBe(true);
   });
 
   test("a move deducts the elapsed time and adds the increment", () => {
-    // White thinks 10s on a 2s-increment clock: 30 - 10 + 2 = 22s left.
     const after = clockAfterMove({
       clock,
       mover: "w",
@@ -491,7 +459,6 @@ describe("clock helpers", () => {
 
     expect(after).not.toBeNull();
     expect(after?.whiteTimeMs).toBe(22_000);
-    // The side that did not move is untouched.
     expect(after?.blackTimeMs).toBe(45_000);
   });
 
@@ -514,7 +481,6 @@ describe("clock helpers", () => {
       incrementSeconds: 5,
     });
 
-    // 45 - 1 + 5 = 49s.
     expect(after?.blackTimeMs).toBe(49_000);
   });
 });

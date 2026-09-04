@@ -1,10 +1,8 @@
 import { useUITheme } from "../providers/theme";
 
 export type Hint = {
-  /** The keystroke, drawn as a key cap. */
   key: string;
   label: string;
-  /** Current setting the key changes, e.g. the active theme's name. */
   value?: string;
 };
 

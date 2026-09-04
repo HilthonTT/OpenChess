@@ -4,18 +4,6 @@ import type { Prisma } from "@openchess/database";
 import { invalidateCache } from "../lib/cache";
 import { PUZZLE_CATALOG } from "./puzzle-catalog";
 
-/**
- * Seed the achievement, title and puzzle catalogs. Run with `bun run db:seed`.
- *
- * Everything is upserted by `code` — the stable key the unlock rules and the
- * store reference — so reruns rewrite copy, rewards and prices in place
- * without duplicating rows or touching what players have already unlocked.
- *
- * Every code in `game/achievements.ts` — both the game RULES and the
- * STREAK_RULES beside them — has a row here: a rule whose code has no row
- * unlocks nothing, silently.
- */
-
 type AchievementSeed = Omit<Prisma.AchievementCreateInput, "unlockedBy">;
 
 const ACHIEVEMENTS: AchievementSeed[] = [
@@ -258,7 +246,6 @@ const TITLES: TitleSeed[] = [
     rarity: "LEGENDARY",
     requiredLevel: 20,
   },
-  // Achievement rewards: listed in the store but never for sale.
   {
     code: "CENTURION",
     label: "Centurion",
@@ -313,10 +300,6 @@ for (const title of TITLES) {
 }
 console.log(`Seeded ${TITLES.length} titles.`);
 
-// Puzzles are upserted by `externalId` for the same reason: a rerun rewrites a
-// position or a rating in place, and the attempts players have already made
-// against it stay attached. `dailyOn` is deliberately never written here — the
-// day's puzzle is the service's to assign, and reseeding must not steal it.
 for (const puzzle of PUZZLE_CATALOG) {
   const { externalId, ...rest } = puzzle;
   await db.puzzle.upsert({
@@ -327,7 +310,6 @@ for (const puzzle of PUZZLE_CATALOG) {
 }
 console.log(`Seeded ${PUZZLE_CATALOG.length} puzzles.`);
 
-// Both catalogs just changed under any running server; drop its cached copies.
 await Promise.all([invalidateCache("achievements"), invalidateCache("titles")]);
 
 await db.$disconnect();

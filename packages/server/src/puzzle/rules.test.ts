@@ -50,8 +50,6 @@ describe("puzzleReward", () => {
     expect(easy.coins).toBeGreaterThan(0);
   });
 
-  // Unlike a lost game, which pays a consolation: a puzzle can be failed
-  // deliberately in one keystroke.
   test("a failure pays nothing at all", () => {
     expect(
       puzzleReward({
@@ -133,7 +131,6 @@ describe("puzzleStreakAfter", () => {
 describe("toPuzzleView", () => {
   const view = toPuzzleView(ROW, { attempted: false, daily: false });
 
-  // The point of the view existing at all.
   test("carries the opening move and nothing else of the line", () => {
     expect(view.openingMove).toBe("h7h6");
     expect(JSON.stringify(view)).not.toContain("a1a8");

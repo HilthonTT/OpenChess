@@ -50,7 +50,6 @@ export const create = createRoute({
   },
 });
 
-// Registered ahead of `/{id}` so the literal segment wins the match.
 export const active = createRoute({
   tags: [TAGS.GAMES],
   method: "get",
@@ -339,7 +338,6 @@ export const flag = createRoute({
   },
 });
 
-// Registered ahead of `/{id}` so the literal segment wins the match.
 export const live = createRoute({
   tags: [TAGS.GAMES],
   method: "get",

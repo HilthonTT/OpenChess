@@ -2,12 +2,6 @@ import open from "open";
 import { apiClient } from "./api-client";
 import { responseError } from "./http-errors";
 
-/**
- * Launch a server-supplied URL in the browser — but only a web URL. The
- * response is data, not code: opened verbatim, a compromised or spoofed
- * server could hand the OS any protocol handler (`file:`, custom schemes).
- * Restricting to http(s) keeps the blast radius at "opens a web page".
- */
 async function openWebUrl(url: string) {
   let parsed: URL;
   try {

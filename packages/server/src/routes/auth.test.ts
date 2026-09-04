@@ -5,7 +5,6 @@ import app from "../app";
 import { PROBLEM_JSON_MEDIA_TYPE } from "../lib/problem-details";
 import { portFromState } from "./auth";
 
-/** Mint a `state` the way the CLI does: base64url payload, dot, nonce. */
 function encodeState(payload: unknown, nonce = "nonce") {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
 

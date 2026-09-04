@@ -4,11 +4,6 @@ import { testRender } from "@opentui/react/test-utils";
 import { RouterProvider } from "react-router";
 import { createAppRouter } from "../../router";
 
-/**
- * The `ctrl+k` palette, driven through the real router — what it has to get
- * right is that it opens from anywhere and that picking a row lands you on the
- * screen that row names, so both are asserted against a real navigation.
- */
 async function launch(path = "/") {
   const setup = await testRender(
     <RouterProvider router={createAppRouter({ path })} />,
@@ -47,7 +42,6 @@ describe("the go-to palette", () => {
 
     const frame = app.frame();
     expect(frame).toContain("Go to");
-    // Including the rows past the ninth, which is the whole point of it.
     expect(frame).toContain("Openings");
 
     app.renderer.destroy();
@@ -70,7 +64,6 @@ describe("the go-to palette", () => {
     await app.type("openings");
     await app.enter();
 
-    // The explorer, reached without touching the menu cursor.
     expect(app.frame()).toContain("Opening Explorer");
 
     app.renderer.destroy();
@@ -86,7 +79,6 @@ describe("the go-to palette", () => {
 
     await app.enter();
 
-    // Still the palette, still on the menu underneath.
     expect(app.frame()).toContain("Nothing by that name");
 
     app.renderer.destroy();

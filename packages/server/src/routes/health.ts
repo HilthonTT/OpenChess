@@ -64,7 +64,7 @@ async function checkDatabase(): Promise<{ status: DatabaseStatus }> {
 
 async function checkRedis(): Promise<{ status: RedisStatus }> {
   if (!redis) {
-    return { status: "disabled" }; // cache intentionally off, not a failure
+    return { status: "disabled" };
   }
 
   try {
@@ -107,8 +107,6 @@ const router = base
         ? redisCheck.value.status
         : "disconnected";
 
-    // The database is required. Redis is an optimization: "disabled" (not
-    // configured) is fine, only an actual failure ("disconnected") degrades us.
     const dbHealthy = dbStatus === "connected";
     const redisHealthy = redisStatus !== "disconnected";
 

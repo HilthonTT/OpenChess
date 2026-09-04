@@ -11,7 +11,6 @@ import {
 import { OPENING_LINES } from "./opening-lines";
 import { playSan } from "./pgn";
 
-/** Play a line of SAN from the initial position. */
 function line(...sans: string[]) {
   let game = createGame();
   for (const san of sans) {
@@ -21,8 +20,6 @@ function line(...sans: string[]) {
 }
 
 describe("the authored lines", () => {
-  // The counterpart of `puzzle-catalog.test.ts`: an authoring slip here reaches
-  // players as a bot with no move to make, or an opening under the wrong name.
   test("every line replays from the initial position", () => {
     expect(openingBookStats().skipped).toEqual([]);
   });
@@ -56,8 +53,6 @@ describe("the authored lines", () => {
   });
 
   test("lines that transpose agree on a name", () => {
-    // Two lines ending on one position would otherwise leave the name down to
-    // authoring order — the trie keeps the first and silently drops the second.
     const byPosition = new Map<string, string>();
 
     for (const entry of OPENING_LINES) {
@@ -67,8 +62,6 @@ describe("the authored lines", () => {
       }
 
       const named = namedOpening(game.position);
-      // Whatever the book decided to call this position, the line that reached
-      // it has to be able to live with: a second name for it is a conflict.
       expect(named).not.toBeNull();
 
       const previous = byPosition.get(named!.name);
@@ -142,7 +135,6 @@ describe("bookMoves", () => {
   });
 
   test("runs dry once the game leaves the book", () => {
-    // A first move nothing in the book plays.
     expect(bookMoves(line("h4").position)).toEqual([]);
   });
 });
@@ -179,7 +171,6 @@ describe("openingOf", () => {
   });
 
   test("reports the deepest opening the game passed through", () => {
-    // 3.Bc4 is the Italian and 4...Bc5 the Giuoco Piano; the later name wins.
     const game = line("e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5");
     expect(openingOf(game)?.name).toBe("Italian Game: Giuoco Piano");
   });
@@ -188,7 +179,6 @@ describe("openingOf", () => {
     // biome-ignore format: grouped in move pairs so the out-of-book comment lands in place
     const game = line(
       "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6",
-      // Out of book from here, but it is still a Najdorf.
       "h3", "h6", "a3", "g6",
     );
 
@@ -220,13 +210,10 @@ describe("chooseBookMove", () => {
     const position = createGame().position;
     const moves = bookMoves(position);
 
-    // A ticket at the very bottom of the range lands on the heaviest move,
-    // which is the one `bookMoves` sorted to the front.
     const first = chooseBookMove(position, { random: () => 0 });
     expect(first?.from).toBe(moves[0]!.move.from);
     expect(first?.to).toBe(moves[0]!.move.to);
 
-    // And one at the top lands on the lightest.
     const last = chooseBookMove(position, { random: () => 0.999999 });
     const lightest = moves[moves.length - 1]!;
     expect(last?.from).toBe(lightest.move.from);
@@ -246,8 +233,6 @@ describe("chooseBookMove", () => {
   });
 
   test("plays a whole game's worth of book without an illegal move", () => {
-    // Walk the book to a leaf a hundred times over. Every move it hands back has
-    // to be playable in the position it was asked about, whichever way it went.
     for (let run = 0; run < 100; run += 1) {
       let game = createGame();
 

@@ -6,14 +6,6 @@ import { RootLayout } from "../layouts/root-layout";
 import { Home } from "./home";
 import { LocalGame } from "./local-game";
 
-/**
- * Drives the real screens through the terminal renderer, covering the wiring
- * the engine unit tests can't: routing, key handling, and what lands on screen.
- *
- * `useKeyboard` refreshes its handler in a layout effect, so a handler only
- * sees state from the last committed render. Every key below therefore flushes
- * before the next one, the way separate keystrokes do at a real terminal.
- */
 async function renderApp(initialPath: string) {
   const router = createMemoryRouter(
     [
@@ -35,8 +27,6 @@ async function renderApp(initialPath: string) {
   });
   await setup.flush();
 
-  // `act` lets React commit the state update the keypress triggered; `flush`
-  // then paints it. Without both, the next key reads a stale handler closure.
   const press = async (action: () => void | Promise<void>) => {
     await act(async () => {
       await action();
@@ -48,8 +38,6 @@ async function renderApp(initialPath: string) {
     ...setup,
     frame: () => setup.captureCharFrame(),
     enter: () => press(() => setup.mockInput.pressEnter()),
-    // A lone ESC byte is ambiguous, so the parser holds it briefly to see
-    // whether an escape sequence follows. Wait it out rather than race it.
     escape: () =>
       press(async () => {
         setup.mockInput.pressEscape();
@@ -61,11 +49,6 @@ async function renderApp(initialPath: string) {
   };
 }
 
-/**
- * Stand in for a terminal that honours OSC 52, and keep what it was sent.
- * `isTTY` is what the clipboard checks before writing, and it is false under a
- * test runner — so a real terminal has to be borrowed for the duration.
- */
 function captureClipboard() {
   const stdout = process.stdout;
   const write = stdout.write;
@@ -73,8 +56,6 @@ function captureClipboard() {
   const chunks: string[] = [];
 
   stdout.isTTY = true;
-  // Still forwarded: the renderer writes here too, and swallowing its frames
-  // would make this helper decide what the screen looks like.
   stdout.write = ((chunk: unknown, ...rest: unknown[]) => {
     chunks.push(String(chunk));
     return (write as (...args: unknown[]) => boolean).call(
@@ -91,7 +72,6 @@ function captureClipboard() {
       stdout.write = write;
       stdout.isTTY = isTTY;
     },
-    /** What the last OSC 52 sequence would have put on the clipboard. */
     text: () => {
       const sequence = chunks.filter((chunk) => chunk.includes(marker)).at(-1);
       if (sequence === undefined) {
@@ -106,10 +86,6 @@ function captureClipboard() {
   };
 }
 
-/**
- * Count the board cells drawing a move dot. Matching the cell's leading border
- * keeps the move list's "1." out of the tally.
- */
 function countMoveDots(frame: string): number {
   return frame.match(/│ \. /g)?.length ?? 0;
 }
@@ -130,11 +106,9 @@ describe("local game screen", () => {
   test("selecting a pawn marks its legal destinations, and enter plays the move", async () => {
     const app = await renderApp("/local");
 
-    // The cursor starts on e2; pick the pawn up.
     await app.enter();
     expect(countMoveDots(app.frame())).toBe(2);
 
-    // Walk up to e4 and play it.
     await app.arrow("up");
     await app.arrow("up");
     await app.enter();
@@ -150,11 +124,9 @@ describe("local game screen", () => {
     const app = await renderApp("/local");
 
     await app.enter();
-    // Sideways from e2 is d2 — our own pawn, and not a legal pawn destination.
     await app.arrow("left");
     await app.enter();
 
-    // Selecting a different friendly piece is the sensible reading of that key.
     expect(app.frame()).toContain("White to move");
     expect(countMoveDots(app.frame())).toBe(2);
   });
@@ -190,17 +162,14 @@ describe("local game screen", () => {
   test("a capture shows the taken piece and the material score", async () => {
     const app = await renderApp("/local");
 
-    // Both capture rows start empty.
     expect(app.frame()).toContain("White  —");
     expect(app.frame()).toContain("Black  —");
 
-    // 1. e4 — cursor starts on e2.
     await app.enter();
     await app.arrow("up");
     await app.arrow("up");
     await app.enter();
 
-    // 1... d5 — walk from e4 up to d7, then push two squares.
     await app.arrow("left");
     await app.arrow("up");
     await app.arrow("up");
@@ -210,7 +179,6 @@ describe("local game screen", () => {
     await app.arrow("down");
     await app.enter();
 
-    // 2. exd5 — back to e4, then take the pawn on d5.
     await app.arrow("down");
     await app.arrow("right");
     await app.enter();
@@ -229,8 +197,6 @@ describe("local game screen", () => {
     const clipboard = captureClipboard();
 
     try {
-      // 1. e4, so the position copied is one the game reached rather than the
-      // one it starts from.
       await app.enter();
       await app.arrow("up");
       await app.arrow("up");
@@ -254,10 +220,8 @@ describe("local game screen", () => {
     const app = await renderApp("/local");
     await app.type("f");
 
-    // Black's back rank now sits at the bottom, and the files run H to A.
     expect(app.frame()).toContain("H   G   F   E   D   C   B   A");
 
-    // Cursor is still on e2; selecting still finds the white pawn.
     await app.enter();
     expect(countMoveDots(app.frame())).toBe(2);
   });

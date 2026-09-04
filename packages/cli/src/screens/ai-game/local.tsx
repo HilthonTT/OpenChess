@@ -19,7 +19,6 @@ import { useKeymap, type Keymap } from "../../providers/keymap";
 import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../../lib/keymaps";
 import { Setup, describeAiStatus, type Variant } from "./setup";
 
-/** A short pause before the engine replies, so its moves are easy to follow. */
 const AI_MOVE_DELAY_MS = 400;
 
 const KEYMAP: Keymap = {
@@ -42,17 +41,13 @@ type Started = {
   personality: PersonalityId;
   human: Color;
   variant: Variant;
-  /** The array dealt for a shuffled game, or null for the ordinary one. */
   startFen: string | null;
 };
 
-/** The engine runs in-process: nothing is saved and nothing is earned. */
 export function LocalAIGame({ subtitle }: { subtitle?: string }) {
   const [started, setStarted] = useState<Started | null>(null);
 
   if (started === null) {
-    // No clock offline: it would need in-process timing with nothing to enforce
-    // it against, so the engine game stays untimed.
     return (
       <Setup
         onStart={(choice) => {
@@ -60,8 +55,6 @@ export function LocalAIGame({ subtitle }: { subtitle?: string }) {
             personality: choice.personality,
             human: choice.color,
             variant: choice.variant,
-            // Dealt once, here, so that "new game" below can redeal it while
-            // the board itself stays a pure function of what it was given.
             startFen:
               choice.variant === "CHESS960" ? randomChess960Fen() : null,
           });
@@ -106,7 +99,6 @@ function Match({
   useKeymap(KEYMAP);
   const [game, setGame] = useState(() => createGame(startFen ?? undefined));
 
-  /** What the bot is called in an exported header, as the server names it too. */
   const botName = `OpenChess ${PERSONALITIES[personality].name}`;
 
   const cursor = useBoardCursor({
@@ -127,17 +119,12 @@ function Match({
   });
   const { beginCommit, clearSelection, setMessage } = selection;
 
-  // The engine replies whenever the position is its to move. Depending on
-  // `game` means any human action (move, undo, reset) cancels a pending reply
-  // and re-evaluates against the fresh position.
   useEffect(() => {
     if (!aiTurn) {
       return;
     }
 
     const timer = setTimeout(() => {
-      // The positions already played, so the engine can tell a repetition from a
-      // fresh position rather than shuffling a won game into a draw.
       const move = findBestMove(
         game.position,
         personality,
@@ -154,8 +141,6 @@ function Match({
   }, [aiTurn, clearSelection, game, personality, setMessage]);
 
   const reset = useCallback(() => {
-    // A new shuffled game deals a new array — replaying the same one would make
-    // "new game" mean "same position again", which is the opposite of the point.
     onRedeal();
     setGame(createGame(startFen ?? undefined));
     cursor.resetCursor();
@@ -173,7 +158,6 @@ function Match({
     [beginCommit, game],
   );
 
-  /** Take back moves until it is the player's turn again. */
   const undoTurn = useCallback(() => {
     let next = game;
     if (next.history.length > 0) {
@@ -194,8 +178,6 @@ function Match({
     selection,
     cursor,
     commit,
-    // Nothing is at stake in an offline game, so the position is the player's
-    // to take wherever they like — including to a stronger engine than this one.
     copy: {
       game,
       pgn: {

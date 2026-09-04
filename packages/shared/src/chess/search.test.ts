@@ -7,7 +7,6 @@ import { hashPosition } from "./zobrist";
 import type { Game } from "./game";
 import type { Move, Position } from "./types";
 
-/** The named move, or a failure — a test that silently searched nothing is worse. */
 function moveFor(position: Position, from: string, to: string): Move {
   const move = findMove(
     generateLegalMoves(position),
@@ -29,18 +28,10 @@ function isMate(position: Position): boolean {
   );
 }
 
-/**
- * Does `move` force mate on the following move, whatever the reply?
- *
- * Proved here by playing every reply out rather than by trusting the engine's own
- * mate score, which is the thing under test. A published answer would only prove
- * the engine agrees with this file.
- */
 function forcesMateInTwo(position: Position, move: Move): boolean {
   const after = applyMove(position, move);
   const replies = generateLegalMoves(after);
 
-  // Mate already on the board is a mate in one, not what is being claimed.
   if (replies.length === 0) {
     return false;
   }
@@ -55,20 +46,16 @@ function forcesMateInTwo(position: Position, move: Move): boolean {
 
 describe("see", () => {
   test("a free piece is worth the piece", () => {
-    // Nothing defends the knight on d5.
     const position = parseFen("k7/8/8/3n4/8/8/3R4/K7 w - - 0 1");
     expect(see(position, moveFor(position, "d2", "d5"))).toBe(320);
   });
 
   test("a defended piece counts the recapture", () => {
-    // Rxd5 wins a knight and loses a rook to the c6 pawn.
     const position = parseFen("k7/8/2p5/3n4/8/8/3R4/K7 w - - 0 1");
     expect(see(position, moveFor(position, "d2", "d5"))).toBe(320 - 500);
   });
 
   test("a whole exchange resolves, cheapest piece first", () => {
-    // Rxd5 cxd5 Rxd5: a rook and a pawn for a rook, and the second rook is what
-    // makes it work — an exchange read one capture deep would refuse it.
     const position = parseFen("k7/8/2p5/3r4/8/8/3R4/K2R4 w - - 0 1");
     expect(see(position, moveFor(position, "d2", "d5"))).toBe(500 - 500 + 100);
   });
@@ -79,8 +66,6 @@ describe("see", () => {
   });
 
   test("a capture that wins the defender first is not punished", () => {
-    // The pawn on c6 is the only defender of d5 and it is pinned to nothing —
-    // but with it gone, Rxd5 is free. Taking on d5 while it stands is not.
     const defended = parseFen("k7/8/2p5/3n4/8/8/3R4/K7 w - - 0 1");
     const undefended = parseFen("k7/8/8/3n4/8/8/3R4/K7 w - - 0 1");
 
@@ -109,8 +94,6 @@ describe("zobrist keys", () => {
   });
 
   test("a different move order into the same position keys the same", () => {
-    // Nf3 Nf6 Ng1 Ng8 arrives back where it started. The move counters differ and
-    // are not part of a position; everything that is, matches.
     let game = createGame();
     const start = hashPosition(game.position);
 
@@ -127,9 +110,6 @@ describe("zobrist keys", () => {
   });
 
   test("an en passant square nobody can capture on is not a difference", () => {
-    // FIDE counts two positions as the same unless the en passant *possibility*
-    // differs, and `repetitionKey` agrees. A key that disagreed would hide a
-    // legitimate threefold from the search.
     const phantom = parseFen("4k3/8/8/8/3P4/8/8/4K3 b - d3 0 1");
     const none = parseFen("4k3/8/8/8/3P4/8/8/4K3 b - - 0 1");
     expect(hashPosition(phantom)).toBe(hashPosition(none));
@@ -149,13 +129,11 @@ describe("search", () => {
   });
 
   test("finds a forced mate in two and says how far off it is", () => {
-    // Q and R against a walled-in king. Proved below rather than asserted.
     const position = parseFen("r5rk/5p1p/5R2/4Q3/8/8/7P/7K w - - 0 1");
     const result = search(position, { depth: 6, nodes: 500_000 });
 
     expect(result.bestMove).not.toBeNull();
     expect(forcesMateInTwo(position, result.bestMove!)).toBe(true);
-    // MATE_SCORE less the three plies it takes: move, reply, mate.
     expect(result.score).toBe(100_000 - 3);
   });
 
@@ -168,7 +146,6 @@ describe("search", () => {
   });
 
   test("takes mate over material", () => {
-    // Ra8 is mate; Rxd1 merely wins a knight.
     const position = parseFen("7k/6pp/8/8/8/8/8/R2n2K1 w - - 0 1");
     const result = search(position, { depth: 5 });
 
@@ -177,14 +154,11 @@ describe("search", () => {
   });
 
   test("prefers the mate it can reach soonest", () => {
-    // Mate in one is available, so the score must say one ply of it, not three.
     const position = parseFen("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1");
     expect(search(position, { depth: 5 }).score).toBe(100_000 - 1);
   });
 
   test("a node budget is the same on every machine, so the answer is too", () => {
-    // What lets the analysis screen promise a stable accuracy for a game: a
-    // search bounded by work rather than by a clock repeats exactly.
     const position = parseFen(
       "r1bq1r1k/pp2n1pp/2n1p3/2ppP3/3P4/2PB1N2/PP3PPP/R1BQ1RK1 w - - 0 12",
     );
@@ -205,8 +179,6 @@ describe("search", () => {
     );
     const result = search(position, { nodes: 10_000 });
 
-    // The budget is checked as each node is entered, so it is overshot by the one
-    // node that notices and nothing more.
     expect(result.nodes).toBeGreaterThan(1000);
     expect(result.nodes).toBeLessThanOrEqual(10_064);
   });
@@ -233,13 +205,10 @@ describe("search", () => {
     const deep = search(position, { nodes: 80_000 });
 
     expect(deep.depth).toBeGreaterThan(shallow.depth);
-    // The old engine's ceiling was three plies, whatever the position.
     expect(deep.depth).toBeGreaterThan(3);
   });
 
   test("the expected line is playable from the position it starts in", () => {
-    // A table slot can hold an entry for a different position that collided with
-    // this one, so every move read back out has to be checked against the rules.
     const position = parseFen(
       "r1bq1r1k/pp2n1pp/2n1p3/2ppP3/3P4/2PB1N2/PP3PPP/R1BQ1RK1 w - - 0 12",
     );
@@ -265,7 +234,6 @@ describe("search", () => {
   });
 
   test("declines a capture that loses the exchange", () => {
-    // Rxd5 wins a knight but the c6 pawn recaptures.
     const position = parseFen("k7/8/2p5/3n4/8/8/3R4/K7 w - - 0 1");
     const result = search(position, { depth: 5 });
     expect(toAlgebraic(result.bestMove!.to)).not.toBe("d5");
@@ -289,15 +257,7 @@ describe("search", () => {
   });
 });
 
-/**
- * A won game has to actually be won. These are the positions where a material
- * score alone is not enough — every shuffle looks as good as the last — so they
- * are what the endgame tables, the mating drive and the search's own sight of a
- * repetition are all for. An engine missing any of them draws these by the
- * fifty-move rule instead.
- */
 describe("converting a won endgame", () => {
-  /** Play both sides with the engine until the game ends or `cap` plies pass. */
   function playOut(fen: string, cap: number): Game {
     let game = createGame(fen);
 
@@ -322,13 +282,6 @@ describe("converting a won endgame", () => {
     return game;
   }
 
-  /**
-   * These play out ninety-odd plies at depth 6 apiece, so they run in seconds
-   * rather than milliseconds and blow through `bun test`'s 5s default on any
-   * machine slower than a fast laptop — a red suite that says nothing about the
-   * engine. Stated explicitly so the budget is a decision rather than whatever
-   * the runner happens to default to.
-   */
   const CONVERSION_TIMEOUT_MS = 60_000;
 
   test(
@@ -354,8 +307,6 @@ describe("converting a won endgame", () => {
   test(
     "two bishops mate",
     () => {
-      // The mate is a dozen moves of technique further off than any search here
-      // sees, so this one is carried entirely by the evaluation pointing the way.
       expect(playOut("8/8/8/4k3/8/8/8/KBB5 w - - 0 1", 95).status).toBe(
         "checkmate",
       );

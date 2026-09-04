@@ -10,12 +10,6 @@ import {
   takePartner,
 } from "./matchmaking";
 
-/**
- * These run against the in-process backend: `lib/upstash` forces the client to
- * null under test, so `bun test` needs no Redis and never talks to a real one.
- * The two backends are held to the same contract, so what is asserted here is
- * the contract, not the implementation.
- */
 afterEach(async () => {
   await reset();
 });
@@ -43,7 +37,6 @@ describe("takePartner", () => {
     await heartbeat("bob", null, 0);
 
     expect(await takePartner("alice", null, 100)).toBe("bob");
-    // Neither is available to a third player any more.
     expect(await takePartner("carol", null, 200)).toBeNull();
   });
 
@@ -51,8 +44,6 @@ describe("takePartner", () => {
     await heartbeat("bob", null, 0);
     await heartbeat("carol", null, QUEUE_STALE_MS);
 
-    // Bob's last poll is a full staleness window before Carol's, so by the time
-    // Alice arrives he is gone and Carol is the match.
     expect(await takePartner("alice", null, QUEUE_STALE_MS + 1)).toBe("carol");
   });
 
@@ -66,7 +57,6 @@ describe("takePartner", () => {
   test("a heartbeat on the same clock does not cost seniority", async () => {
     await heartbeat("bob", null, 0);
     await heartbeat("carol", null, 100);
-    // Bob polls again. He was first and must stay first.
     await heartbeat("bob", null, 200);
 
     expect(await takePartner("alice", null, 300)).toBe("bob");
@@ -77,9 +67,7 @@ describe("takePartner by time control", () => {
   test("only pairs players who chose the same clock", async () => {
     await heartbeat("bob", "blitz", 0);
 
-    // Alice wants bullet; Bob is waiting for blitz — no match either way.
     expect(await takePartner("alice", "bullet", 100)).toBeNull();
-    // Bob is untouched and still there for a blitz seeker.
     expect(await takePartner("carol", "blitz", 200)).toBe("bob");
   });
 
@@ -92,7 +80,6 @@ describe("takePartner by time control", () => {
 
   test("switching time control moves a waiting player to the new queue", async () => {
     await heartbeat("bob", "bullet", 0);
-    // Bob changes his mind and re-polls for blitz.
     await heartbeat("bob", "blitz", 100);
 
     expect(await takePartner("alice", "bullet", 200)).toBeNull();
@@ -103,9 +90,7 @@ describe("takePartner by time control", () => {
     await heartbeat("bob", "blitz", 0);
     await heartbeat("carol", "bullet", 100);
 
-    // Alice takes the bullet seeker from behind the blitz one.
     expect(await takePartner("alice", "bullet", 200)).toBe("carol");
-    // Bob is still queued for the clock he asked for.
     expect(await takePartner("dave", "blitz", 300)).toBe("bob");
   });
 });
@@ -124,8 +109,6 @@ describe("pairing lock", () => {
     await takePartner("alice", null, 0);
     await heartbeat("bob", null, 0);
 
-    // Bob re-entered the queue (say, a racing poll) while his game with Alice
-    // is still being written. He must not end up in two games.
     expect(await takePartner("carol", null, 0)).toBeNull();
   });
 
@@ -134,8 +117,6 @@ describe("pairing lock", () => {
     await heartbeat("carol", null, 0);
     await takePartner("alice", null, 0);
 
-    // Alice's game with Bob is still being written when a duplicate poll of
-    // hers comes around again. Carol is free, but Alice is not.
     expect(await takePartner("alice", null, 0)).toBeNull();
   });
 

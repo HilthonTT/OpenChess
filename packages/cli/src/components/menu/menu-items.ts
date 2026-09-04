@@ -158,8 +158,6 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: "♕",
     description: "Subscribe, or manage your plan",
     async action(ctx) {
-      // Checkout is tied to the account, so there is nothing to buy for
-      // a visitor the server doesn't know yet.
       if (ctx.auth.status !== "signed-in") {
         ctx.toast.show({
           message: "Sign in first to go premium.",
@@ -169,8 +167,6 @@ export const MENU_ITEMS: MenuItem[] = [
       }
 
       try {
-        // A subscriber gets the portal (cancel, invoices, card), not a
-        // second checkout for a product they already pay for.
         if (await fetchPremiumStatus()) {
           await openBillingPortal();
           ctx.toast.show({
@@ -194,15 +190,6 @@ export const MENU_ITEMS: MenuItem[] = [
   },
 ];
 
-/**
- * The account row that closes the menu. It tracks the session, so what ENTER
- * will do is written on the row itself — the user never has to remember whether
- * they're signed in, or hunt for a separate screen to change it.
- *
- * Descriptions are kept under ~36 characters: the menu sizes itself to its
- * content, so one that wraps would make the whole box grow as the status
- * changes.
- */
 export function createAuthMenuItem(status: AuthStatus): MenuItem {
   switch (status) {
     case "signed-in":

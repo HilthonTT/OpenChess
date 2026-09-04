@@ -9,17 +9,11 @@ import type { MenuItem } from "./types";
 import { TEXT_PRESENTATION } from "../pieces";
 import { RuleBorderChars } from "../border";
 
-/**
- * How many rows a number key can reach. There are only nine of them, and the
- * rows past that are what `ctrl+k` is for — numbering a row the keyboard has
- * no way to send you to is a promise the menu can't keep.
- */
 export const QUICK_PICK_LIMIT = 9;
 
 interface MenuProps {
   items: MenuItem[];
   onSelect: (item: MenuItem) => void;
-  /** Row to start the cursor on, e.g. the one that sent the user away. */
   initialSelectedId?: string;
 }
 
@@ -31,8 +25,6 @@ export function Menu({ items, onSelect, initialSelectedId }: MenuProps) {
     return initial === -1 ? 0 : initial;
   });
 
-  // The account row can come and go as the session resolves; never leave the
-  // cursor pointing past the end of the list.
   useEffect(() => {
     setIndex((i) => Math.min(i, Math.max(0, items.length - 1)));
   }, [items.length]);
@@ -44,8 +36,6 @@ export function Menu({ items, onSelect, initialSelectedId }: MenuProps) {
   };
 
   useKeyboard((key) => {
-    // Ignore input while a dialog (or any higher layer) is open so selecting
-    // a theme with ENTER doesn't also activate the highlighted menu item.
     if (!isTopLayer(BASE_LAYER_ID)) {
       return;
     }
@@ -115,9 +105,6 @@ export function Menu({ items, onSelect, initialSelectedId }: MenuProps) {
                 </span>
               </text>
               <box flexGrow={1} />
-              {/* A row only shows a number when that number actually opens it:
-                  a disabled row has nothing to pick, and past the ninth there
-                  is no key left to press. */}
               <text fg={selected && !dim ? theme.walnut : theme.faint}>
                 {dim || i >= QUICK_PICK_LIMIT ? " " : String(i + 1)}
               </text>

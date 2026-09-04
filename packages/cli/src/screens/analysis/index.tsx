@@ -15,12 +15,6 @@ import { ImportPgn, type ReviewSource, positionSource } from "./import-pgn";
 import { SUBTITLE, TITLE, WIDTH } from "./keymaps";
 import { Review, ReviewBoard } from "./review";
 
-/**
- * The review screen. Reached from the menu — which lists your finished games to
- * pick from — or straight from a game that just ended, which passes its id in
- * the navigation state so the board opens on it. `--fen` and `--pgn` open it on
- * something that was never played here at all.
- */
 export function Analysis() {
   const auth = useAuth();
   const location = useLocation();
@@ -34,19 +28,10 @@ export function Analysis() {
   const [selected, setSelected] = useState<string | null>(
     state?.gameId ?? null,
   );
-  /** A game read out of a PGN file, which needs no account at all. */
   const [imported, setImported] = useState<ReviewSource | null>(
-    // `--fen` is already a whole position, so it opens the board directly
-    // rather than going through the loading a file needs.
     state?.fen === undefined ? null : positionSource(state.fen),
   );
   const [importing, setImporting] = useState(false);
-  /**
-   * The file `--pgn` named, until it has been read or given up on. Held as
-   * state rather than read off the location every render, so escaping out of a
-   * file that would not open lands on the game list instead of being handed
-   * straight back to the same failure.
-   */
   const [launchPgn, setLaunchPgn] = useState<string | null>(
     state?.pgnPath ?? null,
   );
@@ -56,8 +41,6 @@ export function Analysis() {
     setImported(null);
   }, []);
 
-  // `--pgn` is the import screen's job, done without the typing. Its failures
-  // land in the same place a typed path's would.
   if (launchPgn !== null) {
     return (
       <ImportPgn
@@ -87,8 +70,6 @@ export function Analysis() {
     return <ReviewBoard source={imported} onBack={back} />;
   }
 
-  // Importing is the one thing here that works signed out: the file is the
-  // whole game, and the engine that reviews it is running locally anyway.
   if (auth.status !== "signed-in") {
     return <SignedOutAnalysis onImport={() => setImporting(true)} />;
   }
@@ -111,8 +92,6 @@ function SignedOutAnalysis({ onImport }: { onImport: () => void }) {
 
   return (
     <GameScreen title={TITLE} subtitle={SUBTITLE} width={WIDTH}>
-      {/* `i` still works here, so it is handed to the notice to advertise
-          alongside the sign-in key rather than sitting in a second footer. */}
       <SignedOut
         title="Analysis needs an account"
         message="Your finished games live on the server."

@@ -22,19 +22,15 @@ import {
 } from "../../providers/keyboard-layer";
 import { useKeymap, type Keymap } from "../../providers/keymap";
 
-/** Which rules to play under. Mirrors the server's `GameVariant`. */
 export type Variant = "STANDARD" | "CHESS960";
 
-/** Everything the setup collects before a board appears. */
 export type SetupChoice = {
   personality: PersonalityId;
   color: Color;
-  /** Null when the player picked an untimed game, or was never asked. */
   timeControl: TimeControlKey | null;
   variant: Variant;
 };
 
-/** The status line reworded for a human-versus-engine game. */
 export function describeAiStatus(
   status: GameStatus,
   turn: Color,
@@ -56,13 +52,8 @@ export function describeAiStatus(
 
 type Step = "opponent" | "variant" | "time" | "color";
 
-/** The keys the opponent list is picked with: 1..6, in catalog order. */
 const OPPONENT_KEYS = PERSONALITY_ORDER.map((_, index) => String(index + 1));
 
-/**
- * One question is on screen at a time and the digits mean something different
- * on each, so the overlay describes the step rather than the whole setup.
- */
 const STEP_KEYS: Record<Step, Keymap["sections"]> = {
   opponent: [
     {
@@ -107,14 +98,6 @@ const STEP_KEYS: Record<Step, Keymap["sections"]> = {
   ],
 };
 
-/**
- * The quick questions before the board appears — who to play, then the rules,
- * then an optional time control, then colour.
- *
- * `askTimeControl` is off for the offline engine (nothing there to clock) and
- * on for server games, which the clock is enforced on. Colour is always last,
- * since choosing it is what starts the game.
- */
 export function Setup({
   onStart,
   askTimeControl = false,
@@ -131,7 +114,6 @@ export function Setup({
 
   const [personality, setPersonality] = useState<PersonalityId | null>(null);
   const [variant, setVariant] = useState<Variant | undefined>(undefined);
-  // `undefined` means "not chosen yet"; `null` means the player picked untimed.
   const [timeControl, setTimeControl] = useState<
     TimeControlKey | null | undefined
   >(undefined);
@@ -227,7 +209,6 @@ export function Setup({
     }
   });
 
-  /** Escape unwinds one question at a time before it gives up the screen. */
   const handleEscape = useCallback(() => {
     if (step === "color") {
       if (askTimeControl) {

@@ -12,7 +12,6 @@ import {
   type ReviewState,
 } from "./repertoire";
 
-/** Review a fresh line `times` times at one grade. */
 function drill(times: number, grade: "good" | "easy"): ReviewState {
   let state = NEW_LINE;
   for (let i = 0; i < times; i += 1) {
@@ -46,8 +45,6 @@ describe("reviewLine", () => {
     expect(quick.intervalDays).toBeGreaterThan(steady.intervalDays);
   });
 
-  // A line you have just got wrong is one to play again while you can still see
-  // why — the whole cost of being wrong in a drill is doing it once more.
   test("brings a failed line back the same day", () => {
     const known = drill(4, "good");
     const failed = reviewLine(known, "again");
@@ -58,9 +55,6 @@ describe("reviewLine", () => {
     expect(failed.ease).toBeLessThan(known.ease);
   });
 
-  // The point of tracking the streak separately from the review count: a line
-  // that lapses is relearned from the short steps rather than snapping back to
-  // the month it had reached before it was forgotten.
   test("relearns a lapsed line from the bottom", () => {
     const known = drill(6, "good");
     expect(known.intervalDays).toBeGreaterThan(20);
@@ -118,7 +112,6 @@ describe("nextDue", () => {
 });
 
 describe("gradeFor", () => {
-  // An opening line is a sequence, and half of one is not half as useful.
   test("fails the whole line for one wrong move, however long it was", () => {
     expect(gradeFor({ mistakes: 1, msSpent: 100, moves: 20 })).toBe("again");
   });
@@ -135,7 +128,6 @@ describe("gradeFor", () => {
     ).toBe("good");
   });
 
-  // The benefit of the doubt runs towards seeing the line again sooner.
   test("is good, never easy, when the client reported no timing", () => {
     expect(gradeFor({ mistakes: 0, msSpent: null, moves: 4 })).toBe("good");
     expect(gradeFor({ mistakes: 0, msSpent: 1, moves: 0 })).toBe("good");
@@ -151,8 +143,6 @@ describe("reviewXp", () => {
     expect(reviewXp({ grade: "good", moves: 4 })).toBe(8);
   });
 
-  // A long line must not be a better rate than a short one for the time it
-  // takes, or the repertoire becomes a place to park one enormous line.
   test("caps what a long line is worth", () => {
     expect(reviewXp({ grade: "easy", moves: 30 })).toBe(30);
     expect(reviewXp({ grade: "easy", moves: 300 })).toBe(30);

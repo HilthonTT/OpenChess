@@ -9,12 +9,6 @@ import type {
 import { apiClient } from "./api-client";
 import { getProblemDetails, problemMessage } from "./http-errors";
 
-/**
- * Typed calls to the server's `/games` API. Every helper either returns the
- * decoded body or throws an `Error` whose message is the server's problem
- * detail, so screens can show it as-is.
- */
-
 const byId = apiClient.games[":id"];
 
 export type ServerGame = InferResponseType<typeof byId.$get, 200>;
@@ -24,11 +18,6 @@ export type ServerMoveResult = InferResponseType<
 >;
 export type ServerDifficulty = NonNullable<ServerGame["difficulty"]>;
 
-/**
- * The server refused because the game moved on without us — a retried request
- * that already landed, or another session playing the same game. The cure is
- * always the same: refetch and trust the server's picture.
- */
 export class GameConflictError extends Error {}
 
 async function toError(response: {
@@ -67,12 +56,9 @@ export function toEngineDifficulty(
 }
 
 export async function createAiGame(input: {
-  /** Which bot to play. The server reads its tier off the catalog. */
   personality: PersonalityId;
   color: "white" | "black" | "random";
-  /** Omit or null for an untimed game. */
   timeControl?: TimeControlKey | null;
-  /** Omit for an ordinary game. */
   variant?: "STANDARD" | "CHESS960";
 }): Promise<ServerGame> {
   const response = await apiClient.games.$post({ json: input });
@@ -89,12 +75,6 @@ export type QueueResult = InferResponseType<
   200
 >;
 
-/**
- * One poll of the matchmaking queue. Each call doubles as the heartbeat that
- * keeps us eligible for pairing, so the caller is expected to keep calling
- * until it answers `matched`. Only players who queue for the same `timeControl`
- * are paired, so the value must stay the same across a search's polls.
- */
 export async function joinPvpQueue(
   timeControl: TimeControlKey | null = null,
 ): Promise<QueueResult> {
@@ -109,13 +89,10 @@ export async function joinPvpQueue(
   return response.json();
 }
 
-/** Best-effort: if this never lands, the queue forgets us by timeout anyway. */
 export async function leavePvpQueue(): Promise<void> {
   try {
     await apiClient.games.pvp.queue.$delete();
-  } catch {
-    // Nothing to do — see above.
-  }
+  } catch {}
 }
 
 export async function fetchGame(id: string): Promise<ServerGame> {
@@ -128,7 +105,6 @@ export async function fetchGame(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/** The newest unfinished AI game, so the screen can resume it instead of stranding it. */
 export async function fetchActiveAiGame(): Promise<{ id: string } | null> {
   const response = await apiClient.games.active.$get();
 
@@ -163,10 +139,6 @@ export async function resignGame(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/**
- * Claim the win in a PvP game whose opponent stopped playing. The server
- * enforces the inactivity window; a 409 means "not claimable (yet)".
- */
 export async function claimVictory(id: string): Promise<ServerGame> {
   const response = await byId.claim.$post({ param: { id } });
 
@@ -177,13 +149,6 @@ export async function claimVictory(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/**
- * Offer a draw. Online games only — a 409 means the bot was asked to negotiate.
- *
- * If the opponent's offer is already standing this agrees to it and the game
- * comes back settled, which is what makes both players offering at the same
- * instant resolve instead of deadlocking.
- */
 export async function offerDraw(id: string): Promise<ServerGame> {
   const response = await byId.draw.$post({ param: { id } });
 
@@ -194,7 +159,6 @@ export async function offerDraw(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/** Take the draw the opponent offered. A 409 means it is no longer there. */
 export async function acceptDraw(id: string): Promise<ServerGame> {
   const response = await byId.draw.accept.$post({ param: { id } });
 
@@ -205,7 +169,6 @@ export async function acceptDraw(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/** Clear the standing offer — declining theirs, or withdrawing your own. */
 export async function declineDraw(id: string): Promise<ServerGame> {
   const response = await byId.draw.$delete({ param: { id } });
 
@@ -216,17 +179,6 @@ export async function declineDraw(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/**
- * Ask for your move back — or, against the bot, simply take it.
- *
- * One call for both, because the server decides which the game is and the
- * player pressing `u` means the same thing either way. Against the bot the
- * board comes back rewound and the game's payout is gone; against a person the
- * board comes back unchanged with your request standing on it, unless theirs
- * was already there, in which case this agreed to it.
- *
- * A 409 means there is nothing of yours to take back, or the game is over.
- */
 export async function offerTakeback(id: string): Promise<ServerGame> {
   const response = await byId.takeback.$post({ param: { id } });
 
@@ -237,7 +189,6 @@ export async function offerTakeback(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/** Grant the takeback they asked for. A 409 means a move has cleared it. */
 export async function acceptTakeback(id: string): Promise<ServerGame> {
   const response = await byId.takeback.accept.$post({ param: { id } });
 
@@ -248,7 +199,6 @@ export async function acceptTakeback(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/** Clear the standing request — refusing theirs, or withdrawing your own. */
 export async function declineTakeback(id: string): Promise<ServerGame> {
   const response = await byId.takeback.$delete({ param: { id } });
 
@@ -269,12 +219,6 @@ export async function abortGame(id: string): Promise<ServerGame> {
   return response.json();
 }
 
-/**
- * Settle a timed game whose running clock has fallen. The server decides who
- * flagged (always the side to move), so this claims a win from an opponent who
- * ran out — or, called on your own fallen flag, concedes it. A 409 means the
- * server's clock still shows time; the cure, as ever, is to refetch.
- */
 export async function flagGame(id: string): Promise<ServerGame> {
   const response = await byId.flag.$post({ param: { id } });
 
@@ -287,14 +231,6 @@ export async function flagGame(id: string): Promise<ServerGame> {
 
 export type ChatMessage = ServerGame["chat"][number];
 
-/**
- * Say one of the catalog's phrases to your opponent.
- *
- * The wire carries the phrase's key and never any text of ours, which is what
- * keeps this a feature rather than a moderation problem. Returns the recent
- * transcript with the new message on the end; the opponent gets the same over
- * their event stream.
- */
 export async function sendChatMessage(
   id: string,
   phrase: ChatPhraseId,
@@ -314,7 +250,6 @@ export type GameHistoryEntry = InferResponseType<
   200
 >["games"][number];
 
-/** A page of your finished games, newest first, for the review browser. */
 export async function listFinishedGames(input?: {
   limit?: number;
   cursor?: string;

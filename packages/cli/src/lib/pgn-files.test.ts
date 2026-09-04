@@ -2,10 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { safeExportFilename } from "./pgn-files";
 
-/**
- * The `Content-Disposition` filename is data off the network, and the export
- * writes it to disk. These are the shapes that must never reach `join`.
- */
 describe("safeExportFilename", () => {
   test("keeps the name the server is supposed to send", () => {
     expect(safeExportFilename("openchess-2026-07-29-abc123-42ply.pgn")).toBe(
@@ -19,7 +15,6 @@ describe("safeExportFilename", () => {
   });
 
   test("refuses to walk out of the export directory", () => {
-    // The whole point: `join(dir, "../../.bashrc")` would land outside `dir`.
     expect(safeExportFilename("../../.bashrc")).toBeNull();
     expect(safeExportFilename("../../../etc/passwd")).toBeNull();
     expect(safeExportFilename("..")).toBeNull();
@@ -27,8 +22,6 @@ describe("safeExportFilename", () => {
   });
 
   test("treats a backslash as a separator too, whatever the platform thinks", () => {
-    // `node:path` on POSIX does not, so a Windows-shaped name would otherwise
-    // arrive as one long segment and be written verbatim.
     expect(safeExportFilename("..\\..\\.bashrc")).toBeNull();
     expect(safeExportFilename("C:\\Windows\\evil.pgn")).toBe("evil.pgn");
   });

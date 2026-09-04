@@ -30,7 +30,6 @@ const QUEUE_KEYMAP: Keymap = {
   ],
 };
 
-/** Pick the clock to queue for. You are only paired with a like-for-like one. */
 export function QueueSetup({
   onChoose,
 }: {
@@ -83,11 +82,6 @@ export function QueueSetup({
   );
 }
 
-/**
- * The queue. Polling is the whole protocol: every poll is a heartbeat, the
- * first poll to find a partner creates the game, and an unfinished online game
- * is returned immediately — so this screen is also how a match is resumed.
- */
 export function Searching({
   timeControl,
   onMatched,
@@ -115,9 +109,6 @@ export function Searching({
         }
 
         if (result.status === "matched" && result.game !== null) {
-          // Nobody sits and watches a queue. Being left is what this screen is
-          // for, so the pairing is rung for unconditionally — there is no
-          // "they answered quickly" case here, only a wait that just ended.
           notify(
             `Matched with ${result.game.opponent?.username ?? "an opponent"}`,
           );
@@ -127,15 +118,11 @@ export function Searching({
 
         setMessage(null);
       } catch (error) {
-        // Stay in the loop: a missed poll only means we drop out of the queue
-        // if it keeps happening, and the message says why we're stuck.
         if (!cancelled) {
           setMessage(errorMessage(error));
         }
       }
 
-      // Guarded so a poll that was in flight at unmount cannot reschedule the
-      // loop — an undead loop would quietly re-enqueue us from the home screen.
       if (!cancelled) {
         timer = setTimeout(() => void poll(), QUEUE_POLL_MS);
       }
@@ -148,8 +135,6 @@ export function Searching({
       if (timer !== null) {
         clearTimeout(timer);
       }
-      // Leaving the screen is leaving the queue, as fast as the network allows
-      // rather than by heartbeat timeout.
       void leavePvpQueue();
     };
   }, [onMatched, timeControl]);

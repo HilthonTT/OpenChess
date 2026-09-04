@@ -11,11 +11,9 @@ import {
 } from "../lib/problem-details";
 import type { AppBindings } from "../lib/types";
 
-/** Routes behind `requireAuth` can read the verified caller off the context. */
 export type AuthenticatedEnv = {
   Variables: AppBindings["Variables"] & {
     auth: AuthenticatedActor;
-    /** Shorthand for `c.get("auth").userId`, which handlers reach for constantly. */
     userId: string;
   };
 };
@@ -47,12 +45,6 @@ function unauthorized(c: Context, failure: AuthFailure) {
   );
 }
 
-/**
- * Build the middleware around an injectable verifier. Production uses the
- * Clerk-backed one; tests hand in a canned `AuthResult` source. This seam is
- * what lets the suite avoid `mock.module`, whose process-wide replacement
- * outlives its test file and silently rewires every later import of lib/auth.
- */
 export function createRequireAuth(
   verify: typeof authenticateOAuthRequest = authenticateOAuthRequest,
 ) {

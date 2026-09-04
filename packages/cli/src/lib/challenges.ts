@@ -4,11 +4,6 @@ import { apiClient } from "./api-client";
 import { GameConflictError, type ServerGame } from "./games";
 import { getProblemDetails, problemMessage } from "./http-errors";
 
-/**
- * Typed calls to the server's `/challenges` API — playing someone you picked,
- * rather than whoever the queue hands you.
- */
-
 const byId = apiClient.challenges[":id"];
 
 export type ServerChallenge = InferResponseType<
@@ -25,9 +20,6 @@ async function toError(response: {
 }): Promise<Error> {
   const message = problemMessage(await getProblemDetails(response));
 
-  // A 409 here is "someone got there first" or "you already have a game" —
-  // both of which the screens answer by refetching, exactly as they do for a
-  // game that moved on.
   return response.status === 409
     ? new GameConflictError(message)
     : new Error(message);
@@ -46,11 +38,9 @@ export async function listChallenges(): Promise<{
   return response.json();
 }
 
-/** Challenge a named player, or omit `opponent` for an open, code-only one. */
 export async function createChallenge(input: {
   opponent?: string | null;
   color?: ChallengeColor;
-  /** Omit for an ordinary game. The array is dealt when it is accepted. */
   variant?: "STANDARD" | "CHESS960";
   timeControl?: TimeControlKey | null;
 }): Promise<ServerChallenge> {
@@ -70,7 +60,6 @@ export async function createChallenge(input: {
   return response.json();
 }
 
-/** Turn a code someone read out into a challenge that can be accepted. */
 export async function findChallengeByCode(
   code: string,
 ): Promise<ServerChallenge> {
@@ -116,10 +105,6 @@ export async function cancelChallenge(id: string): Promise<ServerChallenge> {
   return response.json();
 }
 
-/**
- * Offer the opponent of a finished online game another one: same clock,
- * colours swapped. It becomes an ordinary challenge in their list.
- */
 export async function offerRematch(gameId: string): Promise<ServerChallenge> {
   const response = await apiClient.games[":id"].rematch.$post({
     param: { id: gameId },

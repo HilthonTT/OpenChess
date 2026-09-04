@@ -1,9 +1,3 @@
-/**
- * The response and request shapes, registered with OpenAPI so the Scalar
- * reference at `/reference` documents them by name rather than inlining an
- * anonymous object at every use.
- */
-
 export * from "./primitives";
 export * from "./params";
 export * from "./chat";

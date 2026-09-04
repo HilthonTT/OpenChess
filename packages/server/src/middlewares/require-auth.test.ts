@@ -7,16 +7,6 @@ import { onError } from "../lib/problem-details";
 import type { AuthenticatedEnv } from "./require-auth";
 import { createRequireAuth, requireScopes } from "./require-auth";
 
-/**
- * Stand in for Clerk. The middleware's whole job is mapping an `AuthResult` onto
- * a status and a challenge header, so the verifier is exactly the right seam to
- * fake: it keeps the test off the network, and it reaches failure modes (Clerk
- * down, bad secret key) that a real client could not produce on demand.
- *
- * Injected through `createRequireAuth` rather than `mock.module`: that mock is
- * process-wide and outlives this file, and it used to leave every later test's
- * unauthenticated requests answered by whatever it was last holding.
- */
 let nextResult: AuthResult;
 
 const requireAuth = createRequireAuth(async () => nextResult);
@@ -24,8 +14,6 @@ const requireAuth = createRequireAuth(async () => nextResult);
 function request(path: string) {
   const app = new Hono<AuthenticatedEnv>();
 
-  // `onError` is written against AppBindings, whose Variables are a subset of
-  // these; Hono's Env generic is invariant, so the widening needs a cast.
   app.onError(onError as unknown as Parameters<typeof app.onError>[0]);
 
   app.get("/me", requireAuth, (c) => c.json({ userId: c.get("userId") }));
@@ -74,8 +62,6 @@ describe("requireAuth", () => {
 
     expect(response.status).toBe(HttpStatusCodes.UNAUTHORIZED);
 
-    // No `error` on a missing token, per RFC 6750 §3: the caller is not being
-    // told its token is bad, it is being told how to authenticate at all.
     expect(response.headers.get("www-authenticate")).toBe(
       'Bearer realm="openchess"',
     );
@@ -101,8 +87,6 @@ describe("requireAuth", () => {
 
     const body = await (await request("/me")).text();
 
-    // Distinguishing "expired" from "issued to another app" hands an attacker an
-    // oracle. The specifics belong in the log, not the response.
     expect(body).not.toContain("client_evil");
     expect(body).not.toContain("client-id-mismatch");
   });
@@ -143,7 +127,6 @@ describe("requireScopes", () => {
 
     const response = await request("/write");
 
-    // 403, not 401: re-authenticating cannot add a scope the user never granted.
     expect(response.status).toBe(HttpStatusCodes.FORBIDDEN);
 
     const challenge = response.headers.get("www-authenticate")!;

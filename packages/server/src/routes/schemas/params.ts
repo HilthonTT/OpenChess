@@ -8,7 +8,6 @@ export const challengeCodeParamsSchema = z.object({
     .openapi({ param: { name: "code", in: "path" }, example: "K7M2QP" }),
 });
 
-/** A `{username}` path segment, matched case-insensitively by the service. */
 export const usernameParamsSchema = z.object({
   username: z
     .string()
@@ -17,7 +16,6 @@ export const usernameParamsSchema = z.object({
     .openapi({ param: { name: "username", in: "path" }, example: "magnus" }),
 });
 
-/** A cuid in the `{id}` path segment. Shared by every by-id route. */
 export const idParamsSchema = z.object({
   id: z
     .string()

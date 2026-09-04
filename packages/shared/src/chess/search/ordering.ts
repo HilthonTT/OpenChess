@@ -3,10 +3,6 @@ import type { Move, Position, PromotionPiece } from "../types";
 import { EXCHANGE_VALUES, exchangeValueOf, see } from "./exchange";
 import type { SearchState } from "./state";
 
-/* -------------------------------------------------------------------------- */
-/* Move ordering                                                              */
-/* -------------------------------------------------------------------------- */
-
 const ORDER_TABLE_MOVE = 30_000_000;
 
 const ORDER_WINNING_CAPTURE = 20_000_000;
@@ -17,7 +13,6 @@ const ORDER_SECOND_KILLER = 9_000_000;
 
 const ORDER_LOSING_CAPTURE = -20_000_000;
 
-/** Ceiling on a history score, so a quiet move never outranks a killer. */
 const HISTORY_CAP = 1_000_000;
 
 function packMove(move: Move): number {
@@ -45,14 +40,11 @@ export function rememberHistory(
   move: Move,
   depth: number,
 ): void {
-  // Weighted by depth: a cutoff found at the top of the tree says more about a
-  // move than one found in a corner of it.
   const index = move.from * 64 + move.to;
   const score = state.history[index]! + depth * depth;
   state.history[index] = score > HISTORY_CAP ? HISTORY_CAP : score;
 }
 
-/** Most valuable victim, least valuable attacker. */
 function captureOrder(move: Move): number {
   let score = 0;
   if (move.captured !== null) {
@@ -73,8 +65,6 @@ export function scoreMove(
   tableToSquare: number,
   tablePromotion: PromotionPiece | null,
 ): number {
-  // Whatever the table found last time is the best guess available, and it cost
-  // a full search to arrive at.
   if (
     move.from === tableFromSquare &&
     move.to === tableToSquare &&
@@ -101,12 +91,6 @@ export function scoreMove(
   return state.history[move.from * 64 + move.to]!;
 }
 
-/**
- * Swap the best-scoring remaining move into `index`.
- *
- * A selection pass rather than a sort, because most nodes cut off on the first
- * move or two: sorting thirty moves to look at one is work thrown away.
- */
 export function selectMove(
   moves: Move[],
   scores: number[],
@@ -130,7 +114,6 @@ export function selectMove(
   }
 }
 
-/** Captures ordered by what they win, for the quiescence search. */
 export function orderCaptures(moves: Move[]): Move[] {
   return [...moves].sort((a, b) => captureOrder(b) - captureOrder(a));
 }
@@ -144,7 +127,6 @@ export function shuffle(moves: Move[]): void {
   }
 }
 
-/** Reorder root moves best-first, carrying their scores with them. */
 export function reorderByScore(moves: Move[], scores: number[]): void {
   const order = moves.map((move, index) => ({ move, score: scores[index]! }));
   order.sort((a, b) => b.score - a.score);

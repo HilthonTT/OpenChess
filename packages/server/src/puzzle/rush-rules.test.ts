@@ -26,8 +26,6 @@ describe("the difficulty ramp", () => {
   });
 
   test("a negative score cannot drag it below the floor", () => {
-    // Not reachable through the service, but the clamp is what makes that a
-    // fact about this function rather than about its caller.
     expect(rushRatingTarget(-5)).toBe(rushRatingTarget(0));
   });
 });
@@ -66,8 +64,6 @@ describe("what a run pays", () => {
   });
 
   test("survival pays less per solve than the timed modes", () => {
-    // With no clock on it, the same rate would make survival the only mode
-    // anyone played.
     expect(rushReward(10, "SURVIVAL").xp).toBeLessThan(
       rushReward(10, "THREE_MINUTE").xp,
     );
@@ -77,10 +73,6 @@ describe("what a run pays", () => {
   });
 
   test("a strong run is worth less than the rated queue would pay for it", () => {
-    // A rush serves puzzles you may have solved before and moves no rating, so
-    // it has to stay under the ladder or it would simply replace it. The rated
-    // queue pays 8 coins for a solve at your own rating; twenty of those is
-    // 160, and a twenty-run is well under that per puzzle.
     const twenty = rushReward(20, "THREE_MINUTE");
 
     expect(twenty.coins / 20).toBeLessThan(8);

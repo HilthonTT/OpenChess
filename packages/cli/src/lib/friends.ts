@@ -3,12 +3,6 @@ import { apiClient } from "./api-client";
 import { GameConflictError } from "./games";
 import { getProblemDetails, problemMessage } from "./http-errors";
 
-/**
- * Typed calls to the server's `/friends` API. Like the `/challenges` helpers,
- * every call either returns the decoded body or throws an `Error` carrying the
- * server's problem detail, so screens can render `error.message` as-is.
- */
-
 const byId = apiClient.friends[":id"];
 
 export type FriendLists = InferResponseType<typeof apiClient.friends.$get, 200>;
@@ -23,9 +17,6 @@ async function toError(response: {
 }): Promise<Error> {
   const message = problemMessage(await getProblemDetails(response));
 
-  // A 409 here is a limit reached — too many requests outstanding, too many
-  // friends. The screens answer it the same way they answer any conflict: show
-  // what the server said and refetch.
   return response.status === 409
     ? new GameConflictError(message)
     : new Error(message);
@@ -41,14 +32,6 @@ export async function listFriends(): Promise<FriendLists> {
   return response.json();
 }
 
-/**
- * Ask someone to be friends.
- *
- * Asking a player who has already asked you accepts their request instead of
- * sending a second one, so a returned `status` of `ACCEPTED` means it was
- * mutual — worth saying out loud in the UI, because "friend added" and "request
- * sent" are different outcomes of the same keypress.
- */
 export async function addFriend(username: string): Promise<Friend> {
   const response = await apiClient.friends.$post({
     json: { username: username.trim() },
@@ -81,7 +64,6 @@ export async function declineFriend(id: string): Promise<Friend> {
   return response.json();
 }
 
-/** Withdraw a request you sent, or unfriend. One call, either reading. */
 export async function removeFriend(id: string): Promise<void> {
   const response = await byId.$delete({ param: { id } });
 
@@ -90,19 +72,12 @@ export async function removeFriend(id: string): Promise<void> {
   }
 }
 
-/** How presence reads on a row, and the colour weight to give it. */
 export const PRESENCE_LABEL: Record<PresenceState, string> = {
   playing: "in a game",
   online: "online",
   offline: "offline",
 };
 
-/**
- * "Last seen" in the coarsest unit that is still true.
- *
- * Presence is only accurate to about a minute, so a rendering to the second
- * would be claiming a precision the underlying column does not have.
- */
 export function lastSeenLabel(presence: Presence): string {
   if (presence.state !== "offline") {
     return PRESENCE_LABEL[presence.state];

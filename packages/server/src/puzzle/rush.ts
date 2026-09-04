@@ -7,6 +7,7 @@ import {
 } from "@openchess/database";
 import { db } from "@openchess/database/client";
 import {
+  puzzleRatingBand,
   solutionSan,
   startPuzzle,
   submitPuzzleMove,
@@ -21,32 +22,8 @@ import { unlockAchievements, type Unlocked } from "../player/unlocks";
 import { rushReward, RUSH_MISS_LIMIT, rushRatingTarget } from "./rush-rules";
 import { toEnginePuzzle, toPuzzleView, type PuzzleView } from "./rules";
 
-/**
- * Puzzle Rush: as many puzzles as you can solve before the clock or your third
- * mistake stops you.
- *
- * It is the same solving protocol the rated queue uses — a round trip per move,
- * the line never leaving the server — with three deliberate differences.
- *
- * The run is *server-timed*. `endsAt` is written when the run starts and every
- * submission is checked against it, because a score that a client's own timer
- * could vouch for is not a score.
- *
- * It is *off the ladder*. A run writes no `PuzzleAttempt` rows and moves no
- * puzzle rating: rushing rewards speed and nerve, rating rewards accuracy, and
- * a player should be able to do one without wrecking the other. It also means a
- * rush never eats into the "puzzles I have not been scored on" pool that the
- * rated queue serves from — you can rush the same puzzles all week and still
- * meet them fresh when it counts.
- *
- * And it pays *once, at the end*, on the run's own `rewardsGranted` flag, the
- * same guard `Game` uses. Paying per solve would make a run a coin faucet you
- * could tap by starting one and abandoning it at nine.
- */
-
 const SERIALIZATION_FAILURE = "P2034";
 
-/** How long each timed mode gives you. Survival has no clock at all. */
 export const RUSH_DURATION_MS: Record<PuzzleRushMode, number | null> = {
   THREE_MINUTE: 3 * 60_000,
   FIVE_MINUTE: 5 * 60_000,
@@ -72,26 +49,18 @@ export type RushRunView = {
   mode: PuzzleRushMode;
   solved: number;
   missed: number;
-  /** How many mistakes are left before the run ends. */
   livesLeft: number;
-  /** The puzzle to solve now, or null once the run is over. */
   puzzle: PuzzleView | null;
-  /** When the clock stops it, or null on a survival run. */
   endsAt: string | null;
   endedAt: string | null;
   over: boolean;
-  /** Present only on the response that ends the run. */
   rewards: RushRewardView | null;
-  /** Your best score at this mode, including this run. */
   best: number;
 };
 
 export type RushMoveView = RushRunView & {
-  /** What the last move did. Null on a run that was already over. */
   outcome: "continue" | "solved" | "wrong" | null;
-  /** The reply the line forces, when the puzzle is not finished. UCI. */
   reply: string | null;
-  /** Revealed once the puzzle is done with, right or wrong. */
   solution: string[] | null;
 };
 
@@ -99,9 +68,12 @@ function livesLeft(missed: number): number {
   return Math.max(0, RUSH_MISS_LIMIT - missed);
 }
 
-/** Whether the clock has run out on `run`, as of now. */
 function outOfTime(run: PuzzleRushRun, now = Date.now()): boolean {
   return run.endsAt !== null && now >= run.endsAt.getTime();
+}
+
+function expiredAt(run: PuzzleRushRun, now = Date.now()): Date {
+  return outOfTime(run, now) ? (run.endsAt as Date) : new Date(now);
 }
 
 function isOver(run: PuzzleRushRun, now = Date.now()): boolean {
@@ -110,20 +82,12 @@ function isOver(run: PuzzleRushRun, now = Date.now()): boolean {
   );
 }
 
-/**
- * Serve the next puzzle for a run.
- *
- * The target rating climbs with the score, so a run opens with something a
- * beginner can take and ends somewhere they cannot — which is what makes a
- * score a measurement rather than a stopwatch reading. `servedPuzzleIds` keeps
- * a run from asking the same question twice; across runs there is no such
- * constraint, and there should not be, since a rush is practice.
- */
 async function pickRushPuzzle(
   solved: number,
   exclude: string[],
 ): Promise<PuzzleRow | null> {
-  const target = rushRatingTarget(solved);
+  const band = puzzleRatingBand(rushRatingTarget(solved));
+  const target = band.min + Math.random() * (band.max - band.min);
   const notSeen = exclude.length > 0 ? { id: { notIn: exclude } } : {};
 
   const above = await db.puzzle.findFirst({
@@ -135,15 +99,12 @@ async function pickRushPuzzle(
     return above;
   }
 
-  // Past the top of the corpus: take the hardest thing left rather than
-  // stopping a run that was going well.
   return db.puzzle.findFirst({
     where: { rating: { lt: target }, ...notSeen },
     orderBy: { rating: "desc" },
   });
 }
 
-/** The best score this player has ever posted at `mode`. */
 async function bestScore(
   userId: string,
   mode: PuzzleRushMode,
@@ -170,7 +131,6 @@ async function view(
     solved: run.solved,
     missed: run.missed,
     livesLeft: livesLeft(run.missed),
-    // A finished run has nothing to solve, whatever is still pinned to it.
     puzzle:
       over || !puzzle
         ? null
@@ -183,23 +143,10 @@ async function view(
   };
 }
 
-/** Start a run. Any run still open — at any mode — is settled out first. */
 export async function startRush(input: {
   user: User;
   mode: PuzzleRushMode;
 }): Promise<RushRunView> {
-  // An abandoned run is finished rather than left to linger. Without this a
-  // player could keep several open and cherry-pick the one that went best —
-  // and a survival run, having no clock, would otherwise never close at all.
-  //
-  // Settled through `finishRun` rather than closed with a bare `updateMany`.
-  // Stamping `endedAt` on its own strands the run permanently unpaid: every
-  // path that pays — `getRush`, `endRush`, `playRushMoves` — settles only a run
-  // whose `endedAt` is still null, so once it is set nothing will ever grant the
-  // rewards. The score itself is not stranded with them, since `bestScore` and
-  // `rushBests` both count an ended run, which is what made the loss silent —
-  // a twenty-solve run walked away from kept its place on the board and paid
-  // nothing. Abandoning a run is the same act as ending it, so it pays the same.
   const open = await db.puzzleRushRun.findMany({
     where: { userId: input.user.id, endedAt: null },
   });
@@ -232,13 +179,10 @@ export async function startRush(input: {
   return view(run, first);
 }
 
-/** A run by id, refusing one that is not this player's. */
 async function loadRun(user: User, runId: string): Promise<PuzzleRushRun> {
   const run = await db.puzzleRushRun.findUnique({ where: { id: runId } });
 
   if (!run || run.userId !== user.id) {
-    // Not "forbidden": whether a run exists is not something a stranger gets
-    // to learn by asking, which is the same line the game service draws.
     throwProblem(HttpStatusCodes.NOT_FOUND, "No such run");
   }
 
@@ -248,8 +192,6 @@ async function loadRun(user: User, runId: string): Promise<PuzzleRushRun> {
 export async function getRush(user: User, runId: string): Promise<RushRunView> {
   const run = await loadRun(user, runId);
 
-  // A run whose clock ran out while nobody was submitting is settled on the
-  // next read, so an abandoned tab does not leave a row open forever.
   if (isOver(run) && run.endedAt === null) {
     return finishRun(user, run);
   }
@@ -261,26 +203,16 @@ export async function getRush(user: User, runId: string): Promise<RushRunView> {
   return view(run, puzzle);
 }
 
-/**
- * Settle a run: stamp it finished, and pay for it exactly once.
- *
- * `rewardsGranted` is claimed by a conditional update, so two requests racing
- * to end the same run — the clock expiring on a read while a submission is in
- * flight — cannot both pay. The loser sees the run already settled and reports
- * what the winner banked.
- */
 async function finishRun(user: User, run: PuzzleRushRun): Promise<RushRunView> {
   const reward = rushReward(run.solved, run.mode);
 
   try {
     const settled = await db.$transaction(
       async (tx) => {
-        // The claim. `rewardsGranted: false` in the filter is what makes this
-        // exactly-once; a second attempt updates no rows and throws.
         const claimed = await tx.puzzleRushRun.updateMany({
           where: { id: run.id, rewardsGranted: false },
           data: {
-            endedAt: run.endedAt ?? new Date(),
+            endedAt: run.endedAt ?? expiredAt(run),
             currentPuzzleId: null,
             rewardsGranted: true,
             xpAwarded: reward.xp,
@@ -313,9 +245,6 @@ async function finishRun(user: User, run: PuzzleRushRun): Promise<RushRunView> {
         const balance = fresh.coins + coins;
 
         if (coins > 0) {
-          // No gameId, so the ledger's per-game unique index does not
-          // constrain this row; the run's own `rewardsGranted` claim above is
-          // what makes the payout exactly-once.
           await tx.coinTransaction.create({
             data: {
               userId: user.id,
@@ -361,14 +290,6 @@ async function finishRun(user: User, run: PuzzleRushRun): Promise<RushRunView> {
   }
 }
 
-/**
- * Play the solver's moves at the run's current puzzle.
- *
- * `moves` is the whole attempt at *this puzzle*, newest last — the same
- * stateless replay the rated queue uses, for the same reason. A right move that
- * does not finish the puzzle comes back with the forced reply and the same
- * puzzle still pinned; anything that ends it moves the run on.
- */
 export async function playRushMoves(input: {
   user: User;
   runId: string;
@@ -408,8 +329,6 @@ export async function playRushMoves(input: {
     session = submitPuzzleMove(session, uci).session;
   }
 
-  // The replay above consumed every move including the last, so the outcome of
-  // the last one is read off the session it produced rather than played again.
   const outcome: "continue" | "solved" | "wrong" =
     session.status === "solved"
       ? "solved"
@@ -421,7 +340,6 @@ export async function playRushMoves(input: {
     return {
       ...(await view(run, puzzle)),
       outcome,
-      // The line's forced reply is already on the session's board.
       reply: puzzle.moves[session.index - 1] ?? "",
       solution: null,
     };
@@ -431,8 +349,6 @@ export async function playRushMoves(input: {
   const missed = run.missed + (outcome === "wrong" ? 1 : 0);
   const solution = solutionSan(toEnginePuzzle(puzzle));
 
-  // Out of lives, or out of time as of this submission: the run is done and
-  // the score it just earned is the score it keeps.
   if (missed >= RUSH_MISS_LIMIT || outOfTime(run)) {
     const scored = await db.puzzleRushRun.update({
       where: { id: run.id },
@@ -457,9 +373,7 @@ export async function playRushMoves(input: {
       missed,
       currentPuzzleId: next?.id ?? null,
       servedPuzzleIds: served,
-      // The corpus is exhausted — there is nothing left to ask, so the run
-      // ends here rather than sitting on an empty board.
-      endedAt: next ? undefined : new Date(),
+      endedAt: next ? undefined : expiredAt(run),
     },
   });
 
@@ -476,7 +390,6 @@ export async function playRushMoves(input: {
   };
 }
 
-/** Give up on the run where it stands. */
 export async function endRush(user: User, runId: string): Promise<RushRunView> {
   const run = await loadRun(user, runId);
 
@@ -495,12 +408,6 @@ export type RushLeaderboardEntry = {
   achievedAt: string;
 };
 
-/**
- * The best runs at a mode, one per player.
- *
- * One row per player rather than per run, or the board would be a list of the
- * same three people having a good afternoon.
- */
 export async function rushLeaderboard(input: {
   mode: PuzzleRushMode;
   limit: number;
@@ -508,8 +415,6 @@ export async function rushLeaderboard(input: {
   const rows = await db.puzzleRushRun.findMany({
     where: { mode: input.mode, endedAt: { not: null }, solved: { gt: 0 } },
     orderBy: [{ solved: "desc" }, { endedAt: "asc" }],
-    // Over-fetched so that collapsing to one row per player still fills the
-    // board. A player with many good runs eats several of these.
     take: input.limit * 5,
     select: {
       solved: true,
@@ -549,7 +454,6 @@ export async function rushLeaderboard(input: {
   return best;
 }
 
-/** This player's best at each mode, for the stats screen. */
 export async function rushBests(
   user: User,
 ): Promise<Array<{ mode: PuzzleRushMode; best: number; runs: number }>> {

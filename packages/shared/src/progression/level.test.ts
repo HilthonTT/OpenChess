@@ -27,9 +27,7 @@ describe("xpForLevel", () => {
     for (let level = 1; level <= 50; level++) {
       const floor = xpForLevel(level);
 
-      // The XP that begins a level is in that level...
       expect(levelFor(floor)).toBe(level);
-      // ...and one XP short of it is still in the one below.
       if (level > 1) {
         expect(levelFor(floor - 1)).toBe(level - 1);
       }

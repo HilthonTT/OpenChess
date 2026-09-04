@@ -15,13 +15,6 @@ import { TAGS } from "./tags";
 
 const base = createPlayerRouter();
 
-// Mounted per-path rather than on `*`: `/success` is where Polar redirects the
-// customer's *browser* after payment, and that browser carries no bearer token,
-// so guarding it would 401 every completed purchase.
-//
-// Both guarded routes call out to Polar's API on every request, so they are
-// metered far tighter than the game routes — a handful of checkouts a minute is
-// already more than any real customer does.
 const guards = [
   requireAuth,
   requireUser,
@@ -96,9 +89,6 @@ const status = createRoute({
   },
 });
 
-// Unauthenticated, and a page rather than JSON: a browser lands here straight
-// off Polar's redirect, with a human reading it. It states no account facts, so
-// there is nothing to leak by leaving it open.
 const success = createRoute({
   tags: [TAGS.BILLING],
   method: "get",
@@ -114,8 +104,6 @@ const success = createRoute({
   },
 });
 
-// No inline CSS or scripts: the default CSP this API sets is `default-src
-// 'none'`, which would block them.
 const SUCCESS_PAGE = `<!doctype html>
 <html lang="en">
   <head>
@@ -136,8 +124,6 @@ const router = base
   .openapi(checkout, async (c) => {
     const user = c.get("user");
 
-    // A subscriber checking out again would be double-billed with two
-    // concurrent subscriptions; Polar does not prevent it on its own.
     if (await hasActiveSubscription(user.id)) {
       throwProblem(
         HttpStatusCodes.CONFLICT,

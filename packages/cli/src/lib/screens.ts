@@ -1,20 +1,7 @@
-/**
- * The screens the CLI can open directly, and the one place that says so.
- *
- * The router builds its children from this list and the argument parser
- * validates against it, so a screen added here reaches both at once — and a
- * name a user types can never point at a route that no longer exists.
- */
 type Screen = {
-  /** What the user types: `openchess puzzles`, or `--puzzles`. */
   readonly name: string;
   readonly path: string;
-  /** The one line `--help` prints beside the name. */
   readonly summary: string;
-  /**
-   * The placeholder for the word that has to follow, on the screens that are
-   * about someone in particular. Absent on the screens that stand alone.
-   */
   readonly argument?: string;
 };
 
@@ -94,11 +81,6 @@ export function isScreenName(value: string): value is ScreenName {
   return screenByName(value) !== undefined;
 }
 
-/**
- * The placeholder a screen needs after it, or undefined when it takes nothing.
- * Read through here rather than off the entry: only some of them carry the
- * field, so the list is a union that has to be narrowed before it is asked.
- */
 export function screenArgument(screen: ScreenEntry): string | undefined {
   return "argument" in screen ? screen.argument : undefined;
 }

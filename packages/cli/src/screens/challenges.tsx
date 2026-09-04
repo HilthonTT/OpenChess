@@ -65,8 +65,6 @@ const NEW_KEYMAP: Keymap = {
       ],
     },
     {
-      // Held behind ctrl because the name field has focus and would otherwise
-      // eat the digits.
       title: "Held behind ctrl — the name field has the plain keys",
       keys: [
         { keys: "ctrl+1-4", label: "untimed, bullet, blitz, rapid" },
@@ -93,14 +91,6 @@ const TITLE = "Challenges";
 const SUBTITLE = "Play someone you picked, not whoever's next in line";
 const WIDTH = 62;
 
-/**
- * How often the list is refreshed.
- *
- * This is also how a challenger learns their offer was taken: the accepting
- * player creates the game, and the sender's own outgoing row comes back
- * `ACCEPTED` with the game's id on it. There is nothing to push until then, and
- * by then the poll has already asked.
- */
 const POLL_MS = 3_000;
 
 export function Challenges() {
@@ -120,10 +110,8 @@ export function Challenges() {
   return <ChallengeList />;
 }
 
-/** Which panel the cursor is in. */
 type Pane = "incoming" | "outgoing";
 
-/** The overlay currently taking keystrokes, if any. */
 type Form = null | "new" | "code";
 
 function ChallengeList() {
@@ -133,9 +121,6 @@ function ChallengeList() {
   const location = useLocation();
   const { isTopLayer } = useKeyboardLayer();
 
-  // Arrived here from a friend's row or their profile: the player is already
-  // chosen, so the form opens on the questions that are actually left — clock,
-  // colour, rules.
   const invited =
     (location.state as { opponent?: string } | null)?.opponent ?? null;
 
@@ -150,11 +135,8 @@ function ChallengeList() {
   const [index, setIndex] = useState(0);
   const [form, setForm] = useState<Form>(invited === null ? null : "new");
 
-  // Stood down while a form is up, on the same condition the keyboard handler
-  // below tests: those are the form's keys, not this list's.
   useKeymap(form === null ? LIST_KEYMAP : null);
 
-  /** Jump into the game a challenge became. */
   const openGame = useCallback(
     (gameId: string) => {
       void navigate("/online", { state: { gameId } });
@@ -162,10 +144,7 @@ function ChallengeList() {
     [navigate],
   );
 
-  // A challenge of ours that has been accepted is a game waiting to be played,
-  // so the poll that finds it takes us straight there rather than leaving the
-  // sender staring at a list.
-  const acceptedGame = useRef<string | null>(null);
+  const seenAccepted = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,13 +162,22 @@ function ChallengeList() {
         setLoaded(true);
         setError(null);
 
-        const taken = lists.outgoing.find(
+        const accepted = lists.outgoing.filter(
           (challenge) =>
             challenge.status === "ACCEPTED" && challenge.gameId !== null,
         );
+        const seen = seenAccepted.current;
+        if (seen === null) {
+          seenAccepted.current = new Set(
+            accepted.map((challenge) => challenge.gameId as string),
+          );
+        }
+        const taken = seen
+          ? accepted.find((challenge) => !seen.has(challenge.gameId as string))
+          : undefined;
 
-        if (taken?.gameId && acceptedGame.current !== taken.gameId) {
-          acceptedGame.current = taken.gameId;
+        if (taken?.gameId) {
+          seen?.add(taken.gameId);
           toast.show({
             message: `${taken.challenged?.username ?? "Someone"} accepted — opening the board.`,
             variant: "success",
@@ -405,9 +393,6 @@ function clockLabel(challenge: ServerChallenge): string {
     ? TIME_CONTROLS[challenge.timeControl].name
     : "Untimed";
 
-  // The variant rides in the clock column rather than taking one of its own:
-  // it is the rarer fact, and a row that never mentions it reads as standard —
-  // which is exactly what an unmarked challenge is.
   return challenge.variant === "CHESS960" ? `${clock} 960` : clock;
 }
 
@@ -469,7 +454,6 @@ function Panel({
   );
 }
 
-/** The clocks a challenge can be sent for, in the order they are offered. */
 const CLOCK_CHOICES: Array<{ key: string; value: TimeControlKey | null }> = [
   { key: "1", value: null },
   { key: "2", value: "bullet" },
@@ -484,7 +468,6 @@ function NewChallenge({
   onDone,
   onCancel,
 }: {
-  /** Pre-filled when the player was chosen elsewhere — a friend's row, a profile. */
   opponent?: string | null;
   onDone: (message: string) => void;
   onCancel: () => void;
@@ -530,8 +513,6 @@ function NewChallenge({
       return;
     }
 
-    // The input has focus and swallows printable keys, so the controls that
-    // remain are the ones a text field never sees.
     if (key.name === "return" || key.name === "enter") {
       void send();
       return;
@@ -545,9 +526,6 @@ function NewChallenge({
       return;
     }
 
-    // `9` for the shuffled array, matching the local board's key for it. Held
-    // behind ctrl for the same reason the clock choices are: the name field has
-    // focus and would otherwise eat the digit.
     if (key.name === "9" && key.ctrl) {
       setVariant((value) => (value === "STANDARD" ? "CHESS960" : "STANDARD"));
       return;
@@ -646,8 +624,6 @@ function JoinByCode({
     setMessage(null);
 
     try {
-      // Two steps on purpose: the code names a challenge, and accepting one is
-      // the same request whether it was found by code or picked off the list.
       const challenge = await findChallengeByCode(typed);
       const game = await acceptChallenge(challenge.id);
       onJoined(game.id);

@@ -4,10 +4,6 @@ import { useUITheme } from "../../providers/theme";
 import { LocalAIGame } from "./local";
 import { ServerAIGame } from "./server";
 
-/**
- * Signed-in players play on the server, where games persist and pay out XP,
- * coins and rating. Everyone else gets the same engine in-process.
- */
 export function AIGame() {
   const auth = useAuth();
 

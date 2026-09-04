@@ -74,10 +74,6 @@ import { streamGameState } from "./stream";
 
 const base = createPlayerRouter();
 
-// Every game route is a player action; none of them mean anything anonymously.
-// The rate limit sits behind auth so it can key by user — creating a game and
-// playing a move both run the engine, which is too expensive to hand out
-// unmetered. 120/min is far beyond any human pace against a bot.
 base.use(
   "*",
   requireAuth,
@@ -85,20 +81,10 @@ base.use(
   rateLimit({ windowMs: 60_000, max: 120 }),
 );
 
-/**
- * A game as every 200 that carries one renders it: the transcript hung on, then
- * the links.
- *
- * One helper rather than the two calls spelled out at fourteen call sites,
- * because the failure mode of forgetting one is not a compile error — it is a
- * response whose `chat` is missing and a client that blanks its own message log
- * the moment you play a move.
- */
 async function gameBody(game: GameView, user: User) {
   return withGameLinks(await attachChat(game, user));
 }
 
-/** The players' feed: the same body as `GET /games/{id}`, pushed. */
 base.get("/:id/events", (c) => {
   const gameId = c.req.param("id");
   const user = c.get("user");
@@ -107,9 +93,6 @@ base.get("/:id/events", (c) => {
     c,
     gameId,
     async () => gameBody(await getGame(gameId, user), user),
-    // The last message's id rather than the count: the transcript is a window
-    // onto the most recent few, so once it is full the count stops moving while
-    // the conversation carries on.
     (state) =>
       [
         state.ply,
@@ -121,16 +104,6 @@ base.get("/:id/events", (c) => {
   );
 });
 
-/**
- * The spectators' feed: the same body as `GET /games/{id}/watch`, pushed.
- *
- * Sharing the loop with the players' stream is what keeps a watcher from ever
- * being a tick behind them — both wake on the same notification — and it is
- * also why a spectator never sees a legal-move list: the shape is decided by
- * `watchGame`, which has none to give. The `chat` hung on it afterwards is the
- * gallery's own, read from its own scope; the players' conversation has no path
- * onto this feed at all.
- */
 base.get("/:id/watch/events", (c) => {
   const gameId = c.req.param("id");
   const user = c.get("user");
@@ -139,11 +112,6 @@ base.get("/:id/watch/events", (c) => {
     c,
     gameId,
     async () => attachSpectatorChat(await watchGame(gameId), user),
-    // The chat term here is the *gallery's* last message, never the players'.
-    // A message the players send still bumps the change counter and wakes this
-    // stream, which then finds the same signature and correctly says nothing —
-    // which is exactly the behaviour that keeps their conversation off this
-    // feed even under a counter the two of them share.
     (state) =>
       [
         state.ply,
@@ -155,9 +123,6 @@ base.get("/:id/watch/events", (c) => {
   );
 });
 
-// Chained rather than registered as separate statements: `.openapi()` returns a
-// router carrying the new route in its type, so only the chained value knows the
-// full shape. That type is what `hc<AppType>` builds the typed CLI client from.
 const router = base
   .openapi(create, async (c) => {
     const { personality, color, timeControl, variant } = c.req.valid("json");
@@ -248,8 +213,6 @@ const router = base
 
     const { pgn: text, filename } = await getGamePgn(id, c.get("user"));
 
-    // `attachment` rather than `inline`: this is a file to save, and the CLI
-    // reads the name off the header rather than inventing one.
     c.header("Content-Type", "application/x-chess-pgn; charset=utf-8");
     c.header("Content-Disposition", `attachment; filename="${filename}"`);
 

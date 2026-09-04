@@ -27,9 +27,9 @@ import { useToast } from "../providers/toast";
 const TITLE = "Opening Explorer";
 const SUBTITLE = "Walk the book the engine plays from";
 const WIDTH = 64;
-/** Room for the continuation rows without the frame growing past a short terminal. */
+
 const VISIBLE_MOVES = 8;
-/** Cells in the share bar beside each continuation. */
+
 const BAR_W = 8;
 
 const KEYMAP: Keymap = {
@@ -56,36 +56,16 @@ const KEYMAP: Keymap = {
   ],
 };
 
-/** Pad or ellipsize to exactly `width`, so the columns stay columns. */
 function fit(text: string, width: number): string {
   return text.length <= width
     ? text.padEnd(width)
     : `${text.slice(0, width - 1)}…`;
 }
 
-/**
- * A share below half a percent rounds to `0%`, which reads as a move the book
- * never plays rather than one it rarely does — and it is sitting right there in
- * a list of moves you can play. Say `<1%` instead, and leave its bar empty.
- */
 function formatShare(share: number): string {
   return share < 0.005 ? "  <1" : (share * 100).toFixed(0).padStart(4);
 }
 
-/**
- * The opening explorer: the same book `findBestMove` plays out of, laid out as a
- * tree you can walk.
- *
- * Only book moves can be played here, which is the whole point — there is no
- * "out of book" state to handle, just lines that end. Free play belongs on a
- * board screen, and this one answers a different question: what does theory do
- * from here, and what is it called when it gets there.
- *
- * Needs no account to walk. Keeping a line does need one — that goes in your
- * repertoire, which is yours and lives on the server — so `a` is the one key
- * here that can fail, and it says so on the line below the board rather than
- * anywhere the walking happens.
- */
 export function Explorer() {
   const theme = useUITheme();
   const dialog = useDialog();
@@ -104,14 +84,8 @@ export function Explorer() {
   const continuations = useMemo(() => bookMoves(game.position), [game]);
   const opening = useMemo(() => openingOf(game), [game]);
 
-  // The list shrinks and grows as the tree is walked, so the stored index is a
-  // wish rather than a fact — clamp it on the way out instead of chasing it with
-  // an effect that would re-render every step.
   const cursor = Math.min(index, Math.max(0, continuations.length - 1));
 
-  // Every walk clears the note: it is about the line that was on the board when
-  // it was written, and a stale "kept" on a different position would read as a
-  // claim about this one.
   const advance = useCallback((choice: BookMove | undefined) => {
     if (!choice) {
       return;
@@ -133,7 +107,6 @@ export function Explorer() {
     setNote(null);
   }, []);
 
-  /** Replay a whole line from the initial position, for the search dialog. */
   const jumpTo = useCallback((line: OpeningLine) => {
     let next = createGame();
     for (const san of line.moves) {
@@ -144,15 +117,6 @@ export function Explorer() {
     setNote(null);
   }, []);
 
-  /**
-   * Keep the line as walked, to drill from one side.
-   *
-   * The side is asked for rather than inferred from whose move it is: a line is
-   * kept because of who you intend to be when you reach it, and both sides of
-   * the Italian are worth knowing. The moves go over as SAN straight off the
-   * history, which is the form the book is written in and the form the server
-   * replays and re-spells before it stores anything.
-   */
   const keep = useCallback(
     async (side: Color) => {
       if (keeping) {
@@ -235,9 +199,6 @@ export function Explorer() {
         void keep(key.shift ? "b" : "w");
         break;
       case "/":
-        // A terminal on the kitty protocol spells `?` as a shifted `/`, and
-        // that one belongs to the help overlay — without this the search would
-        // open behind it every time somebody asked for the keys.
         if (isHelpKey(key)) {
           break;
         }
@@ -356,8 +317,6 @@ function Continuations({
     );
   }
 
-  // Keep the highlighted row on screen without scrolling the whole frame: the
-  // window slides only once the cursor would leave it.
   const start =
     moves.length <= VISIBLE_MOVES
       ? 0
@@ -373,8 +332,6 @@ function Continuations({
 
       {visible.map((entry, offset) => {
         const active = start + offset === cursor;
-        // At least one cell for anything the bar can honestly round up to, so a
-        // one-percent line is visible rather than indistinguishable from none.
         const filled =
           entry.share < 0.005
             ? 0

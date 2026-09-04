@@ -30,8 +30,6 @@ const catalog = createRoute({
   },
 });
 
-// Chained so the exported type carries the route — `hc<AppType>` builds the
-// typed CLI client from it, and a statement registration would leave it blind.
 const router = base.openapi(catalog, async (c) => {
   const achievements = await listAchievements(c.get("user"));
 

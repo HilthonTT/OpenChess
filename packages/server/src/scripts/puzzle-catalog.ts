@@ -1,22 +1,4 @@
-/**
- * The built-in puzzle catalog.
- *
- * A starter set, not a corpus: a dozen hand-authored positions covering the
- * mating patterns and the one-move tactics a new player meets first, so a
- * freshly seeded database has something to serve. The real supply is the
- * Lichess puzzle database — `import-puzzles.ts` next door loads it, and every
- * row it writes lands in the same table with the same shape.
- *
- * Format is the one `chess/puzzle.ts` documents: `fen` is the position *before*
- * the mistake, `moves[0]` is the mistake, and the solver plays the odd indices
- * from there. Every entry is checked against the engine by
- * `puzzle-catalog.test.ts`, which refuses a line that does not replay and
- * refuses a `mateIn*` theme whose line does not actually mate — an authoring
- * slip here would otherwise reach players as an unsolvable puzzle.
- */
-
 export type CatalogPuzzle = {
-  /** Stable key. `openchess:` namespaced so it can never collide with an import. */
   externalId: string;
   fen: string;
   moves: string[];

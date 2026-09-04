@@ -4,12 +4,6 @@ import { Hono } from "hono";
 import type { AppBindings } from "../lib/types";
 import { createRecorder, normalizeIp } from "./recorder";
 
-/**
- * The middleware records the caller by assigning to the request-scoped pino
- * logger, so the assertion target is the bindings it assigned. A stub standing
- * in for `pinoLogger` keeps these tests about which address is believed, and
- * off the shape of a real log line.
- */
 function appFor(options: { trustProxy: boolean }) {
   const assigned: Record<string, unknown>[] = [];
 
@@ -47,7 +41,6 @@ describe("recorder", () => {
       { "x-forwarded-for": "203.0.113.7, 70.41.3.18, 150.172.238.178" },
     );
 
-    // The leftmost hop is the original client; the rest are proxies.
     expect(ip).toBe("203.0.113.7");
   });
 
@@ -61,8 +54,6 @@ describe("recorder", () => {
   });
 
   test("ignores forwarded headers when no proxy is trusted", async () => {
-    // The whole point of TRUST_PROXY=false: a client that names itself must not
-    // be believed, so with no socket peer to fall back on this is unknown.
     const ip = await recordedIp(
       { trustProxy: false },
       { "x-forwarded-for": "8.8.8.8" },
@@ -102,7 +93,6 @@ describe("recorder", () => {
       headers: { "x-forwarded-for": "203.0.113.7" },
     });
     await app.request("/api/health/deep");
-    // `strict: false` routes the trailing-slash form to the same handler.
     await app.request("/api/health/");
 
     expect(assigned).toHaveLength(0);
@@ -117,9 +107,6 @@ describe("normalizeIp", () => {
   });
 
   test("unwraps an IPv4-mapped IPv6 address", () => {
-    // Node hands these back for IPv4 peers of a dual-stack socket; the two
-    // spellings of one address have to collapse to one, or they cannot be
-    // correlated in the logs.
     expect(normalizeIp("::ffff:203.0.113.7")).toBe("203.0.113.7");
     expect(normalizeIp("::FFFF:203.0.113.7")).toBe("203.0.113.7");
   });
@@ -135,7 +122,6 @@ describe("normalizeIp", () => {
     expect(normalizeIp("203.0.113.999")).toBeUndefined();
     expect(normalizeIp("[2001:db8::1")).toBeUndefined();
     expect(normalizeIp("example.com")).toBeUndefined();
-    // A log-injection attempt, and an unbounded header.
     expect(normalizeIp('203.0.113.7"\n{"level":30}')).toBeUndefined();
     expect(normalizeIp("1".repeat(1024))).toBeUndefined();
   });
