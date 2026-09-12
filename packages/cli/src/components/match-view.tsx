@@ -1,5 +1,5 @@
 import { findKing, formatClock } from "@openchess/shared";
-import type { Color, Game, Move } from "@openchess/shared";
+import type { Color, Game, Move, Premove } from "@openchess/shared";
 import { Board } from "./board";
 import { CapturedSummary, MoveList, PromotionPrompt } from "./game-panels";
 import type { LiveClock } from "../hooks/use-clock";
@@ -70,6 +70,7 @@ export function MatchView({
   selected,
   targets,
   flipped,
+  premove = null,
   promotion,
   over,
   statusText,
@@ -80,6 +81,7 @@ export function MatchView({
   selected: number | null;
   targets: Move[];
   flipped: boolean;
+  premove?: Premove | null;
   promotion: boolean;
   over: boolean;
   statusText: string;
@@ -107,6 +109,7 @@ export function MatchView({
           lastMove={lastMove}
           checkSquare={checkSquare}
           flipped={flipped}
+          premove={premove}
         />
         <MoveList game={game} />
       </box>

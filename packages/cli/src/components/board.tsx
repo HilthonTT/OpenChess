@@ -6,7 +6,7 @@ import {
   pieceColor,
   squareAt,
 } from "@openchess/shared";
-import type { Board as BoardState, Move } from "@openchess/shared";
+import type { Board as BoardState, Move, Premove } from "@openchess/shared";
 import { useBoardTheme } from "../providers/theme";
 import { usePieceSet } from "../providers/pieces";
 import { renderPiece } from "./pieces";
@@ -19,6 +19,7 @@ interface BoardProps {
   lastMove: Move | null;
   checkSquare: number | null;
   flipped: boolean;
+  premove?: Premove | null;
   arrows?: readonly Move[];
 }
 
@@ -36,6 +37,7 @@ export function Board({
   lastMove,
   checkSquare,
   flipped,
+  premove = null,
   arrows = [],
 }: BoardProps) {
   const theme = useBoardTheme();
@@ -87,6 +89,9 @@ export function Board({
     } else if (square === selected) {
       bg = theme.selectedBg;
       fg = theme.selectedFg;
+    } else if (premove && (square === premove.from || square === premove.to)) {
+      bg = theme.premoveBg;
+      fg = theme.premoveFg;
     } else if (square === checkSquare) {
       bg = theme.checkBg;
       fg = theme.checkFg;

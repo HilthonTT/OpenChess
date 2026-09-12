@@ -17,6 +17,7 @@ terminal.
 | **Local 1v1** | Two players, one keyboard, no account |
 | **Play vs AI** | Six named bots, each with its own taste in positions and opening repertoire. Server games pay XP and coins |
 | **Online 1v1** | Matched from a queue, moves pushed over a live stream. The only games that move your Elo. Draw offers, takebacks by consent, and nine set phrases to say |
+| **Premoves** | Queue your reply while their clock runs, online and against the bots. It plays the instant it is legal, and is dropped when their move made it nonsense |
 | **Challenges** | Play someone you picked, by name or short code, with a rematch when the game ends |
 | **Friends** | Requests, presence (online / in a game / last seen), one key from a friend's row to a challenge |
 | **Profiles** | Anyone's record, rating curve, title, achievements, recent games |

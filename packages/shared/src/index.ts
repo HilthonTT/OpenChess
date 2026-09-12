@@ -13,6 +13,7 @@ export * from "./chess/opening-lines";
 export * from "./chess/opening-book";
 export * from "./chess/ai";
 export * from "./chess/accuracy";
+export * from "./chess/premove";
 export * from "./chess/puzzle";
 export * from "./chess/puzzle-themes";
 export * from "./chess/time-control";

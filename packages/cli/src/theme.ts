@@ -47,6 +47,8 @@ export type BoardTheme = {
   arrowBg: string;
   arrowFg: string;
   replyArrowBg: string;
+  premoveBg: string;
+  premoveFg: string;
 };
 
 export function toBoardTheme(colors: ThemeColors): BoardTheme {
@@ -67,6 +69,8 @@ export function toBoardTheme(colors: ThemeColors): BoardTheme {
     arrowBg: colors.success,
     arrowFg: colors.background,
     replyArrowBg: colors.dimSeparator,
+    premoveBg: colors.thinking,
+    premoveFg: colors.background,
   };
 }
 

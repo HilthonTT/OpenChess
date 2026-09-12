@@ -1,5 +1,5 @@
 import { useKeyboard } from "@opentui/react";
-import type { Game } from "@openchess/shared";
+import type { Game, PromotionPiece } from "@openchess/shared";
 import { PROMOTION_CHOICES } from "../components/game-panels";
 import { copyFen, copyPgn, type PgnDetails } from "../lib/copy-game";
 import { useKeyboardLayer, BASE_LAYER_ID } from "../providers/keyboard-layer";
@@ -17,6 +17,7 @@ export function useGameKeys({
   selection: {
     promotion: PendingPromotion | null;
     confirm: (commit: CommitMove) => void;
+    choosePromotion: (commit: CommitMove, choice: PromotionPiece) => void;
   };
   cursor: {
     moveCursor: (dx: number, dy: number) => void;
@@ -43,7 +44,7 @@ export function useGameKeys({
     if (promotion) {
       const choice = PROMOTION_CHOICES.find(([piece]) => piece === key.name);
       if (choice) {
-        void commit(promotion.from, promotion.to, choice[0]);
+        selection.choosePromotion(commit, choice[0]);
       }
       return;
     }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useNavigate } from "react-router";
 import {
+  describePremove,
   isGameOver,
   PERSONALITIES,
   timeControlFor,
@@ -46,7 +47,17 @@ const MATCH_KEYMAP: Keymap = {
   title: "Play vs AI",
   escape: BOARD_ESCAPE,
   sections: [
-    { title: "At the board", keys: BOARD_KEYS },
+    {
+      title: "At the board",
+      keys: [
+        ...BOARD_KEYS,
+        {
+          keys: "",
+          label: "the same keys queue a premove while the engine thinks",
+        },
+        { keys: "esc", label: "clear a queued premove" },
+      ],
+    },
     {
       title: "The game",
       keys: [
@@ -248,6 +259,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     overMessage: "The game is over — press r to play again",
     you: { color: human, waitMessage: "The engine is thinking…" },
     locked: pending,
+    allowPremove: true,
   });
   const { beginCommit, clearSelection, setMessage } = selection;
 
@@ -353,6 +365,21 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     },
     [apply, beginCommit, resync, server.id, server.ply, setMessage],
   );
+
+  const { clearPremove, runPremove } = selection;
+
+  useEffect(() => {
+    if (over) {
+      clearPremove();
+      return;
+    }
+
+    if (pending || position.turn !== human) {
+      return;
+    }
+
+    runPremove(commit);
+  }, [clearPremove, commit, human, over, pending, position.turn, runPremove]);
 
   const newGame = useCallback(async () => {
     setPending(true);
@@ -513,7 +540,9 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
 
   const statusText = (): string => {
     if (pending) {
-      return "The engine is thinking…";
+      return selection.premove
+        ? `Premove ${describePremove(selection.premove)} — esc clears it`
+        : "The engine is thinking…";
     }
 
     if (confirmingResign) {
@@ -539,6 +568,10 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
       return won
         ? "The engine forfeits — you win!"
         : "You resigned — the engine wins";
+    }
+
+    if (selection.premove) {
+      return `Premove ${describePremove(selection.premove)} — esc clears it`;
     }
 
     return describeAiStatus(status, position.turn, human);
@@ -591,6 +624,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
         selected={selection.selected}
         targets={selection.targets}
         flipped={cursor.flipped}
+        premove={selection.premove}
         promotion={selection.promotion !== null}
         over={over}
         statusText={statusText()}

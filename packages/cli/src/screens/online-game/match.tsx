@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   chatPhrasesFor,
+  describePremove,
   isGameOver,
   timeControlFor,
   toAlgebraic,
@@ -106,7 +107,17 @@ export function OnlineMatch({
         title: "Online 1v1",
         escape: BOARD_ESCAPE,
         sections: [
-          { title: "At the board", keys: BOARD_KEYS },
+          {
+            title: "At the board",
+            keys: [
+              ...BOARD_KEYS,
+              {
+                keys: "",
+                label: "the same keys queue a premove on their turn",
+              },
+              { keys: "esc", label: "clear a queued premove" },
+            ],
+          },
           {
             title: "The draw",
             keys: theirDrawOffer
@@ -177,6 +188,7 @@ export function OnlineMatch({
     overMessage: "The game is over — press r to find another",
     you: { color: human, waitMessage: `Waiting for ${opponentName}…` },
     locked: busy,
+    allowPremove: true,
   });
   const { beginCommit, clearSelection, setMessage } = selection;
 
@@ -346,6 +358,21 @@ export function OnlineMatch({
     },
     [apply, beginCommit, resync, server.id, server.ply, setMessage],
   );
+
+  const { clearPremove, runPremove } = selection;
+
+  useEffect(() => {
+    if (over) {
+      clearPremove();
+      return;
+    }
+
+    if (busy || position.turn !== human) {
+      return;
+    }
+
+    runPremove(commit);
+  }, [busy, clearPremove, commit, human, over, position.turn, runPremove]);
 
   const concede = useCallback(async () => {
     setConfirmingResign(false);
@@ -725,6 +752,10 @@ export function OnlineMatch({
       return `Takeback asked for — waiting on ${opponentName}`;
     }
 
+    if (selection.premove) {
+      return `Premove ${describePremove(selection.premove)} — esc clears it`;
+    }
+
     return describeOnlineStatus(status, position.turn, human, opponentName);
   };
 
@@ -824,6 +855,7 @@ export function OnlineMatch({
         selected={selection.selected}
         targets={selection.targets}
         flipped={cursor.flipped}
+        premove={selection.premove}
         promotion={selection.promotion !== null}
         over={over}
         statusText={statusText()}

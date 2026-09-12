@@ -103,6 +103,42 @@ the game's XP and coins, which leaves the unilateral takeback a study tool rathe
 than a way to play every won position twice. Games between two players need no such
 guard — the opponent already had to agree.
 
+## Premoves
+
+**A premove is not a move, so it is not generated like one.** The whole point is to
+answer a position that does not exist yet, which means the usual legal-move
+generator is the wrong tool twice over: it answers for the side to move, and it
+answers about the board as it stands. Asking it for White's replies while Black is
+thinking gets nothing; flipping the turn and asking again gets something worse — a
+list that leaves out the recapture, which is the premove people actually want.
+After they take on e5, `d4xe5` is the reply worth queueing, and at the moment you
+queue it e5 is still holding your own pawn.
+
+So `premoveTargets` walks the piece's movement pattern on an otherwise empty
+board. Sliders run through blockers, pawns take diagonally onto empty squares, a
+king still holding the right offers its castling square, and nothing is excluded
+for being occupied — by either colour. What comes back is a superset of what will
+be legal, which is the correct shape: a premove is a *bet*, and narrowing the bet
+to what is legal now is narrowing it to the wrong position.
+
+**The bet is settled by the ordinary move generator, once.** When the opponent's
+move lands, the queued `{from, to, promotion}` goes through `findLegalMove` against
+the real position: it plays, or it is dropped and says so. Nothing is retried and
+nothing is queued behind it — a premove that missed is information, and holding it
+for the move after would play it in a position the player never saw.
+
+**Promotion is chosen up front.** A premoved pawn reaching the last rank asks for
+the piece at queue time rather than when it lands, since the whole value of a
+premove is that it needs no keystroke on arrival; a prompt waiting on the far side
+would hand back the time the premove was there to save.
+
+**The window opens while your own move is still in flight, not just on their
+turn.** Between sending a move and hearing back, the board still shows your turn
+and the clock has already moved on — treating that as your turn and refusing input
+would lose exactly the fraction of a second bullet is played in. It is the same
+window against the bots, where the reply comes back in the same response as your
+move, which is why premoves are on in server AI games as well as online ones.
+
 ## Progression
 
 Finished server games pay XP and coins scaled by difficulty — wins most, draws
