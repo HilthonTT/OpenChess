@@ -179,6 +179,32 @@ export const DEFAULT_EVAL_WEIGHTS: EvalWeights = Object.freeze({
   kingSafety: 1,
 });
 
+export type EvalTerm = keyof EvalWeights;
+
+export const EVAL_TERMS: readonly EvalTerm[] = Object.freeze([
+  "material",
+  "pieceSquares",
+  "pawnStructure",
+  "passedPawns",
+  "bishopPair",
+  "rookFiles",
+  "kingSafety",
+]);
+
+const MATERIAL_TERM = 0;
+const PIECE_SQUARES_TERM = 1;
+const PAWN_STRUCTURE_TERM = 2;
+const PASSED_PAWNS_TERM = 3;
+const BISHOP_PAIR_TERM = 4;
+const ROOK_FILES_TERM = 5;
+const KING_SAFETY_TERM = 6;
+const FIXED_TERM = 7;
+
+export const EVAL_FEATURE_COUNT = EVAL_TERMS.length + 1;
+
+const MIDGAME_TERMS = new Float64Array(EVAL_FEATURE_COUNT);
+const ENDGAME_TERMS = new Float64Array(EVAL_FEATURE_COUNT);
+
 const WHITE_PAWNS_ON_FILE = new Int8Array(8);
 const BLACK_PAWNS_ON_FILE = new Int8Array(8);
 
@@ -285,14 +311,11 @@ function kingShield(
   return holes;
 }
 
-export function evaluate(
-  position: Position,
-  weights: EvalWeights = DEFAULT_EVAL_WEIGHTS,
-): number {
+function gatherTerms(position: Position): number {
   gatherPawns(position);
+  MIDGAME_TERMS.fill(0);
+  ENDGAME_TERMS.fill(0);
 
-  let midgame = 0;
-  let endgame = 0;
   let phase = 0;
 
   let whiteBishops = 0;
@@ -318,13 +341,12 @@ export function evaluate(
     phase += PHASE_WEIGHTS[type];
 
     const material = MATERIAL[type];
-    const scaled = material * weights.material;
-    midgame +=
-      sign *
-      (scaled + MIDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
-    endgame +=
-      sign *
-      (scaled + ENDGAME_TABLES[type][tableSquare]! * weights.pieceSquares);
+    MIDGAME_TERMS[MATERIAL_TERM]! += sign * material;
+    ENDGAME_TERMS[MATERIAL_TERM]! += sign * material;
+    MIDGAME_TERMS[PIECE_SQUARES_TERM]! +=
+      sign * MIDGAME_TABLES[type][tableSquare]!;
+    ENDGAME_TERMS[PIECE_SQUARES_TERM]! +=
+      sign * ENDGAME_TABLES[type][tableSquare]!;
 
     if (white) {
       whiteMaterial += material;
@@ -341,13 +363,13 @@ export function evaluate(
         const onFile = white ? WHITE_PAWNS_ON_FILE : BLACK_PAWNS_ON_FILE;
 
         if (onFile[file]! > 1) {
-          midgame += sign * DOUBLED_PAWN_MIDGAME * weights.pawnStructure;
-          endgame += sign * DOUBLED_PAWN_ENDGAME * weights.pawnStructure;
+          MIDGAME_TERMS[PAWN_STRUCTURE_TERM]! += sign * DOUBLED_PAWN_MIDGAME;
+          ENDGAME_TERMS[PAWN_STRUCTURE_TERM]! += sign * DOUBLED_PAWN_ENDGAME;
         }
 
         if (isIsolated(onFile, file)) {
-          midgame += sign * ISOLATED_PAWN_MIDGAME * weights.pawnStructure;
-          endgame += sign * ISOLATED_PAWN_ENDGAME * weights.pawnStructure;
+          MIDGAME_TERMS[PAWN_STRUCTURE_TERM]! += sign * ISOLATED_PAWN_MIDGAME;
+          ENDGAME_TERMS[PAWN_STRUCTURE_TERM]! += sign * ISOLATED_PAWN_ENDGAME;
         }
 
         const passed = white
@@ -356,8 +378,10 @@ export function evaluate(
 
         if (passed) {
           const advance = white ? rank : 7 - rank;
-          midgame += sign * PASSED_PAWN_MIDGAME[advance]! * weights.passedPawns;
-          endgame += sign * PASSED_PAWN_ENDGAME[advance]! * weights.passedPawns;
+          MIDGAME_TERMS[PASSED_PAWNS_TERM]! +=
+            sign * PASSED_PAWN_MIDGAME[advance]!;
+          ENDGAME_TERMS[PASSED_PAWNS_TERM]! +=
+            sign * PASSED_PAWN_ENDGAME[advance]!;
         }
         break;
       }
@@ -376,20 +400,16 @@ export function evaluate(
 
         if (own[file] === 0) {
           const bonus =
-            (enemy[file] === 0 ? ROOK_OPEN_FILE : ROOK_SEMI_OPEN_FILE) *
-            weights.rookFiles;
-          midgame += sign * bonus;
-          endgame += sign * (bonus / 2);
+            enemy[file] === 0 ? ROOK_OPEN_FILE : ROOK_SEMI_OPEN_FILE;
+          MIDGAME_TERMS[ROOK_FILES_TERM]! += sign * bonus;
+          ENDGAME_TERMS[ROOK_FILES_TERM]! += sign * (bonus / 2);
         }
         break;
       }
 
       case "k":
-        midgame +=
-          sign *
-          kingShield(position, square, white) *
-          SHIELD_HOLE *
-          weights.kingSafety;
+        MIDGAME_TERMS[KING_SAFETY_TERM]! +=
+          sign * kingShield(position, square, white) * SHIELD_HOLE;
         if (white) {
           whiteKing = square;
         } else {
@@ -403,12 +423,12 @@ export function evaluate(
   }
 
   if (whiteBishops >= 2) {
-    midgame += BISHOP_PAIR_MIDGAME * weights.bishopPair;
-    endgame += BISHOP_PAIR_ENDGAME * weights.bishopPair;
+    MIDGAME_TERMS[BISHOP_PAIR_TERM]! += BISHOP_PAIR_MIDGAME;
+    ENDGAME_TERMS[BISHOP_PAIR_TERM]! += BISHOP_PAIR_ENDGAME;
   }
   if (blackBishops >= 2) {
-    midgame -= BISHOP_PAIR_MIDGAME * weights.bishopPair;
-    endgame -= BISHOP_PAIR_ENDGAME * weights.bishopPair;
+    MIDGAME_TERMS[BISHOP_PAIR_TERM]! -= BISHOP_PAIR_MIDGAME;
+    ENDGAME_TERMS[BISHOP_PAIR_TERM]! -= BISHOP_PAIR_ENDGAME;
   }
 
   if (pawns === 0 && whiteKing >= 0 && blackKing >= 0) {
@@ -427,11 +447,34 @@ export function evaluate(
         DISTANCE_FROM_CENTRE[weakKing]! * DRIVE_TO_EDGE +
         (14 - between) * DRIVE_KINGS_TOGETHER;
 
-      endgame += whiteIsWinning ? drive : -drive;
+      ENDGAME_TERMS[FIXED_TERM]! += whiteIsWinning ? drive : -drive;
     }
   }
 
-  const midgameWeight = Math.min(phase, TOTAL_PHASE);
+  return Math.min(phase, TOTAL_PHASE);
+}
+
+function weighted(terms: Float64Array, weights: EvalWeights): number {
+  return (
+    terms[MATERIAL_TERM]! * weights.material +
+    terms[PIECE_SQUARES_TERM]! * weights.pieceSquares +
+    terms[PAWN_STRUCTURE_TERM]! * weights.pawnStructure +
+    terms[PASSED_PAWNS_TERM]! * weights.passedPawns +
+    terms[BISHOP_PAIR_TERM]! * weights.bishopPair +
+    terms[ROOK_FILES_TERM]! * weights.rookFiles +
+    terms[KING_SAFETY_TERM]! * weights.kingSafety +
+    terms[FIXED_TERM]!
+  );
+}
+
+export function evaluate(
+  position: Position,
+  weights: EvalWeights = DEFAULT_EVAL_WEIGHTS,
+): number {
+  const midgameWeight = gatherTerms(position);
+
+  const midgame = weighted(MIDGAME_TERMS, weights);
+  const endgame = weighted(ENDGAME_TERMS, weights);
   const blended =
     (midgame * midgameWeight + endgame * (TOTAL_PHASE - midgameWeight)) /
     TOTAL_PHASE;
@@ -439,6 +482,23 @@ export function evaluate(
   const score = blended < 0 ? -Math.round(-blended) : Math.round(blended);
 
   return position.turn === "w" ? score : -score;
+}
+
+export function evaluationFeatures(
+  position: Position,
+  out: Float64Array = new Float64Array(EVAL_FEATURE_COUNT),
+): Float64Array {
+  const midgameWeight = gatherTerms(position);
+  const endgameWeight = TOTAL_PHASE - midgameWeight;
+
+  for (let index = 0; index < EVAL_FEATURE_COUNT; index += 1) {
+    out[index] =
+      (MIDGAME_TERMS[index]! * midgameWeight +
+        ENDGAME_TERMS[index]! * endgameWeight) /
+      TOTAL_PHASE;
+  }
+
+  return out;
 }
 
 export function hasNonPawnMaterial(position: Position, color: Color): boolean {
