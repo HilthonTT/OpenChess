@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { createGame } from "@openchess/shared";
-import type { Color } from "@openchess/shared";
+import { createGame, gameMoves, startingFen } from "@openchess/shared";
+import type { Color, Game } from "@openchess/shared";
 import { GameScreen } from "../../components/game-screen";
 import { HintBar } from "../../components/hint-bar";
 import { DEFAULT_EXPORT_DIR, importPgnFile } from "../../lib/pgn-files";
-import type { PgnDetails } from "../../lib/copy-game";
+import { type PgnDetails, pgnResultOf } from "../../lib/copy-game";
 
 import {
   useKeyboardLayer,
@@ -37,6 +37,25 @@ export function positionSource(fen: string): ReviewSource {
     subtitle: `A position — ${turn === "w" ? "White" : "Black"} to move`,
     gameId: null,
     pgn: { result: "*", tags: { event: "Position" } },
+  };
+}
+
+export function playedSource(
+  game: Game,
+  orientation: Color,
+  pgn: PgnDetails = {},
+): ReviewSource {
+  const white = pgn.tags?.white ?? "White";
+  const black = pgn.tags?.black ?? "Black";
+  const result = pgn.result ?? pgnResultOf(game);
+
+  return {
+    history: gameMoves(game),
+    startingFen: startingFen(game),
+    orientation,
+    subtitle: `${white} vs ${black} · ${result}`,
+    gameId: null,
+    pgn: { ...pgn, result },
   };
 }
 

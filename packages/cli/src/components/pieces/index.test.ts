@@ -17,6 +17,8 @@ const PIECES: SquareContent[] = [
   "p",
 ];
 
+const SIGHTED_SETS = PIECE_SETS.filter((set) => set !== "blindfold");
+
 describe("renderPiece", () => {
   test("an empty square is a space in every set", () => {
     for (const set of PIECE_SETS) {
@@ -54,21 +56,27 @@ describe("renderPiece", () => {
     }
   });
 
-  test("every set draws every piece as something visible", () => {
-    for (const set of PIECE_SETS) {
+  test("every sighted set draws every piece as something visible", () => {
+    for (const set of SIGHTED_SETS) {
       for (const piece of PIECES) {
         expect(renderPiece(piece, set).trim()).not.toBe("");
       }
     }
   });
 
-  test("no set draws two kinds of piece the same", () => {
+  test("no sighted set draws two kinds of piece the same", () => {
     const sides = [PIECES.slice(0, 6), PIECES.slice(6)];
-    for (const set of PIECE_SETS) {
+    for (const set of SIGHTED_SETS) {
       for (const side of sides) {
         const drawn = side.map((piece) => renderPiece(piece, set));
         expect(new Set(drawn).size).toBe(side.length);
       }
+    }
+  });
+
+  test("the blindfold set hides every piece, one column wide", () => {
+    for (const piece of PIECES) {
+      expect(renderPiece(piece, "blindfold")).toBe(" ");
     }
   });
 

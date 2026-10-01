@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { MouseButton, type MouseEvent } from "@opentui/core";
 import {
   FILES,
   isPiece,
@@ -21,9 +22,11 @@ interface BoardProps {
   flipped: boolean;
   premove?: Premove | null;
   arrows?: readonly Move[];
+  onSquareClick?: (square: number) => void;
 }
 
 const LABEL_WIDTH = "   ";
+const CELL_WIDTH = 4;
 
 function gridLine(left: string, join: string, right: string): string {
   return `${LABEL_WIDTH}${left}${Array(8).fill("───").join(join)}${right}`;
@@ -39,6 +42,7 @@ export function Board({
   flipped,
   premove = null,
   arrows = [],
+  onSquareClick,
 }: BoardProps) {
   const theme = useBoardTheme();
   const pieceSet = usePieceSet();
@@ -112,6 +116,22 @@ export function Board({
     );
   }
 
+  // A rank is one line of text: the label, then a bar and a three-column cell
+  // per file. A click on a bar is between squares and picks neither.
+  function squareUnder(event: MouseEvent, y: number): number | null {
+    if (event.button !== MouseButton.LEFT) {
+      return null;
+    }
+
+    const column = event.x - (event.target?.screenX ?? 0) - LABEL_WIDTH.length;
+    const index = Math.floor(column / CELL_WIDTH);
+    if (column < 0 || column % CELL_WIDTH === 0 || index > 7) {
+      return null;
+    }
+
+    return squareAt(orderedFiles[index] as number, y);
+  }
+
   function rankRow(y: number): ReactNode {
     const nodes: ReactNode[] = [
       <span key="label" fg={theme.coordinate}>{` ${y + 1} `}</span>,
@@ -132,7 +152,23 @@ export function Board({
       </span>,
     );
 
-    return <text key={`rank-${y}`}>{nodes}</text>;
+    return (
+      <text
+        key={`rank-${y}`}
+        onMouseDown={
+          onSquareClick
+            ? (event: MouseEvent) => {
+                const square = squareUnder(event, y);
+                if (square !== null) {
+                  onSquareClick(square);
+                }
+              }
+            : undefined
+        }
+      >
+        {nodes}
+      </text>
+    );
   }
 
   const fileLabels = ` ${orderedFiles

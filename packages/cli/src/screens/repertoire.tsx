@@ -630,7 +630,7 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
     return true;
   }, [onDone]);
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
@@ -690,6 +690,7 @@ function Drill({ line, onDone }: { line: RepertoireLine; onDone: () => void }) {
       }
     >
       <MatchView
+        onSquareClick={clickSquare}
         game={game}
         cursor={cursor.cursor}
         selected={selection.selected}

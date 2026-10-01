@@ -54,7 +54,7 @@ export const PieceSetDialogContent = () => {
       renderItem={(set, isSelected) => (
         <text selectable={false} fg={isSelected ? "black" : "white"}>
           {set === originalRef.current ? " • " : "   "}
-          {`${set.padEnd(8)}${sampleFor(set)}   ${PIECE_SET_DESCRIPTIONS[set]}`}
+          {`${set.padEnd(10)}${sampleFor(set)}   ${PIECE_SET_DESCRIPTIONS[set]}`}
         </text>
       )}
       getKey={(set) => set}

@@ -22,6 +22,10 @@ type Harness = {
   premove: () => string | null;
   message: () => string | null;
   committed: () => Committed[];
+  openEntry: () => void;
+  typeEntry: (text: string) => void;
+  playTyped: () => void;
+  click: (square: string) => void;
 };
 
 function square(name: string): number {
@@ -77,6 +81,10 @@ function Probe({
       selection.premove ? describePremove(selection.premove) : null,
     message: () => selection.message,
     committed: () => committed.current,
+    openEntry: () => selection.openEntry(),
+    typeEntry: (text) => selection.typeEntry(text),
+    playTyped: () => selection.playTyped(commit),
+    click: (name) => selection.confirm(commit, square(name)),
   };
 
   return (
@@ -117,6 +125,14 @@ async function mount(start: Game) {
     premove: () => read().premove(),
     message: () => read().message(),
     committed: () => read().committed(),
+    type: async (text: string) => {
+      await step(() => read().openEntry());
+      for (const character of text) {
+        await step(() => read().typeEntry(character));
+      }
+    },
+    enter: () => step(() => read().playTyped()),
+    click: (name: string) => step(() => read().click(name)),
   };
 }
 
@@ -194,5 +210,85 @@ describe("premoves", () => {
 
     expect(screen.premove()).toBeNull();
     expect(screen.message()).toBe("You play the White pieces");
+  });
+});
+
+describe("typed moves", () => {
+  test("plays a move typed in SAN", async () => {
+    const screen = await mount(createGame());
+
+    await screen.type("Nf3");
+    expect(screen.message()).toBe("Move › Nf3_");
+
+    await screen.enter();
+
+    expect(screen.committed()).toEqual([
+      { from: square("g1"), to: square("f3"), promotion: undefined },
+    ]);
+  });
+
+  test("says why a move can't be played, and closes the prompt", async () => {
+    const screen = await mount(createGame());
+
+    await screen.type("e5");
+    await screen.enter();
+
+    expect(screen.committed()).toEqual([]);
+    expect(screen.message()).toBe("“e5” isn't a legal move here");
+  });
+
+  test("escape closes the prompt without playing", async () => {
+    const screen = await mount(createGame());
+
+    await screen.type("e4");
+    await screen.escape();
+
+    expect(screen.message()).toBeNull();
+    expect(screen.committed()).toEqual([]);
+  });
+
+  test("asks for the piece when a coordinate promotion leaves it out", async () => {
+    const screen = await mount(createGame("8/4P3/8/8/8/8/k7/4K3 w - - 0 1"));
+
+    await screen.type("e7e8");
+    await screen.enter();
+    expect(screen.committed()).toEqual([]);
+
+    await screen.promote("r");
+    expect(screen.committed()).toEqual([
+      { from: square("e7"), to: square("e8"), promotion: "r" },
+    ]);
+  });
+
+  test("queues a premove typed as two squares", async () => {
+    const screen = await mount(AFTER_E4);
+
+    await screen.type("e4d5");
+    await screen.enter();
+
+    expect(screen.premove()).toBe("e4d5");
+  });
+
+  test("turns down a premove typed in SAN", async () => {
+    const screen = await mount(AFTER_E4);
+
+    await screen.type("exd5");
+    await screen.enter();
+
+    expect(screen.premove()).toBeNull();
+    expect(screen.message()).toBe("Type a premove as two squares, like e7e5");
+  });
+});
+
+describe("clicks", () => {
+  test("a click on a piece and then a square plays the move", async () => {
+    const screen = await mount(createGame());
+
+    await screen.click("e2");
+    await screen.click("e4");
+
+    expect(screen.committed()).toEqual([
+      { from: square("e2"), to: square("e4"), promotion: undefined },
+    ]);
   });
 });

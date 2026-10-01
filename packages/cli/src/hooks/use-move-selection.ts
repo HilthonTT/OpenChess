@@ -18,11 +18,22 @@ import type {
   PromotionPiece,
 } from "@openchess/shared";
 import { colorName } from "../components/game-panels";
+import {
+  TYPED_MOVE_EXAMPLE,
+  parseCoordinates,
+  resolveTypedMove,
+} from "../lib/typed-move";
 
 export interface PendingPromotion {
   from: number;
   to: number;
   isPremove: boolean;
+}
+
+export function entryPrompt(entry: string): string {
+  return entry === ""
+    ? `Move › _   type ${TYPED_MOVE_EXAMPLE}, then enter`
+    : `Move › ${entry}_`;
 }
 
 export type CommitMove = (
@@ -52,6 +63,7 @@ export function useMoveSelection({
   const [promotion, setPromotion] = useState<PendingPromotion | null>(null);
   const [premove, setPremove] = useState<Premove | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [entry, setEntry] = useState<string | null>(null);
 
   const { position } = game;
 
@@ -124,7 +136,7 @@ export function useMoveSelection({
   );
 
   const confirm = useCallback(
-    (commit: CommitMove) => {
+    (commit: CommitMove, at: number = cursor) => {
       if (over) {
         setMessage(overMessage);
         return;
@@ -132,26 +144,26 @@ export function useMoveSelection({
 
       if (premoving) {
         if (selected === null) {
-          select(cursor);
+          select(at);
           return;
         }
 
-        if (cursor === selected) {
+        if (at === selected) {
           setSelected(null);
           return;
         }
 
-        if (premoveNeedsPromotion(position, selected, cursor, yourColor)) {
-          setPromotion({ from: selected, to: cursor, isPremove: true });
+        if (premoveNeedsPromotion(position, selected, at, yourColor)) {
+          setPromotion({ from: selected, to: at, isPremove: true });
           return;
         }
 
-        if (optionsFrom(selected).some((move) => move.to === cursor)) {
-          queue(selected, cursor);
+        if (optionsFrom(selected).some((move) => move.to === at)) {
+          queue(selected, at);
           return;
         }
 
-        select(cursor);
+        select(at);
         return;
       }
 
@@ -165,26 +177,26 @@ export function useMoveSelection({
       }
 
       if (selected === null) {
-        select(cursor);
+        select(at);
         return;
       }
 
-      if (cursor === selected) {
+      if (at === selected) {
         setSelected(null);
         return;
       }
 
-      if (needsPromotion(game, selected, cursor)) {
-        setPromotion({ from: selected, to: cursor, isPremove: false });
+      if (needsPromotion(game, selected, at)) {
+        setPromotion({ from: selected, to: at, isPremove: false });
         return;
       }
 
-      if (findLegalMove(game, selected, cursor)) {
-        void commit(selected, cursor);
+      if (findLegalMove(game, selected, at)) {
+        void commit(selected, at);
         return;
       }
 
-      select(cursor);
+      select(at);
     },
     [
       cursor,
@@ -198,6 +210,94 @@ export function useMoveSelection({
       queue,
       select,
       selected,
+      you,
+      yourColor,
+    ],
+  );
+
+  const openEntry = useCallback(() => {
+    setEntry("");
+    setSelected(null);
+    setMessage(null);
+  }, []);
+
+  const typeEntry = useCallback((text: string) => {
+    setEntry((current) => (current ?? "") + text);
+  }, []);
+
+  const eraseEntry = useCallback(() => {
+    setEntry((current) => (current ? current.slice(0, -1) : current));
+  }, []);
+
+  const playTyped = useCallback(
+    (commit: CommitMove) => {
+      const text = entry ?? "";
+      setEntry(null);
+
+      if (over) {
+        setMessage(overMessage);
+        return;
+      }
+
+      if (premoving) {
+        const typed = parseCoordinates(text);
+        if (!typed) {
+          setMessage("Type a premove as two squares, like e7e5");
+          return;
+        }
+
+        if (!optionsFrom(typed.from).some((move) => move.to === typed.to)) {
+          setMessage("That premove can't be queued");
+          return;
+        }
+
+        if (
+          typed.promotion === undefined &&
+          premoveNeedsPromotion(position, typed.from, typed.to, yourColor)
+        ) {
+          setSelected(typed.from);
+          setPromotion({ from: typed.from, to: typed.to, isPremove: true });
+          return;
+        }
+
+        queue(typed.from, typed.to, typed.promotion);
+        return;
+      }
+
+      if (locked) {
+        return;
+      }
+
+      if (you !== undefined && position.turn !== you.color) {
+        setMessage(you.waitMessage);
+        return;
+      }
+
+      const result = resolveTypedMove(game, text);
+      if (result.kind === "error") {
+        setMessage(result.message);
+        return;
+      }
+
+      const { from, to, promotion } = result.move;
+      if (promotion === undefined && needsPromotion(game, from, to)) {
+        setSelected(from);
+        setPromotion({ from, to, isPremove: false });
+        return;
+      }
+
+      void commit(from, to, promotion);
+    },
+    [
+      entry,
+      game,
+      locked,
+      optionsFrom,
+      over,
+      overMessage,
+      position,
+      premoving,
+      queue,
       you,
       yourColor,
     ],
@@ -255,6 +355,11 @@ export function useMoveSelection({
 
   const handleEscape = useCallback(
     (cancelDialog?: () => boolean) => {
+      if (entry !== null) {
+        setEntry(null);
+        return true;
+      }
+
       if (promotion) {
         setPromotion(null);
         return true;
@@ -277,7 +382,7 @@ export function useMoveSelection({
 
       return false;
     },
-    [premove, promotion, selected],
+    [entry, premove, promotion, selected],
   );
 
   return {
@@ -285,7 +390,12 @@ export function useMoveSelection({
     promotion,
     premove,
     targets,
-    message,
+    message: entry === null ? message : entryPrompt(entry),
+    entry,
+    openEntry,
+    typeEntry,
+    eraseEntry,
+    playTyped,
     setMessage,
     clearSelection,
     clearPremove,

@@ -75,6 +75,7 @@ export function MatchView({
   over,
   statusText,
   clocks,
+  onSquareClick,
 }: {
   game: Game;
   cursor: number;
@@ -86,6 +87,7 @@ export function MatchView({
   over: boolean;
   statusText: string;
   clocks?: MatchClocks | null;
+  onSquareClick?: (square: number) => void;
 }) {
   const theme = useUITheme();
   const { position, status } = game;
@@ -110,6 +112,7 @@ export function MatchView({
           checkSquare={checkSquare}
           flipped={flipped}
           premove={premove}
+          onSquareClick={onSquareClick}
         />
         <MoveList game={game} />
       </box>

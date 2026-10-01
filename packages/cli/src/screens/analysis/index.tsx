@@ -23,13 +23,15 @@ export function Analysis() {
     gameId?: string;
     fen?: string;
     pgnPath?: string;
+    source?: ReviewSource;
   } | null;
 
   const [selected, setSelected] = useState<string | null>(
     state?.gameId ?? null,
   );
   const [imported, setImported] = useState<ReviewSource | null>(
-    state?.fen === undefined ? null : positionSource(state.fen),
+    state?.source ??
+      (state?.fen === undefined ? null : positionSource(state.fen)),
   );
   const [importing, setImporting] = useState(false);
   const [launchPgn, setLaunchPgn] = useState<string | null>(

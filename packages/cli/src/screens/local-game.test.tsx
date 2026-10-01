@@ -46,7 +46,27 @@ async function renderApp(initialPath: string) {
     arrow: (direction: "up" | "down" | "left" | "right") =>
       press(() => setup.mockInput.pressArrow(direction)),
     type: (text: string) => press(() => setup.mockInput.typeText(text)),
+    click: (name: string) =>
+      press(() => {
+        const { x, y } = squareOnScreen(setup.captureCharFrame(), name);
+        return setup.mockMouse.click(x, y);
+      }),
   };
+}
+
+// Where a square sits on screen, read off the frame: find its rank label,
+// then step past the bar and into the middle of its cell. White at the bottom.
+function squareOnScreen(frame: string, name: string) {
+  const file = name.charCodeAt(0) - "a".charCodeAt(0);
+  const label = ` ${name[1]} │`;
+  const lines = frame.replace(/︎/g, "").split("\n");
+  const y = lines.findIndex((line) => line.includes(label));
+  if (y === -1) {
+    throw new Error(`No rank ${name[1]} on screen`);
+  }
+
+  const x = (lines[y] as string).indexOf(label) + label.length + file * 4 + 1;
+  return { x, y };
 }
 
 function captureClipboard() {
@@ -224,5 +244,25 @@ describe("local game screen", () => {
 
     await app.enter();
     expect(countMoveDots(app.frame())).toBe(2);
+  });
+
+  test("a click picks a piece up and a second click plays it", async () => {
+    const app = await renderApp("/local");
+
+    await app.click("e2");
+    await app.click("e4");
+
+    expect(app.frame()).toMatch(/1\.\s+e4/);
+  });
+
+  test("a move typed after : is played on enter", async () => {
+    const app = await renderApp("/local");
+
+    await app.type(":");
+    await app.type("Nf3");
+    expect(app.frame()).toContain("Move › Nf3_");
+
+    await app.enter();
+    expect(app.frame()).toMatch(/1\.\s+Nf3/);
   });
 });

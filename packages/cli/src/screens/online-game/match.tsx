@@ -585,7 +585,7 @@ export function OnlineMatch({
     [confirmingDraw, confirmingResign, selection.handleEscape],
   );
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
@@ -850,6 +850,7 @@ export function OnlineMatch({
       }
     >
       <MatchView
+        onSquareClick={clickSquare}
         game={game}
         cursor={cursor.cursor}
         selected={selection.selected}

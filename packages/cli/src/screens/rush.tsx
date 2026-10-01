@@ -447,7 +447,7 @@ function RunBoard({
     void stop();
   }, [over, pending, remaining, stop]);
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
@@ -500,6 +500,7 @@ function RunBoard({
           : SUBTITLE
       }
       width={WIDTH}
+      onEscape={selection.handleEscape}
       footer={
         <>
           <span fg={theme.cream}>↑↓←→</span>
@@ -542,6 +543,7 @@ function RunBoard({
       {puzzle && !over ? (
         <box flexDirection="row" gap={2}>
           <Board
+            onSquareClick={clickSquare}
             board={game.position.board}
             cursor={cursor.cursor}
             selected={selection.selected}

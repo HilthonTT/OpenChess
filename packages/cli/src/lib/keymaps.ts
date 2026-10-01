@@ -3,6 +3,8 @@ import type { KeyHelp } from "../providers/keymap/types";
 export const BOARD_KEYS: KeyHelp[] = [
   { keys: "↑↓←→ / hjkl", label: "move the cursor" },
   { keys: "enter / space", label: "pick a piece up, or play the move" },
+  { keys: "click", label: "the same, on the square under the mouse" },
+  { keys: ": or /", label: "type a move — e4, Nf3, O-O or e2e4 — then enter" },
   { keys: "q r b n", label: "promote, once a pawn gets there" },
   { keys: "f", label: "flip the board" },
 ];

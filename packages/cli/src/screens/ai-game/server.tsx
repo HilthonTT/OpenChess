@@ -473,7 +473,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
     [confirmingResign, confirmingTakeback, selection.handleEscape],
   );
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
@@ -619,6 +619,7 @@ function ServerMatch({ initial }: { initial: ServerGame }) {
       }
     >
       <MatchView
+        onSquareClick={clickSquare}
         game={game}
         cursor={cursor.cursor}
         selected={selection.selected}

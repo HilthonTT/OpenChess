@@ -397,7 +397,7 @@ function PuzzleBoard({
     }
   }, [over, ourMoves, pending, puzzle.id, setMessage]);
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
@@ -460,6 +460,7 @@ function PuzzleBoard({
         puzzle.solverMoves === 1 ? "" : "s"
       } to find${themeLabel ? ` · ${themeLabel}` : ""}`}
       width={WIDTH}
+      onEscape={selection.handleEscape}
       footer={
         <>
           <span fg={theme.cream}>↑↓←→</span>
@@ -498,6 +499,7 @@ function PuzzleBoard({
 
       <box flexDirection="row" gap={2}>
         <Board
+          onSquareClick={clickSquare}
           board={game.position.board}
           cursor={cursor.cursor}
           selected={selection.selected}

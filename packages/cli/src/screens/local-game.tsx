@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useNavigate } from "react-router";
 import { GameScreen } from "../components/game-screen";
 import { MatchView } from "../components/match-view";
 import { useUITheme } from "../providers/theme";
@@ -17,6 +18,10 @@ import { useGameKeys } from "../hooks/use-game-keys";
 import { useMoveSelection } from "../hooks/use-move-selection";
 import { useKeymap, type Keymap } from "../providers/keymap";
 import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../lib/keymaps";
+import { playedSource } from "./analysis/import-pgn";
+import type { PgnDetails } from "../lib/copy-game";
+
+const PGN: PgnDetails = { tags: { event: "OpenChess local game" } };
 
 const KEYMAP: Keymap = {
   title: "Local 1v1",
@@ -29,6 +34,10 @@ const KEYMAP: Keymap = {
         { keys: "u", label: "take the last move back" },
         { keys: "r", label: "start a new game in the same array" },
         { keys: "9", label: "switch between the ordinary array and Chess960" },
+        {
+          keys: "a",
+          label: "review the game with the engine, once it is over",
+        },
       ],
     },
     { title: "Copy out", keys: COPY_KEYS },
@@ -37,6 +46,7 @@ const KEYMAP: Keymap = {
 
 export function LocalGame() {
   const theme = useUITheme();
+  const navigate = useNavigate();
   const [startFen, setStartFen] = useState<string | null>(null);
   const [game, setGame] = useState(createGame);
 
@@ -83,13 +93,13 @@ export function LocalGame() {
     [beginCommit, game],
   );
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
     copy: {
       game,
-      pgn: { tags: { event: "OpenChess local game" } },
+      pgn: PGN,
       onNote: setMessage,
     },
     onKey: (name) => {
@@ -106,6 +116,13 @@ export function LocalGame() {
           break;
         case "9":
           toggleVariant();
+          break;
+        case "a":
+          if (over) {
+            void navigate("/analysis", {
+              state: { source: playedSource(game, "w", PGN) },
+            });
+          }
           break;
       }
     },
@@ -130,6 +147,12 @@ export function LocalGame() {
           <span fg={theme.faint}> flip </span>
           <span fg={theme.cream}>y</span>
           <span fg={theme.faint}> copy </span>
+          {over ? (
+            <>
+              <span fg={theme.cream}>a</span>
+              <span fg={theme.faint}> analyze </span>
+            </>
+          ) : null}
           <span fg={theme.cream}>9</span>
           <span fg={theme.faint}>
             {startFen === null ? " chess960 " : " standard "}
@@ -138,6 +161,7 @@ export function LocalGame() {
       }
     >
       <MatchView
+        onSquareClick={clickSquare}
         game={game}
         cursor={cursor.cursor}
         selected={selection.selected}

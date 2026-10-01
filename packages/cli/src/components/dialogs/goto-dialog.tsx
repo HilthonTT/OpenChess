@@ -50,7 +50,7 @@ const GLOBAL_ITEMS: MenuItem[] = [
     id: "goto-pieces",
     icon: "♙",
     title: "Piece set",
-    description: "Figurines, or letters if they render wrong",
+    description: "Figurines, letters, or blindfold",
     action(ctx) {
       ctx.dialog.open({
         title: "Select Piece Set",

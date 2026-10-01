@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   createGame,
   findBestMove,
@@ -17,6 +18,8 @@ import { useGameKeys } from "../../hooks/use-game-keys";
 import { useMoveSelection } from "../../hooks/use-move-selection";
 import { useKeymap, type Keymap } from "../../providers/keymap";
 import { BOARD_ESCAPE, BOARD_KEYS, COPY_KEYS } from "../../lib/keymaps";
+import type { PgnDetails } from "../../lib/copy-game";
+import { playedSource } from "../analysis/import-pgn";
 import { Setup, describeAiStatus, type Variant } from "./setup";
 
 const AI_MOVE_DELAY_MS = 400;
@@ -31,6 +34,10 @@ const KEYMAP: Keymap = {
       keys: [
         { keys: "u", label: "take your move and the engine's reply back" },
         { keys: "r", label: "start a new game against the same opponent" },
+        {
+          keys: "a",
+          label: "review the game with the engine, once it is over",
+        },
       ],
     },
     { title: "Copy out", keys: COPY_KEYS },
@@ -96,6 +103,7 @@ function Match({
   onRedeal: () => void;
 }) {
   const theme = useUITheme();
+  const navigate = useNavigate();
   useKeymap(KEYMAP);
   const [game, setGame] = useState(() => createGame(startFen ?? undefined));
 
@@ -148,6 +156,14 @@ function Match({
     setMessage(null);
   }, [clearSelection, cursor.resetCursor, onRedeal, setMessage, startFen]);
 
+  const pgn: PgnDetails = {
+    tags: {
+      event: "OpenChess AI game",
+      white: human === "w" ? "You" : botName,
+      black: human === "b" ? "You" : botName,
+    },
+  };
+
   const commit = useCallback(
     (from: number, to: number, choice?: PromotionPiece) => {
       const move = beginCommit(from, to, choice);
@@ -174,19 +190,13 @@ function Match({
     }
   }, [clearSelection, game, human, setMessage]);
 
-  useGameKeys({
+  const clickSquare = useGameKeys({
     selection,
     cursor,
     commit,
     copy: {
       game,
-      pgn: {
-        tags: {
-          event: "OpenChess AI game",
-          white: human === "w" ? "You" : botName,
-          black: human === "b" ? "You" : botName,
-        },
-      },
+      pgn,
       onNote: setMessage,
     },
     onKey: (name) => {
@@ -196,6 +206,13 @@ function Match({
           break;
         case "r":
           reset();
+          break;
+        case "a":
+          if (over) {
+            void navigate("/analysis", {
+              state: { source: playedSource(game, human, pgn) },
+            });
+          }
           break;
       }
     },
@@ -222,10 +239,17 @@ function Match({
           <span fg={theme.faint}> flip </span>
           <span fg={theme.cream}>y</span>
           <span fg={theme.faint}> copy </span>
+          {over ? (
+            <>
+              <span fg={theme.cream}>a</span>
+              <span fg={theme.faint}> analyze </span>
+            </>
+          ) : null}
         </>
       }
     >
       <MatchView
+        onSquareClick={clickSquare}
         game={game}
         cursor={cursor.cursor}
         selected={selection.selected}

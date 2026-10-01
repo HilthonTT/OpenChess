@@ -3,7 +3,7 @@ import { EMPTY } from "@openchess/shared";
 
 export const TEXT_PRESENTATION = String.fromCharCode(0xfe0e);
 
-export const PIECE_SETS = ["unicode", "letters"] as const;
+export const PIECE_SETS = ["unicode", "letters", "blindfold"] as const;
 export type PieceSet = (typeof PIECE_SETS)[number];
 
 export const DEFAULT_PIECE_SET: PieceSet = "unicode";
@@ -15,6 +15,7 @@ export function isPieceSet(value: string): value is PieceSet {
 export const PIECE_SET_DESCRIPTIONS: Record<PieceSet, string> = {
   unicode: "Chess figurines — needs a font that carries them",
   letters: "K Q R B N P — readable in any font",
+  blindfold: "No pieces at all — play from the move list",
 };
 
 // Both sides use the outline figurines and are told apart by color. The
@@ -56,7 +57,7 @@ export function renderPiece(
   piece: SquareContent,
   set: PieceSet = DEFAULT_PIECE_SET,
 ): string {
-  if (piece === EMPTY) {
+  if (piece === EMPTY || set === "blindfold") {
     return " ";
   }
 
