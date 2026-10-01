@@ -46,7 +46,8 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --draft --verify-tag --title "OpenChess $TAG" \
                  --notes-file notes.md --generate-notes
-          gh release upload "$TAG" .env.example --clobber
+          cp .env.example env.example
+          gh release upload "$TAG" env.example --clobber
 
   build:
     name: Build (${{ matrix.target }})
