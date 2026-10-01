@@ -17,14 +17,17 @@ export const PIECE_SET_DESCRIPTIONS: Record<PieceSet, string> = {
   letters: "K Q R B N P — readable in any font",
 };
 
+// Both sides use the outline figurines and are told apart by color. The
+// filled black pawn (U+265F) is an emoji, so terminals like Windows Terminal
+// swap in a wide color glyph that overflows its cell, ignoring U+FE0E.
 const UNICODE_PIECES: Record<SquareContent, string> = {
   [EMPTY]: " ",
-  B: "♝",
-  K: "♚",
-  N: "♞",
-  P: "♟",
-  Q: "♛",
-  R: "♜",
+  B: "♗",
+  K: "♔",
+  N: "♘",
+  P: "♙",
+  Q: "♕",
+  R: "♖",
   b: "♗",
   k: "♔",
   n: "♘",

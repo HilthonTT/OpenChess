@@ -34,10 +34,10 @@ describe("the piece set the board draws with", () => {
   test("unicode draws figurines", async () => {
     const frame = await boardWith("unicode");
 
-    expect(frame).toContain("♞");
-    expect(frame).toContain("♛");
     expect(frame).toContain("♘");
     expect(frame).toContain("♕");
+    expect(frame).toContain("♙");
+    expect(frame).not.toContain("♟");
   });
 
   test("letters draws letters, and no figurine survives", async () => {
@@ -60,7 +60,7 @@ describe("the piece set the board draws with", () => {
     const lineOf = (frame: string, needle: string) =>
       frame.split("\n").find((line) => line.includes(needle));
 
-    const unicodeRank = lineOf(await boardWith("unicode"), "♞");
+    const unicodeRank = lineOf(await boardWith("unicode"), "♘");
     const lettersRank = lineOf(await boardWith("letters"), "N");
 
     expect(unicodeRank).toBeDefined();

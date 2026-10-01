@@ -31,8 +31,14 @@ describe("renderPiece", () => {
   });
 
   test("the unicode set draws figurines", () => {
-    expect(renderPiece("N", "unicode")).toBe(`♞${TEXT_PRESENTATION}`);
+    expect(renderPiece("N", "unicode")).toBe(`♘${TEXT_PRESENTATION}`);
     expect(renderPiece("n", "unicode")).toBe(`♘${TEXT_PRESENTATION}`);
+  });
+
+  test("the unicode set never draws the emoji pawn", () => {
+    for (const piece of PIECES) {
+      expect(renderPiece(piece, "unicode")).not.toContain("♟");
+    }
   });
 
   test("the letters set spells the piece, with case for the color", () => {
@@ -56,10 +62,13 @@ describe("renderPiece", () => {
     }
   });
 
-  test("no set draws two pieces the same", () => {
+  test("no set draws two kinds of piece the same", () => {
+    const sides = [PIECES.slice(0, 6), PIECES.slice(6)];
     for (const set of PIECE_SETS) {
-      const drawn = PIECES.map((piece) => renderPiece(piece, set));
-      expect(new Set(drawn).size).toBe(PIECES.length);
+      for (const side of sides) {
+        const drawn = side.map((piece) => renderPiece(piece, set));
+        expect(new Set(drawn).size).toBe(side.length);
+      }
     }
   });
 

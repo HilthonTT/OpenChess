@@ -11,7 +11,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     id: "local",
     title: "Local 1v1",
-    icon: "♟",
+    icon: "♙",
     description: "Two players sharing one keyboard",
     action(ctx) {
       ctx.navigate("/local");

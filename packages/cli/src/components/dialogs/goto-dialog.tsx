@@ -48,7 +48,7 @@ const GLOBAL_ITEMS: MenuItem[] = [
   },
   {
     id: "goto-pieces",
-    icon: "♟",
+    icon: "♙",
     title: "Piece set",
     description: "Figurines, or letters if they render wrong",
     action(ctx) {
