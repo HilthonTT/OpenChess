@@ -18,13 +18,14 @@
     "db:migrate:status": "cd packages/database && bunx prisma migrate status",
     "db:seed": "bun run packages/server/src/scripts/seed.ts",
     "db:import-puzzles": "bun run packages/server/src/scripts/import-puzzles.ts",
+    "train": "bun run packages/shared/src/scripts/train.ts",
     "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p packages/database/tsconfig.json && tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p packages/server/tsconfig.json",
     "inngest": "inngest-cli dev -u http://localhost:3000/api/inngest"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
-    "@types/bun": "^1.4.1",
-    "inngest-cli": "^1.44.0",
+    "@biomejs/biome": "2.5.14",
+    "@types/bun": "^1.4.2",
+    "inngest-cli": "^1.45.1",
     "typescript": "^7.0.2"
   },
   "trustedDependencies": [
