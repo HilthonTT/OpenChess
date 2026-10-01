@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build a release for (e.g. v1.0.0)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  BUN_VERSION: 1.3.14
+  PRISMA_PLACEHOLDER_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  draft:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## Download
+
+          | Asset | What it is |
+          | --- | --- |
+          | `openchess-<version>-<platform>` | The game, a standalone binary — no Bun needed |
+          | `openchess-server-<version>-<platform>` | The API, configured from the variables in `.env.example` |
+
+          Local 1v1 and `--fen` / `--pgn` analysis work offline. Everything that needs an
+          account talks to the API at `API_URL` (default `http://localhost:3000/api`).
+
+          On macOS, clear the quarantine flag once: `xattr -d com.apple.quarantine openchess`.
+          EOF
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --draft --verify-tag --title "OpenChess $TAG" \
+                 --notes-file notes.md --generate-notes
+          gh release upload "$TAG" .env.example --clobber
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: draft
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The terminal UI loads a per-platform native library, so each binary
+          # is compiled on its own platform rather than cross-compiled.
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+          - { os: macos-latest, target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+          - { os: windows-latest, target: windows-x64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+        working-directory: packages/database
+        env:
+          DATABASE_URL: ${{ env.PRISMA_PLACEHOLDER_URL }}
+
+      - name: Compile binaries
+        run: |
+          ext=""
+          [ "${{ runner.os }}" = "Windows" ] && ext=".exe"
+          mkdir -p out
+          bun build packages/cli/src/index.tsx --compile --minify --sourcemap \
+            --outfile "out/openchess$ext"
+          bun build packages/server/src/index.ts --compile --minify --sourcemap \
+            --outfile "out/openchess-server$ext"
+
+      - name: Smoke test the CLI
+        run: ./out/openchess --version
+
+      - name: Package and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp LICENSE README.md out/
+          cd out
+          cli="openchess-$TAG-${{ matrix.target }}"
+          server="openchess-server-$TAG-${{ matrix.target }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "../$cli.zip" openchess.exe LICENSE README.md
+            7z a "../$server.zip" openchess-server.exe LICENSE README.md
+            assets="$cli.zip $server.zip"
+          else
+            tar -czf "../$cli.tar.gz" openchess LICENSE README.md
+            tar -czf "../$server.tar.gz" openchess-server LICENSE README.md
+            assets="$cli.tar.gz $server.tar.gz"
+          fi
+          cd ..
+          gh release upload "$TAG" $assets --clobber
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Add checksums and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$TAG" --pattern "openchess-*"
+          sha256sum openchess-* > SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          gh release edit "$TAG" --draft=false --latest

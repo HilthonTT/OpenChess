@@ -49,6 +49,20 @@ and, online, draws by agreement.
 | [`packages/database`](packages/database) | The [Prisma](https://www.prisma.io) schema and client, on PostgreSQL |
 | [`packages/shared`](packages/shared) | The chess engine, the progression rules, the chat catalog |
 
+## Download
+
+Each [release](https://github.com/HilthonTT/OpenChess/releases/latest) carries
+standalone binaries for Linux, macOS and Windows (x64, plus arm64 on Linux and
+macOS) — no Bun needed. Unpack `openchess-<version>-<platform>` and run
+`openchess`. Local 1v1, `--fen` and `--pgn` analysis work offline; everything
+with an account talks to the API at `API_URL` (default
+`http://localhost:3000/api`).
+
+`openchess-server-<version>-<platform>` is the API as a single binary. It is
+configured from the environment — the variables in
+[`.env.example`](.env.example) — and still needs PostgreSQL with the migrations
+applied (`bun run db:migrate:deploy` from a checkout).
+
 ## Setup
 
 Needs [Bun](https://bun.sh) 1.3+ and a PostgreSQL database.
