@@ -1,10 +1,10 @@
-import { Polar } from "@polar-sh/sdk";
+import { createPolar } from "@polar-sh/sdk/2026-10";
 
 import env from "../env";
 
-const polar = new Polar({
+const polar = createPolar({
   accessToken: env.POLAR_ACCESS_TOKEN,
-  server: env.POLAR_SERVER,
+  environment: env.POLAR_SERVER,
 });
 
 const SUCCESS_URL = new URL(
@@ -24,8 +24,8 @@ function hasStatusCode(error: unknown): error is { statusCode: number } {
 export async function createCheckoutUrl(customerExternalId: string) {
   const result = await polar.checkouts.create({
     products: [env.POLAR_PRODUCT_ID],
-    successUrl: SUCCESS_URL,
-    externalCustomerId: customerExternalId,
+    success_url: SUCCESS_URL,
+    external_customer_id: customerExternalId,
     metadata: { source: "openchess-cli" },
   });
 
@@ -34,20 +34,19 @@ export async function createCheckoutUrl(customerExternalId: string) {
 
 export async function createCustomerPortalUrl(customerExternalId: string) {
   const result = await polar.customerSessions.create({
-    externalCustomerId: customerExternalId,
-    returnUrl: SUCCESS_URL,
+    external_customer_id: customerExternalId,
+    return_url: SUCCESS_URL,
   });
 
-  return result.customerPortalUrl;
+  return result.customer_portal_url;
 }
 
 export async function hasActiveSubscription(customerExternalId: string) {
   try {
-    const customerState = await polar.customers.getStateExternal({
-      externalId: customerExternalId,
-    });
+    const customerState =
+      await polar.customers.getStateExternal(customerExternalId);
 
-    return customerState.activeSubscriptions.length > 0;
+    return customerState.active_subscriptions.length > 0;
   } catch (error) {
     if (hasStatusCode(error) && error.statusCode === 404) {
       return false;
@@ -60,14 +59,13 @@ export async function hasActiveSubscription(customerExternalId: string) {
 export async function listActiveSubscriberExternalIds(): Promise<string[]> {
   const ids = new Set<string>();
 
-  const pages = await polar.subscriptions.list({ active: true, limit: 100 });
-
-  for await (const page of pages) {
-    for (const subscription of page.result.items) {
-      const externalId = subscription.customer.externalId;
-      if (externalId) {
-        ids.add(externalId);
-      }
+  for await (const subscription of polar.subscriptions.iterList({
+    active: true,
+    limit: 100,
+  })) {
+    const externalId = subscription.customer.external_id;
+    if (externalId) {
+      ids.add(externalId);
     }
   }
 

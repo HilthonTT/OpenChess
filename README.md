@@ -1,6 +1,11 @@
-# OpenChess
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark-dark.svg">
+    <img src="assets/logo-wordmark-light.svg" alt="OpenChess" width="420">
+  </picture>
+</h1>
 
-Chess, in your terminal.
+<p align="center">Chess, in your terminal.</p>
 
 [![CI](https://github.com/HilthonTT/OpenChess/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HilthonTT/OpenChess/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev) [![OpenTUI](https://img.shields.io/badge/OpenTUI-terminal_UI-5A45FF)](https://github.com/sst/opentui) [![Hono](https://img.shields.io/badge/Hono-E36002?logo=hono&logoColor=white)](https://hono.dev) [![Prisma](https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org) [![Clerk](https://img.shields.io/badge/Clerk-6C47FF?logo=clerk&logoColor=white)](https://clerk.com) [![Polar](https://img.shields.io/badge/Polar-0062FF)](https://polar.sh) [![Sentry](https://img.shields.io/badge/Sentry-362D59?logo=sentry&logoColor=white)](https://sentry.io) [![Inngest](https://img.shields.io/badge/Inngest-000000)](https://www.inngest.com) [![Zod](https://img.shields.io/badge/Zod-3E67B1?logo=zod&logoColor=white)](https://zod.dev) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
