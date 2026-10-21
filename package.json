@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@types/bun": "^1.4.2",
+    "@types/bun": "^1.4.3",
     "inngest-cli": "^1.46.0",
     "typescript": "^7.0.2"
   },
