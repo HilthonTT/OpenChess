@@ -1,0 +1,20 @@
+{
+  "name": "@openchess/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build"
+  },
+  "dependencies": {
+    "@openchess/shared": "workspace:*",
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  }
+}
