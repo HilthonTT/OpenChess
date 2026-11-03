@@ -42,6 +42,11 @@ jobs:
       - name: Build the CLI
         run: bun run build:cli
 
+      - name: Build the website
+        run: bun run build:web
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

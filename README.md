@@ -15,6 +15,12 @@ against the engine, earn XP and coins, unlock achievements, climb the
 leaderboard, and spend your winnings on titles — all without leaving the
 terminal.
 
+**Play in the browser:** [hilthontt.github.io/OpenChess](https://hilthontt.github.io/OpenChess/) is a
+static build of the same engine (pass and play, or any of the six bots, with
+clocks and Chess960). It has no backend: the engine runs in a Web Worker and the
+game is saved in your browser. Source in [`packages/web`](packages/web); run it
+with `bun run dev:web`.
+
 ## What's in it
 
 | | |
