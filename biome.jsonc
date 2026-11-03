@@ -1,12 +1,16 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!packages/database/prisma/migrations"]
+    "includes": [
+      "**",
+      "!packages/database/prisma/migrations",
+      "!pnpm-lock.yaml"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -22,13 +26,17 @@
       "arrowParentheses": "always"
     }
   },
+  "markdown": {
+    // Prose is hand-wrapped and tables are kept compact on purpose.
+    "formatter": { "enabled": false }
+  },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
 
       "a11y": {
-        "recommended": false,
+        "preset": "none",
         "noStaticElementInteractions": "off",
         "useKeyWithClickEvents": "off",
         "useSemanticElements": "off"
