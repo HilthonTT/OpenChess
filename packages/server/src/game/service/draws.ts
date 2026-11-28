@@ -5,12 +5,18 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import { invalidateCache } from "../../lib/cache";
 import { throwProblem } from "../../lib/problem-details";
 import { publishGameChanged } from "../events";
-import { toOfferSide, toOfferColor } from "../rules";
+import {
+  type ClockState,
+  hasFlagged,
+  resultForTimeout,
+  toOfferSide,
+  toOfferColor,
+} from "../rules";
 import { lastMoveAt } from "./activity";
 import { loadFor } from "./loading";
 import { settlePvp } from "./settlement";
 import { serializable } from "./transactions";
-import { type GameView, type OpponentView, view } from "./views";
+import { type GameView, type OpponentView, clockState, view } from "./views";
 
 const DRAW_IS_PVP_ONLY =
   "Only an online game can be drawn by agreement. The bot does not negotiate — play the position out, or resign.";
@@ -42,6 +48,31 @@ async function agreeDraw(
   },
 ): Promise<GameView> {
   const { row, game, color, opponent } = input;
+
+  // A flag that has already fallen decides the game before any agreement can:
+  // the side out of time must not escape a loss by accepting a standing offer.
+  const clock = clockState(row);
+  if (clock !== null && row.turnStartedAt !== null) {
+    const ticking = game.position.turn;
+    const elapsed = Math.max(0, Date.now() - row.turnStartedAt.getTime());
+    if (hasFlagged(clock, ticking, elapsed)) {
+      const flagged: ClockState =
+        ticking === "w"
+          ? { whiteTimeMs: 0, blackTimeMs: clock.blackTimeMs }
+          : { whiteTimeMs: clock.whiteTimeMs, blackTimeMs: 0 };
+      const rewards = await settlePvp(tx, {
+        row,
+        game,
+        mover: input.user,
+        result: resultForTimeout(ticking, game.position.board),
+        clock: flagged,
+      });
+      const settled = await tx.game.findUniqueOrThrow({
+        where: { id: row.id },
+      });
+      return view(settled, game, color, rewards, opponent);
+    }
+  }
 
   const rewards = await settlePvp(tx, {
     row,

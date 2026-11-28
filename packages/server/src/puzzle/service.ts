@@ -237,6 +237,33 @@ async function settleAttempt(input: {
   }
 }
 
+// Rush and regular play share one puzzle table. A puzzle served in a rush run
+// is off limits here: otherwise its hint and solution endpoints would help the
+// live run for free, and a rush solve could be paid a second time as a regular
+// solve (or its revealed solution replayed at full reward).
+async function loadRegularPuzzle(user: User, puzzleId: string) {
+  const [row, inRush] = await Promise.all([
+    db.puzzle.findUnique({ where: { id: puzzleId } }),
+    db.puzzleRushRun.findFirst({
+      where: { userId: user.id, servedPuzzleIds: { has: puzzleId } },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!row) {
+    throwProblem(HttpStatusCodes.NOT_FOUND, "No such puzzle");
+  }
+
+  if (inRush) {
+    throwProblem(
+      HttpStatusCodes.CONFLICT,
+      "That puzzle was served in Puzzle Rush, so it cannot be played for regular rewards.",
+    );
+  }
+
+  return row;
+}
+
 export async function playPuzzleMoves(input: {
   user: User;
   puzzleId: string;
@@ -244,11 +271,7 @@ export async function playPuzzleMoves(input: {
   hintUsed?: boolean;
   msSpent?: number;
 }): Promise<PuzzleMoveView> {
-  const row = await db.puzzle.findUnique({ where: { id: input.puzzleId } });
-
-  if (!row) {
-    throwProblem(HttpStatusCodes.NOT_FOUND, "No such puzzle");
-  }
+  const row = await loadRegularPuzzle(input.user, input.puzzleId);
 
   if (input.moves.length === 0) {
     throwProblem(HttpStatusCodes.UNPROCESSABLE_ENTITY, "Send a move to play");
@@ -315,11 +338,7 @@ export async function takePuzzleHint(input: {
   puzzleId: string;
   moves: string[];
 }): Promise<{ square: string }> {
-  const row = await db.puzzle.findUnique({ where: { id: input.puzzleId } });
-
-  if (!row) {
-    throwProblem(HttpStatusCodes.NOT_FOUND, "No such puzzle");
-  }
+  const row = await loadRegularPuzzle(input.user, input.puzzleId);
 
   const session = replaySession(row, input.moves);
   const square = puzzleHint(session);
@@ -341,11 +360,7 @@ export async function revealPuzzleSolution(input: {
   puzzleId: string;
   moves: string[];
 }): Promise<{ solution: string[]; line: string[]; rewards: null }> {
-  const row = await db.puzzle.findUnique({ where: { id: input.puzzleId } });
-
-  if (!row) {
-    throwProblem(HttpStatusCodes.NOT_FOUND, "No such puzzle");
-  }
+  const row = await loadRegularPuzzle(input.user, input.puzzleId);
 
   replaySession(row, input.moves);
 

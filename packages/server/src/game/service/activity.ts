@@ -81,6 +81,16 @@ export async function claimVictory(
       );
     }
 
+    // A timed game already has a fair abandonment rule: the clock. Letting the
+    // idle timer win would hand a Rapid game to whoever waits five minutes while
+    // the opponent is still thinking on their own time.
+    if (clockState(row) !== null && row.turnStartedAt !== null) {
+      throwProblem(
+        HttpStatusCodes.CONFLICT,
+        "This game is on the clock: wait for your opponent's time to run out, then claim on time.",
+      );
+    }
+
     const idleMs = Date.now() - lastActivityAt(row);
     if (idleMs < CLAIM_VICTORY_AFTER_MS) {
       const wait = Math.ceil((CLAIM_VICTORY_AFTER_MS - idleMs) / 1000);
@@ -146,7 +156,7 @@ export async function flagGame(gameId: string, user: User): Promise<GameView> {
       ticking === "w"
         ? { whiteTimeMs: 0, blackTimeMs: clock.blackTimeMs }
         : { whiteTimeMs: clock.whiteTimeMs, blackTimeMs: 0 };
-    const timeoutResult = resultForTimeout(ticking);
+    const timeoutResult = resultForTimeout(ticking, game.position.board);
 
     const rewards =
       row.mode === "AI"

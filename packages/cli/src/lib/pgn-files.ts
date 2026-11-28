@@ -25,12 +25,20 @@ export function safeExportFilename(candidate: string): string | null {
 
   // biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point — this is the filter that keeps them out
   const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+  // The name comes from the server. On Windows, ":" opens an NTFS alternate
+  // data stream, the other characters are invalid, and device names such as
+  // CON or NUL are not files at all.
+  const WINDOWS_INVALID = /[<>:"|?*]/;
+  const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
 
   if (
     base === "" ||
     base === "." ||
     base === ".." ||
-    CONTROL_CHARS.test(base)
+    CONTROL_CHARS.test(base) ||
+    WINDOWS_INVALID.test(base) ||
+    WINDOWS_DEVICE.test(base) ||
+    /[. ]$/.test(base)
   ) {
     return null;
   }

@@ -272,10 +272,20 @@ export async function reviewRepertoireLine(
   const after = reviewLine(stateOf(row), grade);
 
   const wasDue = row.dueAt.getTime() <= now.getTime();
-  const xp = wasDue ? reviewXp({ grade, moves }) : 0;
+  // A brand-new line is due at once, so paying its first review would let a
+  // player farm XP by removing and re-adding the same line. XP starts with the
+  // first review the scheduler itself asked for.
+  const xp = wasDue && row.reviews > 0 ? reviewXp({ grade, moves }) : 0;
 
-  const updated = await db.repertoireLine.update({
-    where: { id: row.id },
+  // Conditional on the state just read, so parallel reviews of one due line
+  // cannot each be paid: only the first write matches.
+  const { count } = await db.repertoireLine.updateMany({
+    where: {
+      id: row.id,
+      userId: user.id,
+      dueAt: row.dueAt,
+      reviews: row.reviews,
+    },
     data: {
       ease: after.ease,
       intervalDays: after.intervalDays,
@@ -285,6 +295,17 @@ export async function reviewRepertoireLine(
       lastReviewedAt: now,
       dueAt: nextDue(after, now),
     },
+  });
+
+  if (count === 0) {
+    throwProblem(
+      HttpStatusCodes.CONFLICT,
+      "That line was just reviewed in another request. Refetch it and try again.",
+    );
+  }
+
+  const updated = await db.repertoireLine.findUniqueOrThrow({
+    where: { id: row.id },
   });
 
   if (xp === 0) {

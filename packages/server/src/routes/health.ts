@@ -9,7 +9,24 @@ import { redis } from "../lib/upstash";
 type DatabaseStatus = "connected" | "disconnected";
 type RedisStatus = "connected" | "disconnected" | "disabled";
 
-const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+// Must stay well under the 5s global request timeout, or that timeout fires
+// first and the caller gets a bare 504 instead of the 503 dependency report.
+const HEALTH_CHECK_TIMEOUT_MS = 2_000;
+
+async function withTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("Timeout")),
+      HEALTH_CHECK_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([work, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const base = createRouter();
 
@@ -49,11 +66,7 @@ const healthDeepRoute = createRoute({
 
 async function checkDatabase(): Promise<{ status: DatabaseStatus }> {
   try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout")), HEALTH_CHECK_TIMEOUT_MS),
-    );
-
-    await Promise.race([db.$queryRaw`SELECT 1`, timeoutPromise]);
+    await withTimeout(db.$queryRaw`SELECT 1`);
 
     return { status: "connected" };
   } catch (error) {
@@ -68,11 +81,7 @@ async function checkRedis(): Promise<{ status: RedisStatus }> {
   }
 
   try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout")), HEALTH_CHECK_TIMEOUT_MS),
-    );
-
-    const pong = await Promise.race([redis.ping(), timeoutPromise]);
+    const pong = await withTimeout(redis.ping());
 
     return pong === "PONG"
       ? { status: "connected" }

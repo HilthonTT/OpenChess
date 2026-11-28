@@ -69,7 +69,8 @@ export function findSanMove(game: Game, san: string): Move | null {
   return match ?? findSanMoveLoosely(game, wanted);
 }
 
-const LOOSE_SAN = /^([KQRBN])?([a-h])?([1-8])?x?([a-h][1-8])(?:=?([QRBN]))?$/;
+const LOOSE_SAN =
+  /^([KQRBN])?([a-h])?([1-8])?x?([a-h][1-8])(?:=?([QRBNqrbn]))?$/;
 
 function findSanMoveLoosely(game: Game, wanted: string): Move | null {
   const parsed = LOOSE_SAN.exec(wanted);

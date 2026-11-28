@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createGame } from "@openchess/shared";
 
 import {
   MIN_REWARDED_PLIES,
@@ -432,6 +433,14 @@ describe("resultForTimeout", () => {
   test("a flag falling loses for the side whose clock ran out", () => {
     expect(resultForTimeout("w")).toBe("BLACK_WIN");
     expect(resultForTimeout("b")).toBe("WHITE_WIN");
+  });
+
+  test("a flag against a bare king is a draw", () => {
+    const bareBlackKing = createGame("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+    expect(resultForTimeout("w", bareBlackKing.position.board)).toBe("DRAW");
+    expect(resultForTimeout("b", bareBlackKing.position.board)).toBe(
+      "WHITE_WIN",
+    );
   });
 });
 
