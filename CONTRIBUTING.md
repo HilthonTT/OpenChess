@@ -26,7 +26,7 @@ bun run db:migrate
 bun run db:seed
 ```
 
-The [README](README.md#setup) documents every variable and which ones are
+The [server guide](docs/server.md#environment) documents every variable and which ones are
 actually required. Then, in two terminals:
 
 ```sh

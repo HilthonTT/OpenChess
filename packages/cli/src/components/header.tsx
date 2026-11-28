@@ -4,8 +4,10 @@ export function Header() {
   const theme = useUITheme();
 
   return (
-    <box flexDirection="column" alignItems="center">
-      <box flexDirection="row" alignItems="center" gap={1}>
+    <box flexDirection="column" alignItems="center" flexShrink={0}>
+      {/* Never squeeze the logo: a short terminal would otherwise cut its shadow
+          row and draw the tagline over it. */}
+      <box flexDirection="row" alignItems="center" gap={1} flexShrink={0}>
         <ascii-font font="block" text="Open" color={theme.walnut} />
         <ascii-font font="block" text="Chess" color={theme.cream} />
       </box>
