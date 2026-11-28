@@ -290,6 +290,36 @@ async function finishRun(user: User, run: PuzzleRushRun): Promise<RushRunView> {
   }
 }
 
+// Writes the run only if it is still exactly the state this request scored
+// against: open, on the same puzzle, with the same tally. Parallel guesses at one
+// puzzle, or a move landing after the run was ended, are refused instead of
+// overwriting the score with a stale count.
+async function advanceRun(
+  run: PuzzleRushRun,
+  puzzleId: string,
+  data: Prisma.PuzzleRushRunUncheckedUpdateManyInput,
+): Promise<PuzzleRushRun> {
+  const { count } = await db.puzzleRushRun.updateMany({
+    where: {
+      id: run.id,
+      endedAt: null,
+      currentPuzzleId: puzzleId,
+      solved: run.solved,
+      missed: run.missed,
+    },
+    data,
+  });
+
+  if (count === 0) {
+    throwProblem(
+      HttpStatusCodes.CONFLICT,
+      "This run moved on in another request. Fetch it again.",
+    );
+  }
+
+  return db.puzzleRushRun.findUniqueOrThrow({ where: { id: run.id } });
+}
+
 export async function playRushMoves(input: {
   user: User;
   runId: string;
@@ -350,9 +380,10 @@ export async function playRushMoves(input: {
   const solution = solutionSan(toEnginePuzzle(puzzle));
 
   if (missed >= RUSH_MISS_LIMIT || outOfTime(run)) {
-    const scored = await db.puzzleRushRun.update({
-      where: { id: run.id },
-      data: { solved, missed, currentPuzzleId: null },
+    const scored = await advanceRun(run, puzzle.id, {
+      solved,
+      missed,
+      currentPuzzleId: null,
     });
 
     const finished = await finishRun(input.user, scored);
@@ -366,15 +397,12 @@ export async function playRushMoves(input: {
     served.push(next.id);
   }
 
-  const advanced = await db.puzzleRushRun.update({
-    where: { id: run.id },
-    data: {
-      solved,
-      missed,
-      currentPuzzleId: next?.id ?? null,
-      servedPuzzleIds: served,
-      endedAt: next ? undefined : expiredAt(run),
-    },
+  const advanced = await advanceRun(run, puzzle.id, {
+    solved,
+    missed,
+    currentPuzzleId: next?.id ?? null,
+    servedPuzzleIds: served,
+    endedAt: next ? undefined : expiredAt(run),
   });
 
   if (!next) {

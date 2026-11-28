@@ -80,6 +80,21 @@ export async function performLogin() {
           });
         }
 
+        // Check state before anything else. A request without our nonce did not
+        // come from the sign-in we started (another local process or web page
+        // hitting the port), so it must not be able to cancel or settle it.
+        const state = url.searchParams.get("state");
+        let stateMatches = false;
+        try {
+          stateMatches = state !== null && decodeState(state).nonce === nonce;
+        } catch {
+          stateMatches = false;
+        }
+
+        if (!stateMatches) {
+          return new Response("Invalid state", { status: 400 });
+        }
+
         const error = url.searchParams.get("error");
 
         if (error) {
@@ -91,24 +106,12 @@ export async function performLogin() {
         }
 
         const code = url.searchParams.get("code");
-        const state = url.searchParams.get("state");
 
-        if (!code || !state) {
+        if (!code) {
           settled = true;
-          reject(new Error("Missing code or state"));
+          reject(new Error("Missing code"));
           setTimeout(() => server.stop(), 500);
           return new Response("Bad request", { status: 400 });
-        }
-
-        try {
-          const payload = decodeState(state);
-
-          if (payload.nonce !== nonce) throw new Error("State mismatch");
-        } catch (err) {
-          settled = true;
-          reject(err);
-          setTimeout(() => server.stop(), 500);
-          return new Response("Invalid state", { status: 400 });
         }
 
         settled = true;

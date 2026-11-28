@@ -385,7 +385,7 @@ export async function playMove(input: {
           color === "w"
             ? { whiteTimeMs: 0, blackTimeMs: clock.blackTimeMs }
             : { whiteTimeMs: clock.whiteTimeMs, blackTimeMs: 0 };
-        const timeoutResult = resultForTimeout(color);
+        const timeoutResult = resultForTimeout(color, loaded.position.board);
 
         const rewards =
           fresh.mode === "AI"

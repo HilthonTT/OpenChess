@@ -1,7 +1,9 @@
 import type { Context } from "hono";
-import { streamSSE } from "hono/streaming";
+import { type SSEStreamingApi, streamSSE } from "hono/streaming";
+import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import { gameVersion, subscribeToGame } from "../../game/events";
+import { throwProblem } from "../../lib/problem-details";
 import { isShuttingDown, onShutdown } from "../../lib/shutdown";
 import type { PlayerEnv } from "../../middlewares/require-user";
 
@@ -10,6 +12,15 @@ const REVALIDATE_MS = 2_000;
 const KEEPALIVE_MS = 15_000;
 
 const POST_SETTLE_LINGER_MS = 90_000;
+
+// Each open stream polls Redis (or the database) every couple of seconds, and
+// the rate limiter only counts the request that opens one. Cap how many a user
+// can hold, and how long any one lives; EventSource reconnects on its own.
+const MAX_STREAMS_PER_USER = 6;
+
+const MAX_STREAM_LIFETIME_MS = 60 * 60_000;
+
+const openStreams = new Map<string, number>();
 
 function waitForChange(
   gameId: string,
@@ -41,13 +52,45 @@ function waitForChange(
   });
 }
 
-export function streamGameState<T extends { result: string | null }>(
+export async function streamGameState<T extends { result: string | null }>(
   c: Context<PlayerEnv>,
   gameId: string,
   load: () => Promise<T>,
   signature: (state: T) => string,
 ) {
+  const userId = c.get("user").id;
+
+  if ((openStreams.get(userId) ?? 0) >= MAX_STREAMS_PER_USER) {
+    throwProblem(
+      HttpStatusCodes.TOO_MANY_REQUESTS,
+      "Too many live game streams are open. Close one and try again.",
+    );
+  }
+
+  // Load once before the 200 goes out, so a 403 or 404 reaches the client as a
+  // real error instead of an empty stream that EventSource retries forever.
+  let preloaded: T | null = await load();
+
+  openStreams.set(userId, (openStreams.get(userId) ?? 0) + 1);
+  const release = () => {
+    const left = (openStreams.get(userId) ?? 1) - 1;
+    if (left <= 0) {
+      openStreams.delete(userId);
+    } else {
+      openStreams.set(userId, left);
+    }
+  };
+
   return streamSSE(c, async (stream) => {
+    try {
+      await run(stream);
+    } finally {
+      release();
+    }
+  });
+
+  async function run(stream: SSEStreamingApi) {
+    const expiresAt = Date.now() + MAX_STREAM_LIFETIME_MS;
     let lastSignature: string | null = null;
     let knownVersion = await gameVersion(gameId);
     let quietSince = Date.now();
@@ -60,8 +103,14 @@ export function streamGameState<T extends { result: string | null }>(
       }
     };
 
-    while (!stream.aborted && !stream.closed && !isShuttingDown()) {
-      const state = await load();
+    while (
+      !stream.aborted &&
+      !stream.closed &&
+      !isShuttingDown() &&
+      Date.now() < expiresAt
+    ) {
+      const state = preloaded ?? (await load());
+      preloaded = null;
       const current = signature(state);
 
       if (current !== lastSignature) {
@@ -93,6 +142,7 @@ export function streamGameState<T extends { result: string | null }>(
         !stream.aborted &&
         !stream.closed &&
         !isShuttingDown() &&
+        Date.now() < expiresAt &&
         (hangUpAt === null || Date.now() < hangUpAt)
       ) {
         const reason = await waitForChange(gameId, c.req.raw.signal);
@@ -116,5 +166,5 @@ export function streamGameState<T extends { result: string | null }>(
         await keepaliveIfQuiet();
       }
     }
-  });
+  }
 }

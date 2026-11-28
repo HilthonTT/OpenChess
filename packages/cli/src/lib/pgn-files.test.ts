@@ -42,3 +42,13 @@ describe("safeExportFilename", () => {
     expect(safeExportFilename("GAME.PGN")).toBe("GAME.PGN");
   });
 });
+
+describe("safeExportFilename on Windows-hostile names", () => {
+  test("refuses alternate data streams, reserved characters and device names", () => {
+    expect(safeExportFilename("game.pgn:x.pgn")).toBeNull();
+    expect(safeExportFilename("a|b.pgn")).toBeNull();
+    expect(safeExportFilename("CON.pgn")).toBeNull();
+    expect(safeExportFilename("nul.pgn")).toBeNull();
+    expect(safeExportFilename("console.pgn")).toBe("console.pgn");
+  });
+});

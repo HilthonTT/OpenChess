@@ -1,3 +1,4 @@
+import env from "./env";
 import createApp from "./lib/create-app";
 import configureOpenAPI from "./lib/configure-open-api";
 import achievements from "./routes/achievements";
@@ -46,6 +47,10 @@ app.on(
   serve({
     client: inngest,
     functions,
+    // Without these, an unsigned PUT syncs the app, and the URL it registers is
+    // built from the request Host header: anyone could repoint our functions.
+    serveOrigin: env.PUBLIC_BASE_URL,
+    enableUnauthedSync: env.NODE_ENV !== "production",
   }),
 );
 

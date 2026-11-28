@@ -6,6 +6,9 @@ import type {
 } from "@openchess/database";
 import {
   isDraw,
+  isPiece,
+  pieceColor,
+  type Board,
   levelFor,
   personalityFor,
   type Color,
@@ -144,8 +147,25 @@ export function resultForResignation(player: Color): GameResult {
   return player === "w" ? "BLACK_WIN" : "WHITE_WIN";
 }
 
-export function resultForTimeout(player: Color): GameResult {
+export function resultForTimeout(player: Color, board?: Board): GameResult {
+  // A flag only wins for a side that could still mate. A bare king never can,
+  // so running out of time against one is a draw.
+  if (
+    board !== undefined &&
+    !hasMatingMaterial(board, player === "w" ? "b" : "w")
+  ) {
+    return "DRAW";
+  }
   return resultForResignation(player);
+}
+
+function hasMatingMaterial(board: Board, color: Color): boolean {
+  return board.some(
+    (square) =>
+      isPiece(square) &&
+      pieceColor(square) === color &&
+      square.toLowerCase() !== "k",
+  );
 }
 
 export type ClockState = {

@@ -54,7 +54,8 @@ export function formatClock(ms: number): string {
   const clamped = Math.max(0, ms);
   const totalSeconds = clamped / 1000;
 
-  if (totalSeconds < 10) {
+  // Compare after rounding: 9.96s would otherwise print as "10.0".
+  if (Math.round(totalSeconds * 10) < 100) {
     return totalSeconds.toFixed(1);
   }
 

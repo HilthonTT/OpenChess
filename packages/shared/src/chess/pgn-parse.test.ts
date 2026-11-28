@@ -147,3 +147,33 @@ describe("splitPgnGames", () => {
     expect(splitPgnGames("\n\n")).toEqual([]);
   });
 });
+
+describe("parsePgn edge cases", () => {
+  test("a { inside a comment does not swallow the moves after it", () => {
+    expect(parsePgn("1. e4 { see { here } e5 2. Nf3 *").moves).toHaveLength(3);
+  });
+
+  test("a ; comment inside a variation cannot close it early", () => {
+    const game = parsePgn("1. e4 (1. d4 ; comment ) d5\n) e5 *");
+    expect(game.moves).toHaveLength(2);
+  });
+
+  test("reads lowercase promotions and ignores e.p. markers", () => {
+    expect(
+      parsePgn('[FEN "4k3/P7/8/8/8/8/8/4K3 w - - 0 1"]\n\n1. a8=q *').moves,
+    ).toHaveLength(1);
+    expect(
+      parsePgn('[FEN "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"]\n\n1. exd6 e.p. *')
+        .moves,
+    ).toHaveLength(1);
+  });
+
+  test("refuses a FEN tag without both kings, or with the mover's king en prise", () => {
+    expect(() =>
+      parsePgn('[FEN "4k3/8/8/8/8/8/8/8 w - - 0 1"]\n\n*'),
+    ).toThrow();
+    expect(() =>
+      parsePgn('[FEN "4k3/4R3/8/8/8/8/8/4K3 w - - 0 1"]\n\n*'),
+    ).toThrow();
+  });
+});

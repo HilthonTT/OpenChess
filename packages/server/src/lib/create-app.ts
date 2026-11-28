@@ -42,7 +42,10 @@ export function isStreamingPath(pathname: string): boolean {
 }
 
 const requestTimeout = createMiddleware(async (c, next) => {
-  if (isStreamingPath(new URL(c.req.url).pathname)) {
+  const { pathname } = new URL(c.req.url);
+  // Inngest steps (paging every subscription, say) can outlast 5s; cutting them
+  // off only makes Inngest retry the same step until it gives up.
+  if (isStreamingPath(pathname) || pathname === "/api/inngest") {
     return next();
   }
 

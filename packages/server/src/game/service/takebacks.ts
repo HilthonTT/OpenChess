@@ -11,6 +11,7 @@ import {
   toOfferSide,
   toOfferColor,
 } from "../rules";
+import { markMoved } from "./activity";
 import { loadFor } from "./loading";
 import { serializable } from "./transactions";
 import { type GameView, type OpponentView, clockState, view } from "./views";
@@ -98,6 +99,10 @@ async function applyTakeback(
       ...takebackClockData(row, game.position.turn, plies, Date.now()),
     },
   });
+
+  // The turn changes hands, so the idle timer behind claimVictory restarts too.
+  // Otherwise a takeback granted late could be claimed as abandonment at once.
+  markMoved(row.id, Date.now());
 
   return view(updated, rewound.game, color, null, opponent);
 }

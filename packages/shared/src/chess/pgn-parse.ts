@@ -1,4 +1,5 @@
 import { STARTING_FEN } from "./board";
+import { isInCheck } from "./moves";
 import { createGame, play, type Game } from "./game";
 import { findSanMove } from "./pgn";
 import type { PgnResult, PgnTags } from "./pgn-text";
@@ -69,11 +70,10 @@ function stripAnnotations(movetext: string): string {
 
     if (braceDepth > 0) {
       if (ch === "}") {
-        braceDepth -= 1;
+        braceDepth = 0;
         out += " ";
-      } else if (ch === "{") {
-        braceDepth += 1;
       }
+      // PGN comments do not nest: a "{" inside one is just text.
       continue;
     }
 
@@ -84,7 +84,11 @@ function stripAnnotations(movetext: string): string {
         parenDepth -= 1;
         out += " ";
       } else if (ch === "{") {
-        braceDepth += 1;
+        braceDepth = 1;
+      } else if (ch === ";") {
+        // A rest-of-line comment inside a variation can hold a ")" that must
+        // not close the variation.
+        lineComment = true;
       }
       continue;
     }
@@ -111,7 +115,8 @@ function stripAnnotations(movetext: string): string {
   return out;
 }
 
-const NOISE = /^(?:\d+\.*|\.+|\$\d+)$/;
+// "e.p." / "ep" after an en passant capture is a human habit, not a move.
+const NOISE = /^(?:\d+\.*|\.+|\$\d+|e\.p\.|ep)$/i;
 
 const ANNOTATION_SUFFIX = /[!?]+$/;
 
@@ -155,6 +160,24 @@ function resultFromTag(value: string | undefined): PgnResult | null {
   return isResult(normalized) ? normalized : null;
 }
 
+// A FEN tag is outside input. Every rule downstream assumes one king a side and
+// that the side which just moved is not left in check (or its king could simply
+// be captured), so refuse positions that break either.
+function assertPlayablePosition(game: Game): void {
+  const { board, turn } = game.position;
+  for (const king of ["K", "k"]) {
+    const count = board.filter((square) => square === king).length;
+    if (count !== 1) {
+      throw new Error(
+        `expected one ${king === "K" ? "white" : "black"} king, found ${count}`,
+      );
+    }
+  }
+  if (isInCheck(game.position, turn === "w" ? "b" : "w")) {
+    throw new Error("the side not to move is in check");
+  }
+}
+
 export function parsePgn(pgn: string): ParsedPgn {
   const { tags, movetext } = splitSections(pgn);
   const { moves, result } = tokenize(movetext);
@@ -164,6 +187,7 @@ export function parsePgn(pgn: string): ParsedPgn {
   let game: Game;
   try {
     game = createGame(startingFen);
+    assertPlayablePosition(game);
   } catch (error) {
     throw new Error(
       `PGN has an unreadable FEN tag "${startingFen}": ${
